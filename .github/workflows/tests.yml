@@ -8,6 +8,12 @@ on:
   # Permet de lancer le workflow manuellement depuis l'onglet Actions
   workflow_dispatch:
 
+# Opt-in Node 24 pour les actions JavaScript (supprime le warning de
+# deprecation Node 20 emis depuis sept 2025). Sera le default a partir
+# de juin 2026 ; on prend les devants.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   pytest:
     name: pytest · Python ${{ matrix.python-version }}
@@ -33,9 +39,13 @@ jobs:
           sudo apt-get install -y mediainfo
 
       - name: Install dependencies
+        # NOTES Sprint 1 / Bug CI : installer aussi le groupe `[web]`
+        # (fastapi, uvicorn, jinja2) sinon les tests qui utilisent
+        # TestClient echouent avec ModuleNotFoundError.
+        # Le default `[dev]` ne contient que pytest/ruff/etc.
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[dev]
+          pip install -e .[web,dev]
 
       - name: Run pytest
         run: pytest tests/ --tb=short -q

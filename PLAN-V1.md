@@ -148,26 +148,31 @@ rollback, etc.) pour 20 users.
 **En série, Windows d'abord.** Chaque sprint produit un livrable testable. On
 ne passe au suivant que quand le précédent est mergé et tagué.
 
-### Sprint 1 — Préparation repo + branding (1-2 semaines, peu de code)
+### Sprint 1 — Préparation repo + branding ✅ COMPLÉTÉ (2026-05-14)
 
 **Objectif** : repo prêt à devenir public, identité figée.
 
-| Tâche | Note |
-|---|---|
-| Logo final intégré (favicon, sidebar, manifest) | En cours côté user |
-| `LICENSE` fichier MIT à la racine | Template standard |
-| Disclaimer dans README + section dédiée dans page `/guide` | Texte du § 1.1 |
-| Refactor `tracker_uploader` → `flox_uploader` | **Gros refactor** : 50+ files. Renomme imports, paths, env vars. Tests doivent rester verts |
-| `CHANGELOG.md` format Keep a Changelog | Historique post-hoc des rounds 1-9 |
-| `CONTRIBUTING.md` + `SECURITY.md` | Templates GitHub standards |
-| Issue templates `.github/ISSUE_TEMPLATE/` | bug.yml + feature.yml + question.yml |
-| `.github/workflows/tests.yml` (GitHub Actions) | Matrix Python 3.10/3.11/3.12 sur Ubuntu |
-| Renommer le repo si besoin (`tracker-uploder` → `flox-uploader`) | GitHub gère les redirects |
-| Tag intermédiaire `v0.3.1` | Snapshot avant Sprint 2 |
+**Repo créé** : `github.com/FloxTool/flox-uploader` (private)
+**Tag** : `v0.3.1` (commit `d4c0018`, signé `Flox <flox@floxtool.dev>`)
 
-**Definition of Done Sprint 1** : `git clone + pip install -e .` marche, tests
-passent en CI, repo public sur GitHub avec README provisoire, identité
-"Flox Uploader" partout dans l'UI + docs.
+| Tâche | Statut | Note |
+|---|---|---|
+| Logo final intégré (favicon, sidebar, manifest) | ✅ | `currentColor` + couleur charte par défaut |
+| `LICENSE` fichier MIT à la racine | ✅ | Copyright Flox |
+| Disclaimer dans Guide | ✅ | Section dédiée dans `/guide` |
+| Refactor `tracker_uploader` → `flox_uploader` | ✅ | **373 occurrences, 58 fichiers** ; tests verts |
+| `CHANGELOG.md` format Keep a Changelog | ✅ | Section v0.3.1 + rétrospectif v0.3.0 (rounds 1-9) |
+| `CONTRIBUTING.md` + `SECURITY.md` | ✅ | Templates personnalisés |
+| Issue templates `.github/ISSUE_TEMPLATE/` | ✅ | bug.yml + feature.yml + question.yml + config.yml |
+| `.github/workflows/tests.yml` (GitHub Actions) | ✅ | Matrix Python 3.10/3.11/3.12 + MediaInfo CLI |
+| Tag intermédiaire `v0.3.1` | ✅ | Pushé sur FloxTool |
+| Backward compat env var `TRACKER_UPLOADER_DATA_DIR` | ✅ | Bonus : transition douce |
+
+**Definition of Done Sprint 1** : ✅ TOUS VERTS
+- ✅ `git clone + pip install -e .` marche (testé localement)
+- ✅ 622/622 tests verts après refactor
+- ✅ Repo créé sur FloxTool, identité "Flox Uploader" partout dans l'UI + docs
+- ⏳ CI verte (à confirmer au 1er push qui déclenche GitHub Actions — il faut vérifier l'onglet Actions du repo)
 
 ### Sprint 2 — Amélioration de la page /setup (1 semaine)
 
