@@ -1,0 +1,375 @@
+{# ============================================================
+   COMPONENT LIBRARY (Sprint 0 — design system)
+
+   Une seule source de verite pour : button, badge, card, empty_state,
+   input. Les pages consomment via {% from "_components.html" import ... %}.
+
+   Tones semantiques universels : neutral | primary | success | warning | danger | info
+   Tailles standard : sm | md | lg
+============================================================ #}
+
+{% from "_icons.html" import icon %}
+
+
+{# ============================================================
+   LOGO — Flox Uploader (inline SVG)
+   ============================================================
+   Inline le logo en SVG pour qu'il herite du CSS `color:` du parent
+   (currentColor). Permet d'avoir un logo qui s'adapte au contexte :
+   sur fond sombre → blanc, sur fond clair → indigo, etc.
+
+   Usage :
+     {{ logo() }}                          → indigo par defaut (text-primary-600)
+     {{ logo(classes='w-9 h-9 text-white') }}   → blanc 36x36
+     {{ logo(classes='w-20 h-20 text-primary-600 drop-shadow-md') }}
+
+   Pour les usages standalone (favicon, PWA, OG image), on utilise
+   `/static/logo.svg` qui a une couleur par defaut (#6366f1) via
+   `style="color: …"` sur la racine. L'inlining via ce macro est
+   uniquement pour les cas ou tu veux que le logo herite du theme.
+============================================================ #}
+{% macro logo(classes='w-8 h-8 text-primary-600', alt='Flox Uploader') %}
+<svg class="{{ classes }}" viewBox="0 0 921.94 922.2" role="img" aria-label="{{ alt }}" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M869,596.01l-281,275.64c-69.67,68.33-181.53,67.25-249.86-2.42L54.96,580.52l101.37-100.32,282.63,288.12c14.41,14.71,38.04,14.93,52.74.49l278.25-272.96c14.71-14.41,14.93-38.04.52-52.74l-54.21-55.26,99.47-98.43,55.65,56.73c68.33,69.67,67.25,181.53-2.39,249.86Z"/>
+    <path fill="currentColor" d="M431.54,150.87l-87.71,86.01,233.78,238.32-103.16,101.17-233.75-238.32-102.74,100.78-.13-.13-109.99,108.85c-44.25-68.95-35.65-161.72,25.13-221.36L333.96,50.55c69.67-68.33,181.53-67.25,249.86,2.42l202.18,206.13-99.47,98.46-202.24-206.17c-14.41-14.7-38.04-14.93-52.74-.52Z"/>
+</svg>
+{% endmacro %}
+
+
+{# ============================================================
+   BUTTON
+   ============================================================
+   Usage de base :
+     {{ button('Sauvegarder', variant='primary', icon_name='save') }}
+     {{ button('Supprimer', variant='danger', icon_name='trash-2') }}
+     {{ button('', variant='ghost', size='sm', icon_name='pause',
+               icon_only=True, attrs='aria-label="Pause" data-job-id=42') }}
+
+   Avec tooltip (a11y, hover + focus) :
+     {{ button('', icon_name='pause', icon_only=True,
+               tooltip='Mettre en pause', tooltip_kbd='Espace') }}
+
+   Loading state (utilise tu.button cote JS, ou directement loading=True) :
+     {{ button('Upload', variant='primary', icon_name='upload', loading=true) }}
+
+   Variants (= tones) :
+     primary  : action principale (CTA)
+     secondary: action secondaire (gris bordé)
+     ghost    : action discrete (juste hover bg)
+     danger   : destructif (rouge)
+     success  : positif (vert)
+     warning  : prudence (ambre)
+
+   Sizes : sm (h=28) | md (h=36) | lg (h=44)
+
+   NOTES round 8 P0.C : la macro applique automatiquement la classe
+   `.interactive` qui fournit :
+     - transitions unifiees (180ms, easing tu cubic-bezier(0.16,1,0.3,1))
+     - feedback "press" subtile (scale 0.97 a l'active, 80ms)
+     - cursor/opacity en disabled (sans avoir a re-specifier)
+   Le focus-visible passe par :focus-visible global (outline qui herite
+   du border-radius). Pas besoin de ring-2 ou de focus:* utilities.
+============================================================ #}
+{% macro button(
+    label='',
+    variant='secondary',
+    size='md',
+    icon_name=None,
+    icon_position='left',
+    icon_only=False,
+    disabled=False,
+    loading=False,
+    tooltip=None,
+    tooltip_kbd=None,
+    type='button',
+    id=None,
+    name=None,
+    value=None,
+    attrs='',
+    extra_classes=''
+) %}
+{# Classes par variant (light + dark) #}
+{%- if variant == 'primary' -%}
+{%- set variant_classes = 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 disabled:bg-primary-300 dark:disabled:bg-primary-900/40 disabled:text-white/70 dark:disabled:text-primary-300/40' -%}
+{%- elif variant == 'secondary' -%}
+{%- set variant_classes = 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100 dark:active:bg-slate-700/80 disabled:bg-slate-50 dark:disabled:bg-slate-800/50 disabled:text-slate-400 dark:disabled:text-slate-500' -%}
+{%- elif variant == 'ghost' -%}
+{%- set variant_classes = 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 active:bg-slate-200 dark:active:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-600' -%}
+{%- elif variant == 'danger' -%}
+{%- set variant_classes = 'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800 disabled:bg-danger-300 dark:disabled:bg-danger-900/40' -%}
+{%- elif variant == 'danger-soft' -%}
+{%- set variant_classes = 'bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 hover:bg-danger-100 dark:hover:bg-danger-900/50 border border-danger-200 dark:border-danger-800' -%}
+{%- elif variant == 'success' -%}
+{%- set variant_classes = 'bg-success-600 text-white hover:bg-success-700 active:bg-success-800 disabled:bg-success-300' -%}
+{%- elif variant == 'success-soft' -%}
+{%- set variant_classes = 'bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 hover:bg-success-100 dark:hover:bg-success-900/50 border border-success-200 dark:border-success-800' -%}
+{%- elif variant == 'warning' -%}
+{%- set variant_classes = 'bg-warning-600 text-white hover:bg-warning-700 active:bg-warning-800' -%}
+{%- elif variant == 'warning-soft' -%}
+{%- set variant_classes = 'bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 hover:bg-warning-100 dark:hover:bg-warning-900/50 border border-warning-200 dark:border-warning-800' -%}
+{%- else -%}
+{%- set variant_classes = 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700' -%}
+{%- endif -%}
+{# Sizes #}
+{%- if size == 'sm' -%}
+{%- set size_classes = 'h-7 text-xs px-2.5 gap-1.5' -%}
+{%- set icon_size = 'sm' -%}
+{%- set spinner_class = 'tu-spinner tu-spinner-sm' -%}
+{%- elif size == 'lg' -%}
+{%- set size_classes = 'h-11 text-sm px-5 gap-2.5' -%}
+{%- set icon_size = 'lg' -%}
+{%- set spinner_class = 'tu-spinner tu-spinner-lg' -%}
+{%- else -%}
+{%- set size_classes = 'h-9 text-sm px-3.5 gap-2' -%}
+{%- set icon_size = 'md' -%}
+{%- set spinner_class = 'tu-spinner' -%}
+{%- endif -%}
+{%- if icon_only -%}
+{%- if size == 'sm' -%}{%- set size_classes = 'h-7 w-7 p-0' -%}{%- elif size == 'lg' -%}{%- set size_classes = 'h-11 w-11 p-0' -%}{%- else -%}{%- set size_classes = 'h-9 w-9 p-0' -%}{%- endif -%}
+{%- endif -%}
+{# Base classes : `interactive` apporte transitions tu + active:scale-0.97.
+   `disabled:opacity-50` reste pour compat avec un eventuel disabled fort. #}
+{%- set base_classes = 'interactive inline-flex items-center justify-center font-medium rounded-md select-none whitespace-nowrap' -%}
+<button type="{{ type }}"{% if id %} id="{{ id }}"{% endif %}{% if name %} name="{{ name }}"{% endif %}{% if value %} value="{{ value }}"{% endif %}{% if disabled or loading %} disabled{% endif %}{% if loading %} aria-busy="true" data-loading="true"{% endif %}{% if tooltip %} data-tu-tooltip="{{ tooltip }}"{% if tooltip_kbd %} data-tu-tooltip-kbd="{{ tooltip_kbd }}"{% endif %}{% endif %} class="{{ base_classes }} {{ variant_classes }} {{ size_classes }} {{ extra_classes }}"{% if attrs %} {{ attrs|safe }}{% endif %}>
+{%- if loading -%}
+<span class="{{ spinner_class }}" aria-hidden="true"></span>
+{%- if not icon_only -%}<span>{{ label }}</span>{%- endif -%}
+{%- else -%}
+{%- if icon_name and (icon_only or icon_position == 'left') -%}
+{{ icon(icon_name, size=icon_size) }}
+{%- endif -%}
+{%- if not icon_only -%}<span>{{ label }}</span>{%- endif -%}
+{%- if icon_name and not icon_only and icon_position == 'right' -%}
+{{ icon(icon_name, size=icon_size) }}
+{%- endif -%}
+{%- endif -%}
+</button>
+{% endmacro %}
+
+
+{# ============================================================
+   BADGE
+   ============================================================
+   Usage :
+     {{ badge('Active', tone='success', icon_name='check') }}
+     {{ badge('Échec', tone='danger') }}
+
+   Tones : neutral | primary | success | warning | danger | info
+   Sizes : sm | md
+============================================================ #}
+{% macro badge(label, tone='neutral', icon_name=None, size='md') %}
+{%- if tone == 'primary' -%}
+{%- set tone_classes = 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800' -%}
+{%- elif tone == 'success' -%}
+{%- set tone_classes = 'bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800' -%}
+{%- elif tone == 'warning' -%}
+{%- set tone_classes = 'bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 ring-1 ring-inset ring-warning-200 dark:ring-warning-800' -%}
+{%- elif tone == 'danger' -%}
+{%- set tone_classes = 'bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 ring-1 ring-inset ring-danger-200 dark:ring-danger-800' -%}
+{%- elif tone == 'info' -%}
+{%- set tone_classes = 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800' -%}
+{%- else -%}
+{%- set tone_classes = 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-700' -%}
+{%- endif -%}
+{%- if size == 'sm' -%}
+{%- set size_classes = 'px-1.5 py-0.5 text-xs gap-1' -%}
+{%- set icon_size = 'sm' -%}
+{%- else -%}
+{%- set size_classes = 'px-2 py-0.5 text-xs gap-1' -%}
+{%- set icon_size = 'sm' -%}
+{%- endif -%}
+<span class="inline-flex items-center font-medium rounded-md {{ tone_classes }} {{ size_classes }}">
+{%- if icon_name -%}{{ icon(icon_name, size=icon_size) }}{%- endif -%}
+<span>{{ label }}</span>
+</span>
+{% endmacro %}
+
+
+{# ============================================================
+   CARD — wrapper standardise avec header optionnel
+   ============================================================
+   Usage :
+     {% call card(title='Détail du score', action=button(...)) %}
+        <p>contenu de la card</p>
+     {% endcall %}
+
+     {% call card(title='Sans action') %}
+        ...
+     {% endcall %}
+
+     {% call card() %}
+        Card sans header
+     {% endcall %}
+============================================================ #}
+{% macro card(title=None, subtitle=None, action='', padded=true, classes='') %}
+<div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 {{ classes }}">
+{%- if title or action -%}
+<div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+<div class="min-w-0">
+{%- if title -%}<h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ title }}</h3>{%- endif -%}
+{%- if subtitle -%}<p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ subtitle }}</p>{%- endif -%}
+</div>
+{%- if action -%}<div class="flex-shrink-0">{{ action|safe }}</div>{%- endif -%}
+</div>
+{%- endif -%}
+<div{% if padded %} class="p-4"{% endif %}>
+{{ caller() }}
+</div>
+</div>
+{% endmacro %}
+
+
+{# ============================================================
+   EMPTY STATE
+   ============================================================
+   Usage :
+     {{ empty_state(
+        icon_name='inbox',
+        title='Aucun package',
+        description='Va dans Inbox pour ajouter des fichiers.',
+        action_label='Ouvrir Inbox', action_href='/inbox'
+     ) }}
+============================================================ #}
+{% macro empty_state(
+    title,
+    description='',
+    icon_name='inbox',
+    action_label=None,
+    action_href=None,
+    secondary_label=None,
+    secondary_href=None
+) %}
+<div class="flex flex-col items-center justify-center text-center py-12 px-4">
+<div class="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4 text-slate-400 dark:text-slate-500">
+{{ icon(icon_name, size='xl') }}
+</div>
+<h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 mb-1">{{ title }}</h3>
+{%- if description -%}
+<p class="text-sm text-slate-500 dark:text-slate-400 max-w-md mb-6">{{ description }}</p>
+{%- endif -%}
+{%- if action_label and action_href -%}
+<div class="flex items-center gap-2">
+<a href="{{ action_href }}" class="inline-flex items-center justify-center font-medium rounded-md transition-colors duration-fast h-9 text-sm px-3.5 gap-2 bg-primary-600 text-white hover:bg-primary-700">
+{{ action_label }}
+{{ icon('arrow-right', size='sm') }}
+</a>
+{%- if secondary_label and secondary_href -%}
+<a href="{{ secondary_href }}" class="inline-flex items-center justify-center font-medium rounded-md transition-colors duration-fast h-9 text-sm px-3.5 gap-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60">
+{{ secondary_label }}
+</a>
+{%- endif -%}
+</div>
+{%- endif -%}
+</div>
+{% endmacro %}
+
+
+{# ============================================================
+   INPUT TEXT — wrap input + label + helper + error
+   ============================================================ #}
+{% macro input_text(
+    name,
+    label=None,
+    value='',
+    placeholder='',
+    kind='text',
+    id=None,
+    disabled=false,
+    helper=None,
+    error=None,
+    attrs=''
+) %}
+{%- set input_id = id or ('field-' ~ name) -%}
+<div class="space-y-1">
+{%- if label -%}
+<label for="{{ input_id }}" class="block text-sm font-medium text-slate-700 dark:text-slate-300">{{ label }}</label>
+{%- endif -%}
+<input type="{{ kind }}" id="{{ input_id }}" name="{{ name }}"
+       value="{{ value }}"
+       placeholder="{{ placeholder }}"
+       {% if disabled %}disabled{% endif %}
+       class="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-md border {% if error %}border-danger-400 dark:border-danger-600{% else %}border-slate-300 dark:border-slate-600{% endif %} disabled:bg-slate-50 dark:disabled:bg-slate-800/50 disabled:text-slate-400"
+       {% if attrs %}{{ attrs|safe }}{% endif %}>
+{%- if helper and not error -%}
+<p class="text-xs text-slate-500 dark:text-slate-400">{{ helper }}</p>
+{%- endif -%}
+{%- if error -%}
+<p class="text-xs text-danger-600 dark:text-danger-400">{{ error }}</p>
+{%- endif -%}
+</div>
+{% endmacro %}
+
+
+{# ============================================================
+   PAGE HEADER — pattern standard pour le haut de chaque page
+   ============================================================
+   Usage :
+     {% call page_header(title='Queue', description='...') %}
+        {{ button('Rafraichir', icon_name='refresh-cw', variant='ghost') }}
+     {% endcall %}
+============================================================ #}
+{% macro page_header(title, description=None) %}
+<div class="mb-6 flex items-start justify-between gap-4">
+<div class="min-w-0 flex-1">
+<h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">{{ title }}</h1>
+{%- if description -%}
+<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">{{ description }}</p>
+{%- endif -%}
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+{{ caller() if caller else '' }}
+</div>
+</div>
+{% endmacro %}
+
+
+{# ============================================================
+   LINK BUTTON — quand on a un <a> qui doit ressembler a un button.
+   API identique au button mais rend un <a href=>.
+   NOTES round 8 P0.C : memes upgrades que `button` (interactive + tooltip).
+============================================================ #}
+{% macro link_button(
+    label='',
+    href='#',
+    variant='secondary',
+    size='md',
+    icon_name=None,
+    icon_position='left',
+    icon_only=False,
+    target=None,
+    tooltip=None,
+    tooltip_kbd=None,
+    id=None,
+    attrs='',
+    extra_classes=''
+) %}
+{%- if variant == 'primary' -%}
+{%- set variant_classes = 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800' -%}
+{%- elif variant == 'secondary' -%}
+{%- set variant_classes = 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700' -%}
+{%- elif variant == 'ghost' -%}
+{%- set variant_classes = 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60' -%}
+{%- elif variant == 'danger' -%}
+{%- set variant_classes = 'bg-danger-600 text-white hover:bg-danger-700' -%}
+{%- else -%}
+{%- set variant_classes = 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600' -%}
+{%- endif -%}
+{%- if size == 'sm' -%}
+{%- set size_classes = 'h-7 text-xs px-2.5 gap-1.5' -%}
+{%- set icon_size = 'sm' -%}
+{%- elif size == 'lg' -%}
+{%- set size_classes = 'h-11 text-sm px-5 gap-2.5' -%}
+{%- set icon_size = 'lg' -%}
+{%- else -%}
+{%- set size_classes = 'h-9 text-sm px-3.5 gap-2' -%}
+{%- set icon_size = 'md' -%}
+{%- endif -%}
+{%- if icon_only -%}
+{%- if size == 'sm' -%}{%- set size_classes = 'h-7 w-7 p-0' -%}{%- elif size == 'lg' -%}{%- set size_classes = 'h-11 w-11 p-0' -%}{%- else -%}{%- set size_classes = 'h-9 w-9 p-0' -%}{%- endif -%}
+{%- endif -%}
+<a href="{{ href }}"{% if id %} id="{{ id }}"{% endif %}{% if target %} target="{{ target }}" rel="noopener noreferrer"{% endif %}{% if tooltip %} data-tu-tooltip="{{ tooltip }}"{% if tooltip_kbd %} data-tu-tooltip-kbd="{{ tooltip_kbd }}"{% endif %}{% endif %} class="interactive inline-flex items-center justify-center font-medium rounded-md select-none whitespace-nowrap {{ variant_classes }} {{ size_classes }} {{ extra_classes }}"{% if attrs %} {{ attrs|safe }}{% endif %}>
+{%- if icon_name and (icon_only or icon_position == 'left') -%}{{ icon(icon_name, size=icon_size) }}{%- endif -%}
+{%- if not icon_only -%}<span>{{ label }}</span>{%- endif -%}
+{%- if icon_name and not icon_only and icon_position == 'right' -%}{{ icon(icon_name, size=icon_size) }}{%- endif -%}
+</a>
+{% endmacro %}

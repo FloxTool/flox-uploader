@@ -1,0 +1,1767 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, card, badge, button, link_button, empty_state %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Queue · Flox Uploader{% endblock %}
+
+{% block content %}
+
+{% call page_header(
+    title='Queue',
+    description='Préparations en cours et packages prêts. Le score reflète la confiance pour upload automatique.'
+) %}
+    {{ button('Rafraîchir', variant='ghost', size='sm', icon_name='refresh-cw', attrs='onclick="window.location.reload()"') }}
+{% endcall %}
+
+
+{# ============================================================
+   PENDING JOBS — preparations en cours
+   ============================================================ #}
+{% if pending_jobs %}
+<section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-warning-50/60 dark:bg-warning-900/15 flex items-center justify-between gap-3 flex-wrap">
+        <h2 class="text-sm font-semibold text-warning-900 dark:text-warning-200 inline-flex items-center gap-2">
+            <span class="text-warning-600 dark:text-warning-400">{{ icon('hourglass', size='md') }}</span>
+            Préparations en cours
+            <span class="text-warning-700/70 dark:text-warning-400/70 font-normal">({{ pending_jobs|length }})</span>
+        </h2>
+        <div class="flex items-center gap-2 flex-wrap">
+            <span id="prep-selected-count" class="text-xs text-warning-700 dark:text-warning-300">0 sélectionné(s)</span>
+            {{ button('Supprimer la sélection', id='prep-delete-selection', variant='danger', size='sm', icon_name='trash-2', disabled=True) }}
+            {{ button('Vider la file', id='prep-flush-all', variant='warning-soft', size='sm', icon_name='eraser', tooltip='Supprimer tous les jobs en attente (sauf celui en cours)') }}
+        </div>
+    </header>
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <tr>
+                <th class="px-2 py-2.5 w-10 text-center">
+                    <input type="checkbox" id="prep-check-all" class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500" data-tu-tooltip="Tout cocher / décocher">
+                </th>
+                <th class="px-2 py-2.5 w-12 text-center font-medium" data-tu-tooltip="Ordre de passage (le scheduler traite de haut en bas)">#</th>
+                <th class="px-4 py-2.5 font-medium">Fichier</th>
+                <th class="px-4 py-2.5 w-56 font-medium">Statut</th>
+                <th class="px-4 py-2.5 w-40 font-medium">Démarré</th>
+                <th class="px-4 py-2.5 w-56 text-center font-medium">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {% set pending_pos = namespace(n=0) %}
+            {% for j in pending_jobs[:100] %}
+            {% if j.status == 'pending' %}{% set pending_pos.n = pending_pos.n + 1 %}{% endif %}
+            <tr class="prep-row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast
+                       {% if j.status == 'pending' and j.is_paused %}bg-warning-50/40 dark:bg-warning-900/10{% endif %}
+                       {% if j.status == 'preparing' %}bg-primary-50/40 dark:bg-primary-900/15{% endif %}">
+                <td class="p-0 text-center">
+                    <label class="flex items-center justify-center w-full h-full cursor-pointer px-2 py-2.5">
+                        <input type="checkbox" class="prep-checkbox w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
+                               data-job-id="{{ j.id }}"
+                               {% if j.status == 'preparing' %}disabled data-tu-tooltip="Job en cours, suppression impossible"{% endif %}>
+                    </label>
+                </td>
+                <td class="px-2 py-2 text-center whitespace-nowrap">
+                    {% if j.status == 'preparing' %}
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white animate-pulse" data-tu-tooltip="Job en cours d'exécution">
+                            {{ icon('play', size='sm') }}
+                        </span>
+                    {% elif j.status == 'pending' %}
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold {% if j.is_paused %}bg-warning-200 dark:bg-warning-800/60 text-warning-900 dark:text-warning-100{% elif pending_pos.n == 1 %}bg-success-600 text-white{% else %}bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300{% endif %}"
+                              data-tu-tooltip="{% if pending_pos.n == 1 and not j.is_paused %}Prochain à être traité{% else %}Position {{ pending_pos.n }} dans la file{% endif %}">{{ pending_pos.n }}</span>
+                    {% else %}
+                        <span class="text-slate-400 dark:text-slate-600">—</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-2">
+                    <div class="font-mono text-xs text-slate-900 dark:text-slate-100 break-all">{{ j.file_name }}</div>
+                    {% if j.error %}<div class="text-xs text-danger-600 dark:text-danger-400 mt-1 inline-flex items-center gap-1">{{ icon('alert-triangle', size='sm') }} {{ j.error }}</div>{% endif %}
+                    {% if j.force_fr %}<div class="text-xs text-primary-700 dark:text-primary-400 mt-1">Force FR : {{ j.force_fr }}</div>{% endif %}
+                    {% if j.is_paused %}<div class="text-xs text-warning-700 dark:text-warning-300 mt-1 inline-flex items-center gap-1 font-medium">{{ icon('pause', size='sm') }} En pause — le scheduler ne traitera pas ce job</div>{% endif %}
+                </td>
+                <td class="px-4 py-2 max-w-[14rem] overflow-hidden">
+                    {% if j.status == 'pending' and j.is_paused %}
+                        {{ badge('Pausé', tone='warning', icon_name='pause') }}
+                    {% elif j.status == 'pending' %}
+                        {{ badge('En attente', tone='neutral', icon_name='hourglass') }}
+                    {% elif j.status == 'preparing' %}
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800 animate-pulse whitespace-nowrap flex-shrink-0">
+                                {{ icon('loader-2', size='sm') }}
+                                <span>En cours</span>
+                            </span>
+                            <span class="job-live-line text-xs font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1"
+                                  data-job-id="{{ j.id }}"
+                                  data-tu-tooltip="Dernière ligne du log"></span>
+                        </div>
+                    {% elif j.status == 'failed' %}
+                        {{ badge('Échec', tone='danger', icon_name='x-circle') }}
+                    {% else %}
+                        {{ badge(j.status, tone='neutral') }}
+                    {% endif %}
+                </td>
+                <td class="px-4 py-2 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{{ j.created_at | fmt_date }}</td>
+                <td class="px-2 py-2 whitespace-nowrap">
+                    <div class="flex items-center justify-center gap-1">
+                    {% if j.status == 'pending' %}
+                        {% if j.is_paused %}
+                            {{ button('', variant='success-soft', size='sm', icon_name='play', icon_only=True, extra_classes='btn-resume-job', attrs='data-job-id=' ~ j.id|string ~ ' aria-label="Reprendre ce job"') }}
+                        {% else %}
+                            {{ button('', variant='warning-soft', size='sm', icon_name='pause', icon_only=True, extra_classes='btn-pause-job', attrs='data-job-id=' ~ j.id|string ~ ' aria-label="Mettre ce job en pause"') }}
+                        {% endif %}
+                        {{ button('', variant='ghost', size='sm', icon_name='arrow-up', icon_only=True, extra_classes='btn-move-job', attrs='data-job-id=' ~ j.id|string ~ ' data-direction="up" aria-label="Monter dans la file"') }}
+                        {{ button('', variant='ghost', size='sm', icon_name='arrow-down', icon_only=True, extra_classes='btn-move-job', attrs='data-job-id=' ~ j.id|string ~ ' data-direction="down" aria-label="Descendre dans la file"') }}
+                    {% elif j.status == 'preparing' %}
+                        {{ button('', variant='danger-soft', size='sm', icon_name='x', icon_only=True, extra_classes='btn-cancel-job', attrs='data-job-id=' ~ j.id|string ~ ' aria-label="Annuler ce job"') }}
+                    {% endif %}
+                    {{ button('', variant='ghost', size='sm', icon_name='scroll-text', icon_only=True, extra_classes='btn-show-job-log', attrs='data-job-id=' ~ j.id|string ~ ' aria-label="Voir le log"') }}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        {% if pending_jobs|length > 100 %}
+        <tbody id="prep-overflow-tbody" class="hidden divide-y divide-slate-100 dark:divide-slate-700/60">
+            {% set overflow_pos = namespace(n=pending_pos.n) %}
+            {% for j in pending_jobs[100:] %}
+            {% if j.status == 'pending' %}{% set overflow_pos.n = overflow_pos.n + 1 %}{% endif %}
+            <tr class="prep-row hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                <td class="p-0 text-center">
+                    <label class="flex items-center justify-center w-full h-full cursor-pointer px-2 py-2.5">
+                        <input type="checkbox" class="prep-checkbox w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
+                               data-job-id="{{ j.id }}"
+                               {% if j.status == 'preparing' %}disabled{% endif %}>
+                    </label>
+                </td>
+                <td class="px-2 py-2 text-center text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                    {% if j.status == 'pending' %}{{ overflow_pos.n }}{% else %}—{% endif %}
+                </td>
+                <td class="px-4 py-2">
+                    <div class="font-mono text-xs text-slate-900 dark:text-slate-100 break-all">{{ j.file_name }}</div>
+                    {% if j.error %}<div class="text-xs text-danger-600 dark:text-danger-400 mt-1">{{ j.error }}</div>{% endif %}
+                </td>
+                <td class="px-4 py-2">{{ badge('En attente', tone='neutral', icon_name='hourglass') }}</td>
+                <td class="px-4 py-2 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{{ j.created_at | fmt_date }}</td>
+                <td class="px-4 py-2 text-center"></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot class="bg-slate-50/60 dark:bg-slate-900/40 border-t border-slate-200 dark:border-slate-700">
+            <tr>
+                <td colspan="6" class="px-4 py-2.5 text-center">
+                    <button type="button" id="prep-toggle-overflow" class="text-xs text-primary-700 dark:text-primary-400 hover:underline">
+                        Afficher les {{ pending_jobs|length - 100 }} autres préparations en attente
+                    </button>
+                </td>
+            </tr>
+        </tfoot>
+        {% endif %}
+    </table>
+    </div>
+</section>
+{% endif %}
+
+
+{# ============================================================
+   UPLOADS — uploads en cours / recents
+   ============================================================ #}
+{% if uploads %}
+<section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-primary-50/60 dark:bg-primary-900/15">
+        <h2 class="text-sm font-semibold text-primary-900 dark:text-primary-200 inline-flex items-center gap-2">
+            <span class="text-primary-600 dark:text-primary-400">{{ icon('upload', size='md') }}</span>
+            Uploads
+            <span class="text-primary-700/70 dark:text-primary-400/70 font-normal">({{ uploads|length }})</span>
+        </h2>
+    </header>
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <tr>
+                <th class="px-4 py-2.5 font-medium">Package</th>
+                <th class="px-4 py-2.5 w-32 font-medium">Mode</th>
+                <th class="px-4 py-2.5 w-56 font-medium">Statut</th>
+                <th class="px-4 py-2.5 w-40 font-medium">Mis à jour</th>
+                <th class="px-4 py-2.5 w-24 text-center font-medium">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {% for u in uploads %}
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast">
+                <td class="px-4 py-2.5">
+                    <a href="/packages/{{ u.package_name }}" class="font-mono text-xs text-primary-700 dark:text-primary-400 hover:underline break-all">{{ u.package_name }}</a>
+                    {% if u.message %}
+                        <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ u.message }}</div>
+                    {% endif %}
+                    {% if u.uploaded_torrent_url %}
+                        <a href="{{ u.uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-1 mt-0.5">
+                            {{ icon('external-link', size='sm') }}
+                            Voir sur le tracker (ID {{ u.uploaded_torrent_id }})
+                        </a>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-2.5">
+                    {% if u.dry_run %}
+                        {{ badge('Dry-run', tone='neutral') }}
+                    {% else %}
+                        {{ badge('Réel', tone='primary') }}
+                    {% endif %}
+                </td>
+                <td class="px-4 py-2.5">
+                    {% if u.status == 'queued' %}
+                        {{ badge('En attente', tone='neutral', icon_name='hourglass') }}
+                    {% elif u.status == 'uploading' %}
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800 animate-pulse whitespace-nowrap flex-shrink-0">
+                                {{ icon('upload', size='sm') }}
+                                <span>Upload en cours</span>
+                            </span>
+                            <span class="upload-live-line text-xs font-mono text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1"
+                                  data-package-name="{{ u.package_name }}"
+                                  data-tu-tooltip="Dernière ligne du log"></span>
+                        </div>
+                    {% elif u.status == 'done' %}
+                        {{ badge('Terminé', tone='success', icon_name='check') }}
+                    {% elif u.status == 'failed' %}
+                        {{ badge('Échec', tone='danger', icon_name='x-circle') }}
+                    {% else %}
+                        {{ badge(u.status, tone='neutral') }}
+                    {% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{{ (u.updated_at or u.created_at) | fmt_date }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap">
+                    <div class="flex items-center justify-center gap-1">
+                        {{ button('', variant='ghost', size='sm', icon_name='scroll-text', icon_only=True, extra_classes='btn-show-upload-log', attrs='data-package-name="' ~ u.package_name ~ '" aria-label="Voir le log"') }}
+                        {% if u.status in ('done', 'failed') %}
+                            {{ button('', variant='ghost', size='sm', icon_name='x', icon_only=True, extra_classes='btn-clear-upload', attrs='data-package-name="' ~ u.package_name ~ '" aria-label="Retirer cette ligne"') }}
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endif %}
+
+
+{# ============================================================
+   PACKAGES PREPARES — toolbar + table
+   ============================================================ #}
+{% if packages %}
+{# NOTES round 7+ : toolbar selection compacte. Les filtres ne sont plus
+   ici (deplaces dans un dropdown discret integre au header de la table,
+   a cote de la recherche). Plus de boutons "Selectionner les visibles" /
+   "Tout decocher" : la checkbox header (col 1) fait office de "toggle all". #}
+<div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-3 p-3 flex items-center gap-3 flex-wrap sticky top-0 md:top-0 z-10">
+    <span id="queue-selected-count" class="text-sm text-slate-600 dark:text-slate-400">0 sélectionné(s)</span>
+    <div class="ml-auto flex gap-2">
+        {{ button('Uploader la sélection', id='queue-upload-real', variant='primary', size='sm', icon_name='upload', disabled=True) }}
+        {{ button('Supprimer la sélection', id='queue-delete-selection', variant='danger', size='sm', icon_name='trash-2', disabled=True) }}
+    </div>
+</div>
+
+{# NOTES round 8 P5.5 : barre de "pills" des filtres actifs (style Linear).
+   Rendue par JS quand des items sont exclus du defaut tout-visible.
+   Permet d'identifier d'un coup d'oeil ce qui est cache, et de retirer
+   un filtre sans avoir a rouvrir le dropdown. Vide = hidden. #}
+<div id="queue-active-filters-bar" class="hidden mb-3 flex items-center gap-2 flex-wrap">
+    <span class="text-[11px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 font-medium">
+        {{ icon('filter', size='sm') }}
+        Filtres actifs :
+    </span>
+    <div id="queue-active-filters-pills" class="flex flex-wrap gap-1.5"></div>
+    <button id="queue-active-filters-clear" type="button"
+            class="interactive ml-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 underline decoration-dotted underline-offset-2">
+        Tout réinitialiser
+    </button>
+</div>
+
+<section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-visible">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-3 flex-wrap">
+        <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+            Packages préparés
+            <span class="text-slate-500 dark:text-slate-400 font-normal">(<span id="queue-total">{{ packages|length }}</span>)</span>
+        </h2>
+
+        {# NOTES round 7+ : dropdown filtres discret, fusionne dans le header
+           a cote de la recherche. Bouton avec dot primary quand un filtre est
+           actif (un chip est decoche du defaut tout-visible). #}
+        {# Count visible affiche a GAUCHE de Filtres (pas a droite de Search)
+           pour eviter que le popover ouvert se decale quand le count apparait. #}
+        <span id="queue-filter-count" class="ml-auto text-xs text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap"></span>
+        <div class="relative">
+            <button id="queue-filter-btn" type="button"
+                    class="inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors duration-fast"
+                    aria-haspopup="true" aria-expanded="false">
+                {{ icon('settings', size='sm') }}
+                <span>Filtres</span>
+                <span id="queue-filter-active-dot" class="hidden inline-block w-1.5 h-1.5 rounded-full bg-primary-600"></span>
+                {{ icon('chevron-down', size='sm', classes='text-slate-400') }}
+            </button>
+            <div id="queue-filter-popover" class="hidden absolute right-0 top-full mt-1 z-30 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden">
+                <div class="px-3 py-2 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Filtrer l'affichage</span>
+                    <button type="button" id="queue-filter-reset"
+                            class="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors duration-fast">
+                        {{ icon('rotate-ccw', size='sm') }}
+                        Tout afficher
+                    </button>
+                </div>
+                <div class="p-3 space-y-3">
+                    <div>
+                        <div class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium mb-1.5">État</div>
+                        <div class="flex flex-wrap gap-1">
+                            {# tone reflete la couleur du badge dans la table (queue.html line 491+) :
+                               prepared=neutral, validated=primary, uploaded=success,
+                               aborted-duplicate=warning, failed=danger #}
+                            {% for code, label, tone in [
+                                ('prepared', 'Préparé', 'neutral'),
+                                ('validated', 'Validé', 'primary'),
+                                ('uploaded', 'Uploadé', 'success'),
+                                ('aborted-duplicate', 'Doublon', 'warning'),
+                                ('failed', 'Échec', 'danger'),
+                            ] %}
+                            <button type="button" data-filter-state="{{ code }}" data-tone="{{ tone }}"
+                                    class="filter-chip interactive inline-flex items-center px-2 h-6 rounded-md text-[11px] font-medium border"
+                                    aria-pressed="true">
+                                {{ label }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium mb-1.5">Score</div>
+                        <div class="flex flex-wrap gap-1">
+                            {# Memes tons que les badges score dans la table :
+                               parfait/perfect/ready/good=success, review=warning, blocked=danger #}
+                            {% for code, label, tone in [
+                                ('parfait', 'Parfait', 'success'),
+                                ('perfect', 'Quasi', 'success'),
+                                ('ready', 'Prêt/Bon', 'success'),
+                                ('review', 'À vérif.', 'warning'),
+                                ('blocked', 'Bloqué', 'danger'),
+                            ] %}
+                            <button type="button" data-filter-bucket="{{ code }}" data-tone="{{ tone }}"
+                                    class="filter-chip interactive inline-flex items-center px-2 h-6 rounded-md text-[11px] font-medium border"
+                                    aria-pressed="true">
+                                {{ label }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="relative tu-search-wrap">
+            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                {{ icon('search', size='sm') }}
+            </div>
+            <input id="queue-search" type="text" placeholder="Filtrer par nom…"
+                   class="tu-search-input pl-8 pr-8 h-8 w-56 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-md border border-slate-300 dark:border-slate-600">
+            {# NOTES round 8 P4.1 : bouton x pour clear le champ — visible
+               seulement quand l'input n'est pas vide (cf. JS dans base.html). #}
+            <button type="button" class="tu-search-clear hidden absolute inset-y-0 right-0 pr-2 items-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 interactive"
+                    aria-label="Effacer la recherche" data-tu-tooltip="Effacer">
+                {{ icon('x', size='sm') }}
+            </button>
+        </div>
+        <span id="queue-search-count" class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap"></span>
+    </header>
+    <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <tr>
+                <th class="px-4 py-2.5 w-12 text-center">
+                    <input type="checkbox" id="queue-check-all" class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500" data-tu-tooltip="Tout cocher / décocher">
+                </th>
+                <th class="px-4 py-2.5 cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-100 font-medium" data-sort-col="release">
+                    Release name <span class="sort-arrow text-slate-300 dark:text-slate-600 ml-0.5">⇅</span>
+                </th>
+                <th class="px-2 py-2.5 w-20 text-center font-medium" data-tu-tooltip="Cliquer le badge d’une ligne pour voir le détail">
+                    Issues
+                </th>
+                <th class="px-4 py-2.5 w-24 text-right cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-100 font-medium" data-sort-col="size">
+                    Taille <span class="sort-arrow text-slate-300 dark:text-slate-600 ml-0.5">⇅</span>
+                </th>
+                <th class="px-3 py-2.5 w-20 text-center cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-100 font-medium" data-sort-col="score">
+                    Score <span class="sort-arrow text-slate-300 dark:text-slate-600 ml-0.5">⇅</span>
+                </th>
+                <th class="px-3 py-2.5 w-32 text-center cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-100 font-medium" data-sort-col="state">
+                    État <span class="sort-arrow text-slate-300 dark:text-slate-600 ml-0.5">⇅</span>
+                </th>
+                <th class="px-4 py-2.5 w-40 cursor-pointer select-none hover:text-slate-900 dark:hover:text-slate-100 font-medium" data-sort-col="updated">
+                    Mis à jour <span class="sort-arrow text-slate-300 dark:text-slate-600 ml-0.5">⇅</span>
+                </th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {% for p in packages %}
+            {# NOTES round 7 : attribut data-filter-* pour le systeme de chips filters.
+               has-issues = "1" si confidence_penalties non vide ou last_error, sinon "0". #}
+            {% set has_issues_flag = '1' if (p.confidence_penalties or p.last_error) else '0' %}
+            {# NOTES round 8 P5.4 : la row entiere est cliquable et navigue
+               vers la page detail via data-href. Le JS delegate ignore les
+               clicks dans des elements interactifs (checkbox, button, link). #}
+            <tr class="package-row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast cursor-pointer"
+                data-href="/packages/{{ p.package_name }}"
+                data-sort-release="{{ p.release_name | lower }}"
+                data-sort-size="{{ p.size_bytes }}"
+                data-sort-score="{{ p.confidence_score }}"
+                data-sort-state="{{ p.state }}"
+                data-sort-updated="{{ p.updated_at }}"
+                data-filter-state="{{ p.state }}"
+                data-filter-bucket="{{ p.confidence_bucket }}"
+                data-filter-has-issues="{{ has_issues_flag }}">
+                <td class="p-0 text-center">
+                    {% if p.state != 'uploaded' %}
+                    <label class="flex items-center justify-center w-full h-full cursor-pointer px-2 py-3">
+                        <input type="checkbox" class="package-checkbox w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
+                               data-package="{{ p.package_dir }}"
+                               data-package-name="{{ p.package_name }}"
+                               data-package-state="{{ p.state }}"
+                               {% if p.confidence_bucket == 'ready' and p.state == 'prepared' %}checked data-tu-tooltip="Auto-coche : score {{ p.confidence_score }}"{% else %}data-tu-tooltip="Score {{ p.confidence_score }} · état {{ p.state }}"{% endif %}>
+                    </label>
+                    {% endif %}
+                </td>
+                {# RELEASE NAME — une seule ligne propre, plus de warnings inline #}
+                <td class="px-4 py-3">
+                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <a href="/packages/{{ p.package_name }}" class="font-mono text-primary-700 dark:text-primary-400 hover:underline text-xs break-all">{{ p.release_name }}</a>
+                        {% if p.uploaded_torrent_url %}
+                            <a href="{{ p.uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-1">
+                                {{ icon('external-link', size='sm') }}
+                                Sur le tracker
+                            </a>
+                        {% endif %}
+                    </div>
+                </td>
+
+                {# ISSUES — badge count + popover au click (refonte Sprint extra) =====
+                   On calcule :
+                   - issue_count : nombre de penalties + last_error + dup-sans-penalty
+                   - issue_tone  : highest severity (danger > warning > info) #}
+                {% set has_last_error = p.last_error|length > 0 if p.last_error else false %}
+                {% set has_orphan_dup = (p.existing_torrent_url and not p.uploaded_torrent_url and not p.confidence_penalties) %}
+                {% set issue_count = (p.confidence_penalties|length if p.confidence_penalties else 0) + (1 if has_last_error else 0) + (1 if has_orphan_dup else 0) %}
+                {# Highest severity #}
+                {% set sev_ns = namespace(tone='info') %}
+                {% if has_last_error %}{% set sev_ns.tone = 'danger' %}{% endif %}
+                {% if p.confidence_penalties %}
+                    {% for label, penalty in p.confidence_penalties %}
+                        {% set is_blocking = ('Règle G3MINI bloquante' in label) or ('[BLOCKED]' in label) %}
+                        {% set is_dup_certain = ('contient déjà ce torrent' in label) %}
+                        {% set is_dup_likely = ('Très probablement un doublon' in label) %}
+                        {% set is_dup_ambiguous = ('Possible doublon' in label) %}
+                        {% if is_blocking or is_dup_certain %}{% set sev_ns.tone = 'danger' %}
+                        {% elif (sev_ns.tone != 'danger') and (is_dup_likely or is_dup_ambiguous or penalty >= 5) %}{% set sev_ns.tone = 'warning' %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+                {% if has_orphan_dup and sev_ns.tone == 'info' %}{% set sev_ns.tone = 'warning' %}{% endif %}
+                <td class="px-2 py-3 text-center align-middle">
+                    {% if issue_count > 0 %}
+                        {% set badge_cls = {
+                            'danger':  'bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 ring-1 ring-inset ring-danger-200 dark:ring-danger-800 hover:bg-danger-100 dark:hover:bg-danger-900/50',
+                            'warning': 'bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 ring-1 ring-inset ring-warning-200 dark:ring-warning-800 hover:bg-warning-100 dark:hover:bg-warning-900/50',
+                            'info':    'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800 hover:bg-primary-100 dark:hover:bg-primary-900/50',
+                        }.get(sev_ns.tone) %}
+                        {% set badge_icon = {'danger': 'ban', 'warning': 'alert-triangle', 'info': 'info'}.get(sev_ns.tone) %}
+                        <button type="button" class="issues-trigger interactive inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold {{ badge_cls }}"
+                                data-target="issues-{{ p.package_name }}"
+                                aria-haspopup="true" aria-expanded="false"
+                                data-tu-tooltip="{{ issue_count }} issue{{ 's' if issue_count > 1 else '' }} · cliquer pour le détail">
+                            {{ icon(badge_icon, size='sm') }}
+                            <span class="tabular-nums">{{ issue_count }}</span>
+                        </button>
+                        {# Popover content (hidden, portaled by JS) #}
+                        <template id="issues-{{ p.package_name }}">
+                            <div class="issues-popover-content w-80 max-w-[90vw] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden">
+                                <div class="px-3 py-2 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/60 dark:bg-slate-900/40">
+                                    <h4 class="text-xs font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1.5">
+                                        {{ icon(badge_icon, size='sm') }}
+                                        {{ issue_count }} issue{{ 's' if issue_count > 1 else '' }}
+                                    </h4>
+                                </div>
+                                <ul class="divide-y divide-slate-100 dark:divide-slate-700/60 max-h-72 overflow-y-auto">
+                                    {% if p.confidence_penalties %}
+                                        {% for label, penalty in p.confidence_penalties %}
+                                            {% set short_label = p.confidence_short_labels[loop.index0] if p.confidence_short_labels and loop.index0 < p.confidence_short_labels|length else label %}
+                                            {% set is_blocking = ('Règle G3MINI bloquante' in label) or ('[BLOCKED]' in label) %}
+                                            {% set is_dup_certain = ('contient déjà ce torrent' in label) %}
+                                            {% set is_dup_likely = ('Très probablement un doublon' in label) %}
+                                            {% set is_dup_ambiguous = ('Possible doublon' in label) %}
+                                            {% set is_dup_warning = is_dup_certain or is_dup_likely or is_dup_ambiguous %}
+                                            {% if is_blocking or is_dup_certain %}
+                                                {% set li_cls = 'text-danger-700 dark:text-danger-400' %}
+                                                {% set li_icon = 'ban' %}
+                                            {% elif is_dup_likely or is_dup_ambiguous or penalty >= 5 %}
+                                                {% set li_cls = 'text-warning-700 dark:text-warning-400' %}
+                                                {% set li_icon = 'alert-triangle' %}
+                                            {% else %}
+                                                {% set li_cls = 'text-primary-700 dark:text-primary-400' %}
+                                                {% set li_icon = 'info' %}
+                                            {% endif %}
+                                            <li class="px-3 py-2 text-xs flex items-start gap-2 {{ li_cls }}" data-tu-tooltip="{{ label }}">
+                                                <span class="flex-shrink-0 mt-0.5">{{ icon(li_icon, size='sm') }}</span>
+                                                <div class="flex-1 min-w-0">
+                                                    <div>{{ short_label }}</div>
+                                                    {% if is_dup_warning and p.existing_torrent_url %}
+                                                    <a href="{{ p.existing_torrent_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 mt-1 text-[11px] underline hover:no-underline">
+                                                        {{ icon('external-link', size='sm') }}
+                                                        Voir le doublon (ID {{ p.existing_torrent_id }})
+                                                    </a>
+                                                    {% endif %}
+                                                </div>
+                                                <span class="tabular-nums text-[11px] font-medium flex-shrink-0">−{{ penalty }}</span>
+                                            </li>
+                                        {% endfor %}
+                                    {% endif %}
+                                    {% if has_orphan_dup %}
+                                    <li class="px-3 py-2 text-xs flex items-start gap-2 text-warning-700 dark:text-warning-400">
+                                        <span class="flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='sm') }}</span>
+                                        <div class="flex-1 min-w-0">
+                                            <div>Doublon détecté sans pénalité</div>
+                                            <a href="{{ p.existing_torrent_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 mt-1 text-[11px] underline hover:no-underline">
+                                                {{ icon('external-link', size='sm') }}
+                                                Voir le doublon (ID {{ p.existing_torrent_id }})
+                                            </a>
+                                        </div>
+                                    </li>
+                                    {% endif %}
+                                    {% if has_last_error %}
+                                    <li class="px-3 py-2 text-xs flex items-start gap-2 text-danger-700 dark:text-danger-400">
+                                        <span class="flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='sm') }}</span>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="font-medium">Erreur d’upload</div>
+                                            <div class="text-[11px] mt-0.5 break-all opacity-90">{{ p.last_error }}</div>
+                                        </div>
+                                    </li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </template>
+                    {% else %}
+                        <span class="text-slate-300 dark:text-slate-600">—</span>
+                    {% endif %}
+                </td>
+
+                <td class="px-4 py-3 text-right text-slate-600 dark:text-slate-400 text-xs tabular-nums whitespace-nowrap">{{ p.size_pretty or '—' }}</td>
+                <td class="px-3 py-3 text-center">
+                    {# Tooltip copy plus claire et professionnelle (refonte round 6) #}
+                    {% set tooltip = {
+                        'parfait': 'Score parfait (100). Aucune approximation détectée par le pipeline. Upload sereinement.',
+                        'perfect': 'Quasi parfait (95–99). Quelques fallbacks mineurs. Coup d’œil rapide recommandé.',
+                        'ready':   'Prêt à uploader (90–94). Quelques avertissements légers à parcourir.',
+                        'good':    'Bon (80–89). Avertissements moyens à vérifier avant l’upload.',
+                        'review':  'Vérification requise (60–79). Plusieurs avertissements sérieux — relis le détail du score.',
+                        'blocked': 'Upload bloqué (< 60). Au moins un problème dur. Re-prépare ou utilise un override.',
+                    }.get(p.confidence_bucket, 'Score : ' ~ p.confidence_score) %}
+                    {% if p.confidence_bucket == 'parfait' %}
+                        <span class="score-glow-parfait inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800" data-tu-tooltip="{{ tooltip }}">
+                            {{ icon('sparkles', size='sm') }}
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
+                    {% elif p.confidence_bucket == 'perfect' %}
+                        <span class="score-glow-perfect inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800" data-tu-tooltip="{{ tooltip }}">
+                            {{ icon('check', size='sm') }}
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
+                    {% elif p.confidence_bucket in ('ready', 'good') %}
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800" data-tu-tooltip="{{ tooltip }}">
+                            {{ icon('arrow-up', size='sm') }}
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
+                    {% elif p.confidence_bucket == 'review' %}
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 ring-1 ring-inset ring-warning-200 dark:ring-warning-800" data-tu-tooltip="{{ tooltip }}">
+                            {{ icon('alert-triangle', size='sm') }}
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
+                    {% elif p.confidence_bucket == 'blocked' %}
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 ring-1 ring-inset ring-danger-200 dark:ring-danger-800" data-tu-tooltip="{{ tooltip }}">
+                            {{ icon('x', size='sm') }}
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-700" data-tu-tooltip="{{ tooltip }}">
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
+                    {% endif %}
+                </td>
+                <td class="px-3 py-3 text-center">
+                    {% if p.state == 'uploaded' %}
+                        {{ badge('Uploadé', tone='success', icon_name='check') }}
+                    {% elif p.state == 'aborted-duplicate' %}
+                        {{ badge('Doublon', tone='warning', icon_name='ban') }}
+                    {% elif p.state == 'failed' %}
+                        {{ badge('Échec', tone='danger', icon_name='x-circle') }}
+                    {% elif p.state == 'validated' %}
+                        {{ badge('Validé', tone='primary', icon_name='arrow-right') }}
+                    {% elif p.state == 'prepared' %}
+                        {{ badge('Préparé', tone='neutral') }}
+                    {% else %}
+                        {{ badge(p.state, tone='neutral') }}
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">{{ p.updated_at | fmt_date if p.updated_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+            {# NOTES round 8 P1.B : empty-state row affiche par _applyFilters
+               quand 0 package match les filtres / search en cours. #}
+            <tr id="queue-empty-filtered" class="hidden">
+                <td colspan="7" class="py-12 px-4 text-center">
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500">
+                            {{ icon('search-x', size='lg') }}
+                        </div>
+                        <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Aucun résultat</h4>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+                            Aucun package ne correspond à la recherche et aux filtres actifs.
+                        </p>
+                        <button type="button" id="queue-empty-reset"
+                                class="interactive mt-2 inline-flex items-center gap-1.5 px-3 h-7 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700">
+                            {{ icon('refresh-cw', size='sm') }}
+                            <span>Réinitialiser les filtres</span>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<div class="mt-4 inline-flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
+    {{ icon('lightbulb', size='sm', classes='mt-0.5 flex-shrink-0') }}
+    <span>Score ≥ 90 : prêt à uploader (auto-coché). 60-79 : à vérifier. &lt; 60 : intervention requise.</span>
+</div>
+{% else %}
+{% if not pending_jobs and not uploads %}
+{{ empty_state(
+    icon_name='package',
+    title='Aucun package préparé',
+    description='Va dans l’Inbox pour sélectionner des fichiers vidéo. Une fois préparés, ils apparaîtront ici avec leur score de confiance.',
+    action_label='Ouvrir Inbox',
+    action_href='/inbox'
+) }}
+{% endif %}
+{% endif %}
+
+
+{# ============================================================
+   LOG MODAL — global, partagé entre jobs/uploads
+   ============================================================ #}
+<div id="log-modal" class="hidden fixed inset-0 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm z-[55] flex items-center justify-center p-4">
+    <div class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg w-full max-w-4xl max-h-[80vh] flex flex-col border border-slate-200 dark:border-slate-700">
+        <header class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                {{ icon('scroll-text', size='md') }}
+                <span id="log-modal-title">Log temps réel</span>
+            </h3>
+            <button id="log-modal-close" type="button" class="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors duration-fast" aria-label="Fermer">
+                {{ icon('x', size='md') }}
+            </button>
+        </header>
+        <pre id="log-modal-body" class="flex-1 p-4 text-xs font-mono text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900/60 overflow-y-auto whitespace-pre-wrap"></pre>
+        <footer class="px-5 py-2.5 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-500" id="log-modal-status">Connexion…</footer>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // ============================================================
+    // QUEUE PAGE — JS comportements
+    // (sort, search, selection persistee, polling, log modal, SSE,
+    //  pause/resume/cancel/move/flush)
+    // ============================================================
+
+    const hasPending = {{ 'true' if pending_jobs else 'false' }};
+    const uploadsActive = {{ uploads | selectattr('status', 'in', ['queued', 'uploading']) | list | length if uploads else 0 }};
+
+    // ============================================================
+    // ISSUES POPOVER — colonne Issues, click pour voir le detail.
+    // Le contenu est dans un <template id="issues-{name}"> place dans
+    // la cell ; au click on le clone, on le positionne en fixed, et on
+    // le ferme au prochain click outside / Escape.
+    // ============================================================
+    let _activePopover = null;
+    let _activeTrigger = null;
+    function _closeIssuesPopover() {
+        if (_activePopover) {
+            _activePopover.remove();
+            _activePopover = null;
+        }
+        if (_activeTrigger) {
+            _activeTrigger.setAttribute('aria-expanded', 'false');
+            _activeTrigger = null;
+        }
+    }
+    function _openIssuesPopover(trigger) {
+        _closeIssuesPopover();
+        const targetId = trigger.dataset.target;
+        const tpl = document.getElementById(targetId);
+        if (!tpl) return;
+        const clone = tpl.content.firstElementChild.cloneNode(true);
+        clone.style.position = 'fixed';
+        clone.style.zIndex = '50';
+        clone.style.opacity = '0';
+        document.body.appendChild(clone);
+        // Positionnement : tente d'abord en-dessous a droite du trigger,
+        // fallback au-dessus si pas la place
+        const rect = trigger.getBoundingClientRect();
+        const popH = clone.offsetHeight;
+        const popW = clone.offsetWidth;
+        const viewportH = window.innerHeight;
+        const viewportW = window.innerWidth;
+        // Vertical : sous le trigger si la place, sinon au-dessus
+        let top = rect.bottom + 6;
+        if (top + popH > viewportH - 10) {
+            top = Math.max(10, rect.top - popH - 6);
+        }
+        // Horizontal : aligne le right du popover sur le right du trigger
+        // (le badge est a droite de la table), mais clamp au viewport
+        let left = rect.right - popW;
+        if (left < 10) left = 10;
+        if (left + popW > viewportW - 10) left = viewportW - popW - 10;
+        clone.style.top = top + 'px';
+        clone.style.left = left + 'px';
+        clone.style.opacity = '1';
+        _activePopover = clone;
+        _activeTrigger = trigger;
+        trigger.setAttribute('aria-expanded', 'true');
+    }
+    document.addEventListener('click', (e) => {
+        const trigger = e.target.closest('.issues-trigger');
+        if (trigger) {
+            e.stopPropagation();
+            if (_activeTrigger === trigger) {
+                _closeIssuesPopover();
+            } else {
+                _openIssuesPopover(trigger);
+            }
+            return;
+        }
+        // Click outside : ferme si popover ouvert (sauf si on click DANS le popover lui-meme)
+        if (_activePopover && !_activePopover.contains(e.target)) {
+            _closeIssuesPopover();
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && _activePopover) {
+            _closeIssuesPopover();
+        }
+    });
+    // Reposition / fermeture sur scroll de la page
+    window.addEventListener('scroll', _closeIssuesPopover, {passive: true, capture: true});
+    window.addEventListener('resize', _closeIssuesPopover);
+
+    // === Polling snapshot (auto-reload quand sig change) ===
+    let initialSig = null;
+    let pollTimer = null;
+    function isModalOpen() {
+        const m = document.getElementById('log-modal');
+        return m && !m.classList.contains('hidden');
+    }
+    async function pollSnapshot() {
+        try {
+            const resp = await fetch('/api/queue/snapshot', {cache: 'no-store'});
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (initialSig === null) {
+                initialSig = data.sig;
+            } else if (data.sig !== initialSig) {
+                if (isModalOpen()) return;
+                window.location.reload();
+                return;
+            }
+            if (data.has_active || hasPending || uploadsActive > 0) {
+                pollTimer = setTimeout(pollSnapshot, 3000);
+            }
+        } catch (e) {
+            pollTimer = setTimeout(pollSnapshot, 5000);
+        }
+    }
+    if (hasPending || uploadsActive > 0) {
+        pollSnapshot();
+    } else {
+        pollTimer = setTimeout(pollSnapshot, 5000);
+    }
+
+    // === Modal log (SSE) ===
+    const logModal = document.getElementById('log-modal');
+    const logModalBody = document.getElementById('log-modal-body');
+    const logModalTitle = document.getElementById('log-modal-title');
+    const logModalStatus = document.getElementById('log-modal-status');
+    const logModalClose = document.getElementById('log-modal-close');
+    let logEvtSrc = null;
+    function openLog(url, title) {
+        if (!logModal) return;
+        logModalTitle.textContent = title;
+        logModalBody.textContent = '';
+        logModalStatus.textContent = 'Connexion…';
+        logModal.classList.remove('hidden');
+        if (logEvtSrc) { try { logEvtSrc.close(); } catch (e) {} }
+        logEvtSrc = new EventSource(url);
+        _openEventSources.add(logEvtSrc);
+        logEvtSrc.onmessage = (ev) => {
+            logModalBody.textContent += ev.data + '\n';
+            logModalBody.scrollTop = logModalBody.scrollHeight;
+            logModalStatus.textContent = 'Streaming…';
+        };
+        logEvtSrc.addEventListener('end', (ev) => {
+            logModalStatus.textContent = 'Flux terminé (' + (ev.data || 'ok') + ')';
+            try { logEvtSrc.close(); } catch (e) {}
+            logEvtSrc = null;
+        });
+        logEvtSrc.onerror = () => {
+            logModalStatus.textContent = 'Connexion perdue';
+            try { logEvtSrc.close(); } catch (e) {}
+            logEvtSrc = null;
+        };
+    }
+    function closeLog() {
+        if (logEvtSrc) { try { logEvtSrc.close(); } catch (e) {} logEvtSrc = null; }
+        if (logModal) logModal.classList.add('hidden');
+    }
+    if (logModalClose) logModalClose.addEventListener('click', closeLog);
+    if (logModal) logModal.addEventListener('click', (e) => {
+        if (e.target === logModal) closeLog();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && logModal && !logModal.classList.contains('hidden')) closeLog();
+    });
+
+    document.querySelectorAll('.btn-show-job-log').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openLog('/api/jobs/' + btn.dataset.jobId + '/stream', 'Job ' + btn.dataset.jobId);
+        });
+    });
+    document.querySelectorAll('.btn-show-upload-log').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openLog('/api/uploads/' + encodeURIComponent(btn.dataset.packageName) + '/stream',
+                    'Upload : ' + btn.dataset.packageName);
+        });
+    });
+
+    // === SSE live line (job preparing / upload uploading) ===
+    const _openEventSources = new Set();
+    function attachLiveLine(span, url) {
+        if (!span) return;
+        let last = 'démarrage…';
+        span.textContent = last;
+        const evt = new EventSource(url);
+        _openEventSources.add(evt);
+        evt.onmessage = (ev) => {
+            if (ev.data && ev.data.trim()) {
+                let line = ev.data.trim();
+                if (line.length > 30) line = line.slice(0, 27) + '…';
+                last = line;
+                span.textContent = last;
+            }
+        };
+        const _closeAndCleanup = () => {
+            try { evt.close(); } catch(e){}
+            _openEventSources.delete(evt);
+        };
+        evt.addEventListener('end', _closeAndCleanup);
+        evt.onerror = _closeAndCleanup;
+    }
+    document.querySelectorAll('.job-live-line').forEach(span => {
+        attachLiveLine(span, '/api/jobs/' + span.dataset.jobId + '/stream');
+    });
+    document.querySelectorAll('.upload-live-line').forEach(span => {
+        attachLiveLine(span, '/api/uploads/' + encodeURIComponent(span.dataset.packageName) + '/stream');
+    });
+
+    // === Close SSE before navigation (HTTP/1.1 6-connection limit) ===
+    function _closeAllEventSources() {
+        _openEventSources.forEach(evt => { try { evt.close(); } catch(e){} });
+        _openEventSources.clear();
+    }
+    window.addEventListener('beforeunload', _closeAllEventSources);
+    window.addEventListener('pagehide', _closeAllEventSources);
+    document.querySelectorAll('a[href]').forEach(link => {
+        const href = link.getAttribute('href') || '';
+        if (!href.startsWith('/') || link.target === '_blank') return;
+        link.addEventListener('click', (ev) => {
+            if (_openEventSources.size === 0) return;
+            ev.preventDefault();
+            _closeAllEventSources();
+            setTimeout(() => { window.location.href = href; }, 50);
+        }, { once: true });
+    });
+
+    // === Clear upload (X button on done/failed uploads) ===
+    document.querySelectorAll('.btn-clear-upload').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const name = btn.dataset.packageName;
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/uploads/' + encodeURIComponent(name), {method: 'DELETE'});
+                if (!resp.ok) throw new Error(await resp.text());
+                window.location.reload();
+            } catch (e) {
+                tu.toast({ title: 'Échec', message: e.message, tone: 'danger' });
+                btn.disabled = false;
+            }
+        });
+    });
+
+    // === Selection packages + upload batch ===
+    const checkboxes = () => document.querySelectorAll('.package-checkbox');
+    // NOTES round 9 Bug-3 : la "selection visible" est l'union des checkboxes
+    // dont la row n'est PAS masquee par filtre/search. Utilisee par :
+    //  - le bouton "check all" (ne coche/decoche que les visibles)
+    //  - le compteur d'etat "indeterminate" (sinon on est toujours indeterminate
+    //    des qu'un filtre cache des packages coches)
+    // Une row est masquee si son tr.package-row a display:none — c'est le
+    // marquage applique par _applyFilters().
+    const visibleCheckboxes = () => Array.from(checkboxes()).filter(cb => {
+        const row = cb.closest('tr.package-row');
+        return row && row.style.display !== 'none';
+    });
+    const selectedCount = document.getElementById('queue-selected-count');
+    const btnReal = document.getElementById('queue-upload-real');
+
+    // Persistance selection (sessionStorage)
+    const SELECTION_KEY = 'tu_queue_selection_v1';
+    function loadPersistedSelection() {
+        try {
+            const raw = sessionStorage.getItem(SELECTION_KEY);
+            if (!raw) return null;
+            return new Set(JSON.parse(raw));
+        } catch (e) { return null; }
+    }
+    function savePersistedSelection() {
+        try {
+            const names = Array.from(checkboxes()).filter(cb => cb.checked).map(cb => cb.dataset.packageName);
+            sessionStorage.setItem(SELECTION_KEY, JSON.stringify(names));
+        } catch (e) {}
+    }
+    function clearPersistedSelection() {
+        try { sessionStorage.removeItem(SELECTION_KEY); } catch (e) {}
+    }
+    const persistedSelection = loadPersistedSelection();
+    if (persistedSelection !== null) {
+        checkboxes().forEach(cb => { cb.checked = persistedSelection.has(cb.dataset.packageName); });
+    }
+
+    // Shift+click range
+    let lastClickedIndex = -1;
+    function _indexOfCheckbox(cb) { return Array.from(checkboxes()).indexOf(cb); }
+    checkboxes().forEach(cb => {
+        cb.addEventListener('click', (event) => {
+            const idx = _indexOfCheckbox(cb);
+            if (event.shiftKey && lastClickedIndex >= 0 && idx !== lastClickedIndex) {
+                const all = Array.from(checkboxes());
+                const [start, end] = idx < lastClickedIndex ? [idx, lastClickedIndex] : [lastClickedIndex, idx];
+                const newState = cb.checked;
+                for (let i = start; i <= end; i++) { all[i].checked = newState; }
+                refreshQueueSelection();
+            }
+            lastClickedIndex = idx;
+        });
+    });
+
+    const checkAll = document.getElementById('queue-check-all');
+    function refreshQueueSelection() {
+        const all = Array.from(checkboxes());
+        const visible = visibleCheckboxes();
+        const selected = all.filter(cb => cb.checked);
+        if (selectedCount) selectedCount.textContent = selected.length + ' sélectionné(s)';
+        const uploadable = selected.filter(cb => {
+            const st = cb.dataset.packageState || '';
+            return st === 'prepared' || st === 'validated';
+        });
+        if (btnReal) {
+            btnReal.disabled = uploadable.length === 0;
+            const labelSpan = btnReal.querySelector('span');
+            if (labelSpan) labelSpan.textContent = 'Uploader (' + uploadable.length + ')';
+        }
+        const btnDel = document.getElementById('queue-delete-selection');
+        if (btnDel) {
+            btnDel.disabled = selected.length === 0;
+            const labelSpan = btnDel.querySelector('span');
+            if (labelSpan) labelSpan.textContent = 'Supprimer (' + selected.length + ')';
+        }
+        // NOTES round 9 Bug-3 : la check-all reflete l'etat de la selection
+        // VISIBLE uniquement. Une row cachee qui est checked ne doit pas
+        // forcer indeterminate ici (le compteur "selected" total reste juste
+        // pour la transparence, mais l'UI checkbox parle des visibles).
+        if (checkAll) {
+            const visibleSelected = visible.filter(cb => cb.checked);
+            if (visible.length === 0 || visibleSelected.length === 0) {
+                checkAll.checked = false; checkAll.indeterminate = false;
+            } else if (visibleSelected.length === visible.length) {
+                checkAll.checked = true; checkAll.indeterminate = false;
+            } else {
+                checkAll.checked = false; checkAll.indeterminate = true;
+            }
+        }
+    }
+    function _onSelectionChanged() {
+        refreshQueueSelection();
+        savePersistedSelection();
+    }
+    checkboxes().forEach(cb => cb.addEventListener('change', _onSelectionChanged));
+    if (checkAll) {
+        checkAll.addEventListener('change', () => {
+            // NOTES round 9 Bug-3 : la check-all n'agit QUE sur les rows
+            // visibles (filtre + search). Ce qui est cache n'est pas
+            // touche — meme sa valeur 'checked' reste preservee (ex : on
+            // peut cacher temporairement une selection puis la revoir).
+            const target = checkAll.checked;
+            visibleCheckboxes().forEach(cb => { cb.checked = target; });
+            _onSelectionChanged();
+        });
+    }
+    refreshQueueSelection();
+
+    // NOTES round 8 P5.4 : row entiere cliquable -> navigation package detail.
+    // On ignore les clicks sur elements interactifs (button, a, input, label,
+    // ainsi que leurs descendants) pour ne pas casser les controles existants.
+    // Cmd/Ctrl/Shift/Middle-click : ouvre dans un nouvel onglet (comportement
+    // browser standard via window.open _blank).
+    document.querySelectorAll('tr.package-row[data-href]').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.defaultPrevented) return;
+            // Ignore les clicks sur elements interactifs (et leurs descendants)
+            if (e.target.closest('a, button, input, label, .issues-popover-content')) return;
+            const href = row.dataset.href;
+            if (!href) return;
+            // Modifier clicks -> new tab
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+                window.open(href, '_blank', 'noopener');
+            } else {
+                if (typeof window.showPageLoader === 'function') window.showPageLoader();
+                window.location.href = href;
+            }
+        });
+        // Middle-click via auxclick (e.button=1) — pas couvert par 'click' partout
+        row.addEventListener('auxclick', (e) => {
+            if (e.button !== 1) return;
+            if (e.target.closest('a, button, input, label, .issues-popover-content')) return;
+            const href = row.dataset.href;
+            if (href) window.open(href, '_blank', 'noopener');
+        });
+    });
+
+    // NOTES round 7+ : systeme de filtres en chips toggle, MAIS regroupes
+    // dans un dropdown discret integre au header de la table (a cote de la
+    // recherche). Plus de filtre Issues (peu utile), plus de boutons
+    // "Selectionner les visibles" / "Tout decocher" (deja accessibles via
+    // la checkbox header de la table).
+    const FILTERS_KEY = 'tu_queue_filters_v2';  // bump : new schema sans 'issues'
+    const filterChips = document.querySelectorAll('.filter-chip');
+    const filterCountEl = document.getElementById('queue-filter-count');
+    const filterActiveDot = document.getElementById('queue-filter-active-dot');
+    const filterBtn = document.getElementById('queue-filter-btn');
+    const filterPopover = document.getElementById('queue-filter-popover');
+    const btnFilterReset = document.getElementById('queue-filter-reset');
+
+    function _defaultFilters() {
+        return {
+            state: new Set(['prepared', 'validated', 'uploaded', 'aborted-duplicate', 'failed']),
+            bucket: new Set(['parfait', 'perfect', 'ready', 'good', 'review', 'blocked']),
+        };
+    }
+    let filters = _defaultFilters();
+    try {
+        const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null');
+        if (saved && saved.state && saved.bucket) {
+            filters = {
+                state: new Set(saved.state),
+                bucket: new Set(saved.bucket),
+            };
+        }
+    } catch (e) {}
+
+    function _saveFilters() {
+        try {
+            localStorage.setItem(FILTERS_KEY, JSON.stringify({
+                state: [...filters.state],
+                bucket: [...filters.bucket],
+            }));
+        } catch (e) {}
+    }
+
+    function _isFilterDefault() {
+        const d = _defaultFilters();
+        if (filters.state.size !== d.state.size) return false;
+        if (filters.bucket.size !== d.bucket.size) return false;
+        for (const k of d.state) if (!filters.state.has(k)) return false;
+        for (const k of d.bucket) if (!filters.bucket.has(k)) return false;
+        return true;
+    }
+
+    // Classes Tailwind par tone, pour les chips ACTIVES (couleur saturee
+    // qui matche le badge dans la table) et INACTIVES (slate sobre, indique
+    // "filtre cache"). Map matching les badges queue.html state cell.
+    const _CHIP_CLASSES = {
+        neutral: {
+            on:  ['bg-slate-100', 'dark:bg-slate-700/60', 'text-slate-800', 'dark:text-slate-200', 'border-slate-300', 'dark:border-slate-600', 'hover:bg-slate-200', 'dark:hover:bg-slate-700'],
+        },
+        primary: {
+            on:  ['bg-primary-50', 'dark:bg-primary-900/40', 'text-primary-700', 'dark:text-primary-200', 'border-primary-300', 'dark:border-primary-700', 'hover:bg-primary-100', 'dark:hover:bg-primary-900/60'],
+        },
+        success: {
+            on:  ['bg-success-50', 'dark:bg-success-900/40', 'text-success-700', 'dark:text-success-200', 'border-success-300', 'dark:border-success-700', 'hover:bg-success-100', 'dark:hover:bg-success-900/60'],
+        },
+        warning: {
+            on:  ['bg-warning-50', 'dark:bg-warning-900/40', 'text-warning-800', 'dark:text-warning-200', 'border-warning-300', 'dark:border-warning-700', 'hover:bg-warning-100', 'dark:hover:bg-warning-900/60'],
+        },
+        danger: {
+            on:  ['bg-danger-50', 'dark:bg-danger-900/40', 'text-danger-700', 'dark:text-danger-200', 'border-danger-300', 'dark:border-danger-700', 'hover:bg-danger-100', 'dark:hover:bg-danger-900/60'],
+        },
+    };
+    // Classes communes pour les chips INACTIVES (toutes les tones decochees
+    // partagent le meme look slate "filtre OFF").
+    const _CHIP_OFF_CLASSES = [
+        'bg-white', 'dark:bg-slate-800/50',
+        'text-slate-400', 'dark:text-slate-500',
+        'border-slate-200', 'dark:border-slate-700',
+        'line-through', 'opacity-60',
+        'hover:opacity-100', 'hover:line-through',
+    ];
+
+    function _renderChips() {
+        // Toutes les classes potentielles a retirer avant d'appliquer
+        const allClasses = new Set(_CHIP_OFF_CLASSES);
+        for (const t of Object.values(_CHIP_CLASSES)) {
+            t.on.forEach(c => allClasses.add(c));
+        }
+        filterChips.forEach(chip => {
+            let active = false;
+            if (chip.dataset.filterState) {
+                active = filters.state.has(chip.dataset.filterState);
+            } else if (chip.dataset.filterBucket) {
+                const code = chip.dataset.filterBucket;
+                if (code === 'ready') {
+                    active = filters.bucket.has('ready') || filters.bucket.has('good');
+                } else {
+                    active = filters.bucket.has(code);
+                }
+            }
+            chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+            allClasses.forEach(c => chip.classList.remove(c));
+            const tone = chip.dataset.tone || 'neutral';
+            if (active) {
+                (_CHIP_CLASSES[tone] || _CHIP_CLASSES.neutral).on.forEach(c => chip.classList.add(c));
+            } else {
+                _CHIP_OFF_CLASSES.forEach(c => chip.classList.add(c));
+            }
+        });
+        if (filterActiveDot) {
+            if (_isFilterDefault()) {
+                filterActiveDot.classList.add('hidden');
+            } else {
+                filterActiveDot.classList.remove('hidden');
+            }
+        }
+        // NOTES round 8 P5.5 : rendu de la barre "Filtres actifs" au-dessus
+        // de la table — un pill par item exclu du defaut, click pour re-inclure.
+        _renderActiveFiltersBar();
+    }
+
+    // Map label affichable pour les codes de filtre (synchro avec les chips
+    // dans le dropdown). Si on ajoute un filter code, mettre a jour ici aussi.
+    const _FILTER_LABELS = {
+        state: {
+            'prepared': ['Préparé', 'neutral'],
+            'validated': ['Validé', 'primary'],
+            'uploaded': ['Uploadé', 'success'],
+            'aborted-duplicate': ['Doublon', 'warning'],
+            'failed': ['Échec', 'danger'],
+        },
+        bucket: {
+            'parfait': ['Parfait', 'success'],
+            'perfect': ['Quasi', 'success'],
+            'ready': ['Prêt/Bon', 'success'],
+            'good': null,  // chip 'ready' couvre 'ready'+'good' (cf. _renderChips)
+            'review': ['À vérifier', 'warning'],
+            'blocked': ['Bloqué', 'danger'],
+        },
+    };
+    const _PILL_TONE_CLASSES = {
+        neutral: 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600',
+        primary: 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 border-primary-200 dark:border-primary-800',
+        success: 'bg-success-50 dark:bg-success-900/40 text-success-700 dark:text-success-300 border-success-200 dark:border-success-800',
+        warning: 'bg-warning-50 dark:bg-warning-900/40 text-warning-800 dark:text-warning-300 border-warning-200 dark:border-warning-800',
+        danger:  'bg-danger-50 dark:bg-danger-900/40 text-danger-700 dark:text-danger-300 border-danger-200 dark:border-danger-800',
+    };
+
+    function _renderActiveFiltersBar() {
+        const bar = document.getElementById('queue-active-filters-bar');
+        const pillsContainer = document.getElementById('queue-active-filters-pills');
+        if (!bar || !pillsContainer) return;
+        const defaults = _defaultFilters();
+        // Items exclus (presents dans defaults mais pas dans filters)
+        const excludedStates = Array.from(defaults.state).filter(k => !filters.state.has(k));
+        const excludedBuckets = Array.from(defaults.bucket).filter(k => !filters.bucket.has(k));
+
+        if (excludedStates.length === 0 && excludedBuckets.length === 0) {
+            bar.classList.add('hidden');
+            pillsContainer.innerHTML = '';
+            return;
+        }
+        bar.classList.remove('hidden');
+
+        const escape = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const pills = [];
+
+        excludedStates.forEach(code => {
+            const meta = _FILTER_LABELS.state[code];
+            if (!meta) return;
+            const [label, tone] = meta;
+            pills.push(`
+                <button type="button" data-pill-kind="state" data-pill-code="${escape(code)}"
+                        class="active-filter-pill interactive inline-flex items-center gap-1 pl-2 pr-1 h-5 rounded-md text-[10px] font-medium border ${_PILL_TONE_CLASSES[tone] || _PILL_TONE_CLASSES.neutral}"
+                        data-tu-tooltip="Cliquer pour réafficher cet état">
+                    <span class="opacity-70">État ≠</span>
+                    <span>${escape(label)}</span>
+                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded hover:bg-black/10 dark:hover:bg-white/10 ml-0.5" aria-hidden="true">
+                        <svg class="icon" style="width:10px;height:10px" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </span>
+                </button>
+            `);
+        });
+        // Pour les buckets, le chip 'ready' couvre 'ready'+'good' donc on les
+        // regroupe pour ne pas afficher 2 pills redondants.
+        const visibleExcludedBuckets = excludedBuckets.filter(code => _FILTER_LABELS.bucket[code] !== null);
+        // Si BOTH ready et good exclus, on affiche 1 seul pill 'ready' (Prêt/Bon).
+        // Si seulement un des deux exclu (cas exotique apres upgrade), on l'affiche.
+        const bucketsToShow = [];
+        let readyShown = false;
+        visibleExcludedBuckets.forEach(code => {
+            if (code === 'ready' || code === 'good') {
+                if (!readyShown && excludedBuckets.includes('ready') && excludedBuckets.includes('good')) {
+                    bucketsToShow.push('ready');
+                    readyShown = true;
+                } else if (!readyShown && _FILTER_LABELS.bucket[code]) {
+                    bucketsToShow.push(code);
+                    readyShown = true;
+                }
+            } else {
+                bucketsToShow.push(code);
+            }
+        });
+        bucketsToShow.forEach(code => {
+            const meta = _FILTER_LABELS.bucket[code];
+            if (!meta) return;
+            const [label, tone] = meta;
+            pills.push(`
+                <button type="button" data-pill-kind="bucket" data-pill-code="${escape(code)}"
+                        class="active-filter-pill interactive inline-flex items-center gap-1 pl-2 pr-1 h-5 rounded-md text-[10px] font-medium border ${_PILL_TONE_CLASSES[tone] || _PILL_TONE_CLASSES.neutral}"
+                        data-tu-tooltip="Cliquer pour réafficher ce score">
+                    <span class="opacity-70">Score ≠</span>
+                    <span>${escape(label)}</span>
+                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded hover:bg-black/10 dark:hover:bg-white/10 ml-0.5" aria-hidden="true">
+                        <svg class="icon" style="width:10px;height:10px" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </span>
+                </button>
+            `);
+        });
+        pillsContainer.innerHTML = pills.join('');
+        // Click handler : reinclure le filtre exclu.
+        pillsContainer.querySelectorAll('.active-filter-pill').forEach(p => {
+            p.addEventListener('click', () => {
+                const kind = p.dataset.pillKind;
+                const code = p.dataset.pillCode;
+                if (kind === 'state') {
+                    filters.state.add(code);
+                } else if (kind === 'bucket') {
+                    if (code === 'ready') {
+                        filters.bucket.add('ready');
+                        filters.bucket.add('good');
+                    } else {
+                        filters.bucket.add(code);
+                    }
+                }
+                _saveFilters();
+                _renderChips();
+                _applyFilters();
+            });
+        });
+    }
+
+    function _applyFilters() {
+        let visible = 0, total = 0;
+        document.querySelectorAll('tr.package-row').forEach(row => {
+            total++;
+            const st = row.dataset.filterState || '';
+            const bk = row.dataset.filterBucket || '';
+            const ok = filters.state.has(st) && filters.bucket.has(bk);
+            const searchHidden = row.dataset.searchHidden === '1';
+            const finalVisible = ok && !searchHidden;
+            row.style.display = finalVisible ? '' : 'none';
+            if (finalVisible) visible++;
+        });
+        if (filterCountEl) {
+            if (visible === total) {
+                filterCountEl.textContent = '';
+            } else {
+                filterCountEl.textContent = visible + ' / ' + total + ' visible' + (visible > 1 ? 's' : '');
+            }
+        }
+        // Decoche les rows masquees pour ne pas avoir de selections fantomes
+        document.querySelectorAll('tr.package-row[style*="display: none"] .package-checkbox').forEach(cb => {
+            if (cb.checked) cb.checked = false;
+        });
+        // NOTES round 8 P1.B : si total > 0 mais visible == 0, la recherche
+        // / les filtres ont tout masque -> on montre l'empty state inline.
+        const emptyRow = document.getElementById('queue-empty-filtered');
+        if (emptyRow) {
+            if (total > 0 && visible === 0) {
+                emptyRow.classList.remove('hidden');
+            } else {
+                emptyRow.classList.add('hidden');
+            }
+        }
+        refreshQueueSelection();
+    }
+
+    filterChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            if (chip.dataset.filterState) {
+                const key = chip.dataset.filterState;
+                if (filters.state.has(key)) filters.state.delete(key); else filters.state.add(key);
+            } else if (chip.dataset.filterBucket) {
+                const key = chip.dataset.filterBucket;
+                if (key === 'ready') {
+                    if (filters.bucket.has('ready') || filters.bucket.has('good')) {
+                        filters.bucket.delete('ready');
+                        filters.bucket.delete('good');
+                    } else {
+                        filters.bucket.add('ready');
+                        filters.bucket.add('good');
+                    }
+                } else {
+                    if (filters.bucket.has(key)) filters.bucket.delete(key); else filters.bucket.add(key);
+                }
+            }
+            _saveFilters();
+            _renderChips();
+            _applyFilters();
+        });
+    });
+
+    if (btnFilterReset) {
+        btnFilterReset.addEventListener('click', () => {
+            filters = _defaultFilters();
+            _saveFilters();
+            _renderChips();
+            _applyFilters();
+        });
+    }
+    // NOTES round 8 P1.B : bouton "Reinitialiser" dans l'empty state inline
+    // (apparait quand filtres / search masquent tout). Reset filtres + search.
+    const btnEmptyReset = document.getElementById('queue-empty-reset');
+    if (btnEmptyReset) {
+        btnEmptyReset.addEventListener('click', () => {
+            filters = _defaultFilters();
+            _saveFilters();
+            _renderChips();
+            // Reset le champ de recherche egalement
+            const searchInput = document.getElementById('queue-search');
+            if (searchInput) {
+                searchInput.value = '';
+                // Reset le flag searchHidden sur toutes les rows
+                document.querySelectorAll('tr.package-row').forEach(r => {
+                    delete r.dataset.searchHidden;
+                });
+            }
+            _applyFilters();
+        });
+    }
+    // NOTES round 8 P5.5 : "Tout reinitialiser" sur la barre pills active filters.
+    const btnActiveClear = document.getElementById('queue-active-filters-clear');
+    if (btnActiveClear) {
+        btnActiveClear.addEventListener('click', () => {
+            filters = _defaultFilters();
+            _saveFilters();
+            _renderChips();
+            _applyFilters();
+        });
+    }
+
+    // Dropdown filtres : toggle + click outside ferme
+    if (filterBtn && filterPopover) {
+        filterBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const hidden = filterPopover.classList.toggle('hidden');
+            filterBtn.setAttribute('aria-expanded', String(!hidden));
+        });
+        document.addEventListener('click', (e) => {
+            if (filterPopover.classList.contains('hidden')) return;
+            if (filterPopover.contains(e.target) || filterBtn.contains(e.target)) return;
+            filterPopover.classList.add('hidden');
+            filterBtn.setAttribute('aria-expanded', 'false');
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !filterPopover.classList.contains('hidden')) {
+                filterPopover.classList.add('hidden');
+                filterBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    // Application initiale
+    _renderChips();
+    _applyFilters();
+
+    async function launchBatchUpload() {
+        const names = Array.from(checkboxes())
+            .filter(cb => cb.checked)
+            .filter(cb => {
+                const st = cb.dataset.packageState || '';
+                return st === 'prepared' || st === 'validated';
+            })
+            .map(cb => cb.dataset.packageName);
+        if (names.length === 0) return;
+        const ok = await tu.confirm({
+            title: `Uploader ${names.length} package${names.length > 1 ? 's' : ''} ?`,
+            message: 'Cette action est réelle. Les torrents seront soumis au tracker via son API.',
+            confirmLabel: 'Uploader',
+            tone: 'primary',
+        });
+        if (!ok) return;
+        if (btnReal) btnReal.disabled = true;
+        try {
+            const resp = await fetch('/api/queue/upload-batch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({package_names: names, dry_run: false}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || resp.statusText);
+            const skipped = data.skipped || [];
+            let msg = `${data.accepted.length} upload${data.accepted.length > 1 ? 's' : ''} lancé${data.accepted.length > 1 ? 's' : ''}`;
+            if (skipped.length) {
+                msg += ` · ${skipped.length} ignoré${skipped.length > 1 ? 's' : ''}`;
+            }
+            tu.toast({ title: 'Batch lancé', message: msg, tone: 'success' });
+            setTimeout(() => window.location.reload(), 800);
+        } catch (e) {
+            tu.toast({ title: 'Échec', message: e.message, tone: 'danger', duration: 6000 });
+            refreshQueueSelection();
+        }
+    }
+    if (btnReal) btnReal.addEventListener('click', launchBatchUpload);
+
+    // Suppression batch packages
+    const btnDelSel = document.getElementById('queue-delete-selection');
+    if (btnDelSel) {
+        btnDelSel.addEventListener('click', async () => {
+            const names = Array.from(checkboxes()).filter(cb => cb.checked).map(cb => cb.dataset.packageName);
+            if (names.length === 0) return;
+            const ok = await tu.confirm({
+                title: `Supprimer ${names.length} package${names.length > 1 ? 's' : ''} ?`,
+                message: 'Les dossiers package seront effacés. Les fichiers vidéo source ne sont pas touchés. Les packages déjà uploadés seront ignorés.',
+                confirmLabel: 'Supprimer',
+                tone: 'danger',
+            });
+            if (!ok) return;
+            btnDelSel.disabled = true;
+            let ok_count = 0, fail_count = 0;
+            for (const name of names) {
+                try {
+                    const resp = await fetch('/api/packages/' + encodeURIComponent(name), {
+                        method: 'DELETE',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({confirm_name: name}),
+                    });
+                    if (resp.ok) ok_count++; else fail_count++;
+                } catch (e) { fail_count++; }
+            }
+            tu.toast({
+                title: `${ok_count} supprimé${ok_count > 1 ? 's' : ''}` + (fail_count ? `, ${fail_count} échec${fail_count > 1 ? 's' : ''}` : ''),
+                tone: fail_count ? 'warning' : 'success',
+            });
+            clearPersistedSelection();
+            setTimeout(() => window.location.reload(), 400);
+        });
+    }
+
+    // === Tri colonnes ===
+    const SORT_KEY = 'tu_queue_sort';
+    function loadSort() {
+        try {
+            const raw = localStorage.getItem(SORT_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+        return null;
+    }
+    function saveSort(col, dir) {
+        try { localStorage.setItem(SORT_KEY, JSON.stringify({col, dir})); } catch (e) {}
+    }
+    function _findSortableTbody() {
+        const firstSortableRow = document.querySelector('tr[data-sort-release]');
+        return firstSortableRow ? firstSortableRow.closest('tbody') : null;
+    }
+    const sortableTbody = _findSortableTbody();
+    function applySort(col, dir) {
+        if (!sortableTbody) return;
+        const rows = Array.from(sortableTbody.querySelectorAll('tr[data-sort-release]'));
+        const attr = 'data-sort-' + col;
+        const numeric = (col === 'size' || col === 'score');
+        rows.sort((a, b) => {
+            let va = a.getAttribute(attr) || '';
+            let vb = b.getAttribute(attr) || '';
+            if (numeric) {
+                va = parseFloat(va) || 0;
+                vb = parseFloat(vb) || 0;
+                return dir === 'asc' ? va - vb : vb - va;
+            }
+            return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        });
+        rows.forEach(r => sortableTbody.appendChild(r));
+        document.querySelectorAll('th[data-sort-col]').forEach(th => {
+            const arrow = th.querySelector('.sort-arrow');
+            if (!arrow) return;
+            if (th.dataset.sortCol === col) {
+                arrow.textContent = dir === 'asc' ? '▲' : '▼';
+                arrow.className = 'sort-arrow text-primary-600 dark:text-primary-400 ml-0.5';
+            } else {
+                arrow.textContent = '⇅';
+                arrow.className = 'sort-arrow text-slate-300 dark:text-slate-600 ml-0.5';
+            }
+        });
+    }
+    document.querySelectorAll('th[data-sort-col]').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.sortCol;
+            const current = loadSort();
+            const dir = (current && current.col === col && current.dir === 'asc') ? 'desc' : 'asc';
+            saveSort(col, dir);
+            applySort(col, dir);
+        });
+    });
+    const initial = loadSort() || {col: 'updated', dir: 'desc'};
+    applySort(initial.col, initial.dir);
+
+    // === Search live ===
+    const searchInput = document.getElementById('queue-search');
+    const searchCount = document.getElementById('queue-search-count');
+    const totalSpan = document.getElementById('queue-total');
+    const totalPackages = totalSpan ? parseInt(totalSpan.textContent || '0', 10) : 0;
+    function _foldAccents(s) {
+        return (s || '')
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+            .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+            .toLowerCase();
+    }
+    function applyQueueSearch() {
+        if (!searchInput) return;
+        const q = _foldAccents(searchInput.value).trim();
+        const tokens = q.split(/\s+/).filter(t => t.length > 0);
+        document.querySelectorAll('tbody tr[data-sort-release]').forEach(row => {
+            const name = _foldAccents(row.dataset.sortRelease || '');
+            const ok = tokens.length === 0 || tokens.every(t => name.includes(t));
+            // NOTES round 7 : on n'ecrase plus directement style.display. On
+            // marque seulement le flag, et _applyFilters combine search +
+            // chips filters pour la decision finale.
+            row.dataset.searchHidden = ok ? '0' : '1';
+        });
+        // Trigger un re-apply combine
+        if (typeof _applyFilters === 'function') _applyFilters();
+        // Update du compteur de recherche (en + de celui des filtres)
+        if (searchCount) {
+            const q2 = _foldAccents(searchInput.value).trim();
+            if (q2) {
+                const visible = document.querySelectorAll('tbody tr[data-sort-release][data-search-hidden="0"]').length;
+                searchCount.textContent = `${visible} / ${totalPackages} match`;
+            } else {
+                searchCount.textContent = '';
+            }
+        }
+    }
+    if (searchInput) {
+        searchInput.addEventListener('input', applyQueueSearch);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { searchInput.value = ''; applyQueueSearch(); }
+        });
+    }
+
+    // === Prep checkboxes + delete selection ===
+    const prepCheckboxes = () => document.querySelectorAll('.prep-checkbox');
+    const prepSelectedCount = document.getElementById('prep-selected-count');
+    const prepCheckAll = document.getElementById('prep-check-all');
+    const prepDelBtn = document.getElementById('prep-delete-selection');
+    function refreshPrepSelection() {
+        const all = Array.from(prepCheckboxes()).filter(cb => !cb.disabled);
+        const selected = all.filter(cb => cb.checked);
+        if (prepSelectedCount) prepSelectedCount.textContent = selected.length + ' sélectionné(s)';
+        if (prepDelBtn) {
+            prepDelBtn.disabled = selected.length === 0;
+            const labelSpan = prepDelBtn.querySelector('span');
+            if (labelSpan) labelSpan.textContent = 'Supprimer la sélection (' + selected.length + ')';
+        }
+        if (prepCheckAll) {
+            if (selected.length === 0) {
+                prepCheckAll.checked = false; prepCheckAll.indeterminate = false;
+            } else if (selected.length === all.length) {
+                prepCheckAll.checked = true; prepCheckAll.indeterminate = false;
+            } else {
+                prepCheckAll.checked = false; prepCheckAll.indeterminate = true;
+            }
+        }
+    }
+    prepCheckboxes().forEach(cb => cb.addEventListener('change', refreshPrepSelection));
+    if (prepCheckAll) {
+        prepCheckAll.addEventListener('change', () => {
+            const target = prepCheckAll.checked;
+            prepCheckboxes().forEach(cb => { if (!cb.disabled) cb.checked = target; });
+            refreshPrepSelection();
+        });
+    }
+    refreshPrepSelection();
+
+    if (prepDelBtn) {
+        prepDelBtn.addEventListener('click', async () => {
+            const ids = Array.from(prepCheckboxes()).filter(cb => cb.checked && !cb.disabled).map(cb => cb.dataset.jobId);
+            if (ids.length === 0) return;
+            const ok = await tu.confirm({
+                title: `Supprimer ${ids.length} job${ids.length > 1 ? 's' : ''} de la queue ?`,
+                tone: 'danger', confirmLabel: 'Supprimer',
+            });
+            if (!ok) return;
+            prepDelBtn.disabled = true;
+            let ok_count = 0, fail_count = 0;
+            for (const id of ids) {
+                try {
+                    const resp = await fetch('/api/jobs/' + id, {method: 'DELETE'});
+                    if (resp.ok) ok_count++; else fail_count++;
+                } catch (e) { fail_count++; }
+            }
+            tu.toast({
+                title: `${ok_count} supprimé${ok_count > 1 ? 's' : ''}` + (fail_count ? `, ${fail_count} échec${fail_count > 1 ? 's' : ''}` : ''),
+                tone: fail_count ? 'warning' : 'success',
+            });
+            setTimeout(() => window.location.reload(), 400);
+        });
+    }
+
+    // Toggle overflow
+    const prepOverflowBtn = document.getElementById('prep-toggle-overflow');
+    const prepOverflowTbody = document.getElementById('prep-overflow-tbody');
+    if (prepOverflowBtn && prepOverflowTbody) {
+        prepOverflowBtn.addEventListener('click', () => {
+            const hidden = prepOverflowTbody.classList.toggle('hidden');
+            prepOverflowBtn.textContent = hidden
+                ? 'Afficher les ' + prepOverflowTbody.querySelectorAll('tr').length + ' autres préparations en attente'
+                : 'Masquer les préparations supplémentaires';
+        });
+    }
+
+    // === Pause / Resume / Move / Cancel / Flush ===
+    async function _jobAction(jobId, path, body) {
+        const opts = {method: 'POST'};
+        if (body) {
+            opts.headers = {'Content-Type': 'application/json'};
+            opts.body = JSON.stringify(body);
+        }
+        const resp = await fetch('/api/jobs/' + jobId + path, opts);
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            throw new Error(data.detail || resp.statusText);
+        }
+        return resp.json();
+    }
+
+    document.querySelectorAll('.btn-pause-job').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const jobId = btn.dataset.jobId;
+            btn.disabled = true;
+            try {
+                await _jobAction(jobId, '/pause', null);
+                window.location.reload();
+            } catch (e) {
+                tu.toast({ title: 'Échec pause', message: e.message, tone: 'danger' });
+                btn.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-resume-job').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const jobId = btn.dataset.jobId;
+            btn.disabled = true;
+            try {
+                await _jobAction(jobId, '/resume', null);
+                window.location.reload();
+            } catch (e) {
+                tu.toast({ title: 'Échec resume', message: e.message, tone: 'danger' });
+                btn.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-move-job').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const jobId = btn.dataset.jobId;
+            const direction = btn.dataset.direction;
+            btn.disabled = true;
+            try {
+                await _jobAction(jobId, '/move', {direction});
+                window.location.reload();
+            } catch (e) {
+                if (!String(e.message).includes('position extreme')) {
+                    tu.toast({ title: 'Échec déplacement', message: e.message, tone: 'danger' });
+                }
+                btn.disabled = false;
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-cancel-job').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const jobId = btn.dataset.jobId;
+            const ok = await tu.confirm({
+                title: 'Annuler ce job en cours ?',
+                message: 'Le subprocess sera tué immédiatement (hard kill) et le dossier package partiel sera supprimé. Action irréversible.',
+                confirmLabel: 'Annuler le job',
+                tone: 'danger',
+            });
+            if (!ok) return;
+            btn.disabled = true;
+            try {
+                await _jobAction(jobId, '/cancel', null);
+                window.location.reload();
+            } catch (e) {
+                tu.toast({ title: 'Échec cancel', message: e.message, tone: 'danger' });
+                btn.disabled = false;
+            }
+        });
+    });
+
+    const prepFlushBtn = document.getElementById('prep-flush-all');
+    if (prepFlushBtn) {
+        prepFlushBtn.addEventListener('click', async () => {
+            const ok = await tu.confirm({
+                title: 'Vider toute la file de préparation ?',
+                message: 'Cela supprimera tous les jobs en attente. Le job actuellement en cours (preparing) NE sera PAS interrompu.',
+                confirmLabel: 'Vider la file',
+                tone: 'warning',
+            });
+            if (!ok) return;
+            prepFlushBtn.disabled = true;
+            try {
+                const resp = await fetch('/api/jobs/flush', {method: 'POST'});
+                if (!resp.ok) throw new Error(await resp.text());
+                const data = await resp.json();
+                tu.toast({ title: `${data.deleted_count} job(s) supprimé(s)`, tone: 'success' });
+                setTimeout(() => window.location.reload(), 400);
+            } catch (e) {
+                tu.toast({ title: 'Échec flush', message: e.message, tone: 'danger' });
+                prepFlushBtn.disabled = false;
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

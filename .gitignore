@@ -1,0 +1,103 @@
+# ============================================================
+# Secrets (NE JAMAIS commit)
+# ============================================================
+.env
+.env.backup
+.env.local
+.env.*.local
+*.passkey
+*.secret
+# Garde explicitement .env.example dans le repo (modele pour les utilisateurs)
+!.env.example
+
+# ============================================================
+# Données runtime
+# ============================================================
+data/
+!data/.gitkeep
+
+# Anciens chemins (au cas où certains fichiers traîneraient à la racine)
+upload_packages/
+batch_history/
+input_list.txt
+batch_results.csv
+.tmdb_cache.json
+.input_list.lock
+temp/
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================================
+# Environnements virtuels
+# ============================================================
+.venv/
+venv/
+env/
+ENV/
+
+# ============================================================
+# IDE / éditeurs
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Tests / linters
+# ============================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# ============================================================
+# Outputs Windows
+# ============================================================
+scripts/windows/install_context_menu.reg
+scripts/windows/install_context_menu.bat
+scripts/windows/uninstall_context_menu.reg
+scripts/windows/uninstall_context_menu.bat
+*.lnk
+
+# ============================================================
+# Documents externes (PDF de doc tracker, captures, notes)
+# ============================================================
+*.pdf
+notes/
+docs_externes/
+
+# ============================================================
+# Runtime web UI (Phase 3)
+# ============================================================
+jobs.db
+jobs/
+.claude/

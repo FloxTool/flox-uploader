@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flox-uploader"
+version = "0.3.1"
+description = "Création de packages d'upload (NFO, .torrent, fiche BBCode) pour trackers de torrents francophones."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Flox" }
+]
+keywords = ["torrent", "tracker", "uploader", "mediainfo", "bbcode"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = [
+    "requests>=2.31",
+    "torf>=4.2",
+    "python-dotenv>=1.0",
+    "platformdirs>=4.0",
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.5",
+    "httpx>=0.27",
+    "responses>=0.25",
+]
+
+[project.scripts]
+flox-uploader = "flox_uploader.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/FloxTool/flox-uploader"
+Issues = "https://github.com/FloxTool/flox-uploader/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"flox_uploader.trackers.gemini" = [
+    "rules.json",
+    "template.bbcode",
+    "template_movie.bbcode",
+    "template_episode.bbcode",
+    "template_season.bbcode",
+    "template_integrale.bbcode",
+]
+"flox_uploader.web" = ["templates/*.html", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    # FastAPI on_event deprecated : connu, cf. AUDIT.md (migration vers lifespan a planifier)
+    "ignore:.*on_event is deprecated.*:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/flox_uploader"]
+omit = [
+    "*/tests/*",
+    "*/web/templates/*",
+    # cli.cmd_inspect appelle le tracker live, hors scope tests unitaires
+    "*/cli.py",
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false

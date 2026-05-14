@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security vulnerability
+    url: https://github.com/FloxTool/flox-uploader/security/advisories/new
+    about: Pour signaler une faille de sécurité (private advisory, pas une issue publique)

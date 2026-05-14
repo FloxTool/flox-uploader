@@ -1,0 +1,32 @@
+name: ❓ Question / aide
+description: Tu as une question sur l'utilisation, l'install, ou un comportement
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Avant d'ouvrir une question, vérifie :
+
+        - 📖 Le Guide intégré dans l'app (page `/guide`)
+        - 📄 Le README du repo
+        - 🔍 Les issues existantes (ouvertes ET fermées) — peut-être que ta question a déjà été posée
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Ta question
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexte (ce que tu as déjà essayé)
+      description: Ça aide à donner une réponse pertinente vs un renvoi vers la doc.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version de Flox Uploader
+      placeholder: "0.3.0"

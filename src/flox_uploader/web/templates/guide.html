@@ -1,0 +1,507 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, badge, button %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Guide · Flox Uploader{% endblock %}
+
+{% block content %}
+
+{# ============================================================
+   HERO — pres app + philosophie en 1 bloc
+   ============================================================ #}
+<section class="mb-10 text-center">
+    <img src="/static/logo.svg" alt="Flox Uploader" class="w-20 h-20 mx-auto mb-5 drop-shadow-md">
+    <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Flox Uploader</h1>
+    <p class="text-slate-600 dark:text-slate-400 mt-2 max-w-2xl mx-auto leading-relaxed">
+        Cet outil t'aide à <strong class="text-slate-900 dark:text-slate-100">uploader tes films et séries
+        sur Gemini de la manière la plus propre possible</strong>. Mais il <strong>ne fait pas tout le boulot</strong> :
+        tu dois rester vigilant, lire les règles Gemini, et vérifier chaque warning avant de cliquer Uploader.
+    </p>
+    <div class="mt-4 inline-flex items-center gap-2 flex-wrap justify-center">
+        {{ badge('v' ~ app_version, tone='neutral', icon_name='package') }}
+        {{ badge('Build local', tone='success', icon_name='check') }}
+        {{ badge('Films + Séries', tone='primary', icon_name='film') }}
+    </div>
+</section>
+
+
+{# ============================================================
+   PHILOSOPHIE — l'app comme assistant, pas comme bot
+   ============================================================ #}
+<section class="mb-10 bg-primary-50/60 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold text-primary-900 dark:text-primary-200 inline-flex items-center gap-2 mb-3">
+        {{ icon('lightbulb', size='md') }}
+        Philosophie : un assistant, pas un autopilote
+    </h2>
+    <div class="text-sm text-primary-900/90 dark:text-primary-200/90 leading-relaxed space-y-2">
+        <p>
+            L'app prend en charge le <strong>travail répétitif et fastidieux</strong> qui décourage de bien faire
+            les uploads : génération du release_name compliant, parsing MediaInfo, calcul du <code class="text-xs font-mono px-1 py-0.5 rounded bg-primary-100/70 dark:bg-primary-900/40">.torrent</code>,
+            écriture du NFO, fiche BBCode formatée, vérification de doublon sur le tracker, calcul d'un score
+            de confiance pour chaque package.
+        </p>
+        <p>
+            Ton rôle reste central : <strong>vérifier ce qui est généré</strong>, choisir quand override, et
+            décider de cliquer Uploader. L'app fait des erreurs (variante FR mal détectée, TMDB ID
+            ambigu, etc.) — c'est ton expertise qui ferme la boucle.
+        </p>
+        <p>
+            Si un cas particulier ne passe pas par l'app : copie les fichiers du dossier <code class="text-xs font-mono px-1 py-0.5 rounded bg-primary-100/70 dark:bg-primary-900/40">data/upload_packages/&lt;nom&gt;/</code>
+            et finis l'upload manuellement sur Gemini. L'outil ne t'enferme pas.
+        </p>
+    </div>
+</section>
+
+
+{# ============================================================
+   PÉRIMÈTRE v0.3 — ce qui marche / ce qui arrive bientôt
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Périmètre de la v{{ app_version }}</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">L'app est spécialisée. Voici ce qu'elle sait gérer
+        aujourd'hui, et ce qui viendra plus tard.</p>
+
+    {# Ce qui marche — films + séries dans toutes leurs déclinaisons #}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <div class="bg-success-50/40 dark:bg-success-900/15 border border-success-200 dark:border-success-800 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-success-900 dark:text-success-200 inline-flex items-center gap-2 mb-2">
+                {{ icon('film', size='sm') }} Films
+            </h3>
+            <ul class="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 ml-1">
+                <li class="flex items-start gap-1.5"><span class="text-success-600 dark:text-success-400 flex-shrink-0 mt-0.5">{{ icon('check', size='sm') }}</span> Long-métrage standard (fiction)</li>
+                <li class="flex items-start gap-1.5"><span class="text-success-600 dark:text-success-400 flex-shrink-0 mt-0.5">{{ icon('check', size='sm') }}</span> Documentaire</li>
+                <li class="flex items-start gap-1.5"><span class="text-success-600 dark:text-success-400 flex-shrink-0 mt-0.5">{{ icon('check', size='sm') }}</span> Animation</li>
+            </ul>
+        </div>
+        <div class="bg-success-50/40 dark:bg-success-900/15 border border-success-200 dark:border-success-800 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-success-900 dark:text-success-200 inline-flex items-center gap-2 mb-2">
+                {{ icon('list', size='sm') }} Séries TV
+            </h3>
+            <ul class="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 ml-1">
+                <li class="flex items-start gap-1.5"><span class="text-success-600 dark:text-success-400 flex-shrink-0 mt-0.5">{{ icon('check', size='sm') }}</span> Série standard (fiction)</li>
+                <li class="flex items-start gap-1.5"><span class="text-success-600 dark:text-success-400 flex-shrink-0 mt-0.5">{{ icon('check', size='sm') }}</span> Série documentaire</li>
+                <li class="flex items-start gap-1.5"><span class="text-success-600 dark:text-success-400 flex-shrink-0 mt-0.5">{{ icon('check', size='sm') }}</span> Série d'animation</li>
+                <li class="flex items-start gap-1.5"><span class="text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5">·</span> Saisons complètes, intégrales, épisodes individuels</li>
+            </ul>
+        </div>
+    </div>
+
+    {# Ce qui n'est pas encore géré — coming soon #}
+    <div class="bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2 mb-2">
+            {{ icon('clock', size='sm', classes='text-slate-500 dark:text-slate-400') }}
+            Pas encore géré
+            <span class="text-xs font-normal text-slate-500 dark:text-slate-400">(à venir)</span>
+        </h3>
+        <p class="text-xs text-slate-600 dark:text-slate-400 mb-3">Pour ces catégories, passer par l'upload manuel
+            Gemini en attendant. Les builds suivants élargiront le périmètre :</p>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-xs text-slate-700 dark:text-slate-300">
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Émissions TV</div>
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Sport</div>
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Concerts / clips</div>
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Jeux vidéo</div>
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Logiciels</div>
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Ebooks</div>
+            <div class="inline-flex items-center gap-1.5"><span class="text-slate-400">{{ icon('clock', size='sm') }}</span> Formations</div>
+        </div>
+    </div>
+</section>
+
+
+{# ============================================================
+   WORKFLOW EN DÉTAIL — explique chaque étape, focus validate + batch
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Comment ça marche</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Le flow d'un upload, étape par étape.</p>
+
+    {# Les 4 étapes du pipeline #}
+    <ol class="space-y-3 mb-6">
+        {% set steps = [
+            ('search',  'Inbox — choisir les sources',  'Tu navigues dans ton arborescence de fichiers (configurable via BROWSE_ROOT). Tu coches un ou plusieurs fichiers vidéo, ou un dossier entier (saison complète, multi-saisons). Shift+Click sélectionne une plage. Le toggle "Tous les fichiers" affiche aussi les fichiers exotiques (.iso, .bin) si besoin.'),
+            ('refresh', 'Préparation — l\'app travaille',  'Pour chaque sélection, un job de préparation tourne en background : extraction MediaInfo, lookup TMDB, génération du release_name compliant Gemini, création du .torrent, écriture des NFO et de la fiche BBCode, vérification anticipée de doublon côté tracker. Tu peux suivre l\'avancement live dans la Queue (section "Préparations en cours").'),
+            ('check',   'Validation — ta vérification',  'Une fois préparé, le package apparaît dans la liste "Packages préparés" avec un score de 0 à 100 et des badges d\'avertissement éventuels. Pour CHAQUE package, tu dois lire le score, ouvrir le détail si nécessaire, vérifier la variante FR détectée, le TMDB match, les doublons, et le release_name final. Si tu veux séparer "j\'ai validé celui-ci" de "j\'uploade plus tard", utilise le bouton "Valider sans uploader" (voir batch plus bas).'),
+            ('upload',  'Upload — envoyer au tracker',  'Une fois validé, tu coches le package (ou plusieurs) et tu cliques "Uploader la sélection". L\'app envoie tout au tracker un par un. Le package passe en "Uploadé" avec un lien direct vers Gemini.'),
+        ] %}
+        {% for s_icon, s_title, s_desc in steps %}
+        <li class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+            <div class="flex items-start gap-3">
+                <span class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 text-sm font-semibold tabular-nums">{{ loop.index }}</span>
+                <div class="min-w-0 flex-1">
+                    <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1.5">
+                        <span class="text-primary-600 dark:text-primary-400">{{ icon(s_icon, size='sm') }}</span>
+                        {{ s_title }}
+                    </h3>
+                    <p class="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">{{ s_desc }}</p>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+
+    {# Deux flows : 1 torrent vs batch #}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {# Flow A : 1 seul torrent #}
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('upload', size='sm', classes='text-primary-600 dark:text-primary-400') }}
+                    Flow simple — 1 torrent
+                </h3>
+            </div>
+            <div class="p-4 text-xs text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                <p>Pour un seul upload, le plus rapide :</p>
+                <ol class="ml-4 space-y-1 list-decimal list-outside marker:text-slate-400 marker:font-medium">
+                    <li>Inbox → coche le fichier → "Ajouter à la queue"</li>
+                    <li>Attends que le score apparaisse (quelques secondes)</li>
+                    <li>Si score ≥ 90 et aucun warning : ouvre quand même le détail pour vérifier la variante FR et le TMDB</li>
+                    <li>Clique "Uploader vers le tracker" sur la page détail</li>
+                </ol>
+            </div>
+        </div>
+
+        {# Flow B : batch #}
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('list', size='sm', classes='text-primary-600 dark:text-primary-400') }}
+                    Flow batch — plusieurs torrents
+                </h3>
+            </div>
+            <div class="p-4 text-xs text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                <p>Pour uploader 5–50 packages d'un coup, le pattern recommandé :</p>
+                <ol class="ml-4 space-y-1 list-decimal list-outside marker:text-slate-400 marker:font-medium">
+                    <li>Inbox → coche tous les fichiers → "Ajouter à la queue"</li>
+                    <li>Laisse les préparations finir (en background)</li>
+                    <li><strong>Fais le tour de chaque package préparé</strong> : ouvre, vérifie, et clique
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800 text-[10px] font-medium">Valider sans uploader</span>
+                        pour le marquer comme "prêt à envoyer"</li>
+                    <li>Sur Queue, filtre par état "Validé"</li>
+                    <li>Coche tout (case "select all"), clique "Uploader la sélection"</li>
+                </ol>
+                <p class="text-slate-500 dark:text-slate-400 mt-2 italic">L'état "Validé" sépare clairement
+                    "j'ai vérifié et c'est OK" du brouillon "préparé mais pas encore validé". Tu peux toujours
+                    cliquer à nouveau sur le bouton pour annuler la validation.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+{# ============================================================
+   QUALITÉ DU FICHIER SOURCE — input = output
+   ============================================================ #}
+<section class="mb-10 bg-warning-50/60 dark:bg-warning-900/15 border border-warning-200 dark:border-warning-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold text-warning-900 dark:text-warning-200 inline-flex items-center gap-2 mb-3">
+        {{ icon('sparkles', size='md') }}
+        Plus ton input est clean, plus ton score sera bon
+    </h2>
+    <div class="text-sm text-warning-900/90 dark:text-warning-200/90 space-y-2 leading-relaxed">
+        <p>
+            L'app extrait l'information depuis le <strong>nom du fichier source</strong> et son
+            <strong>MediaInfo</strong>. Si l'input est propre, le release_name généré sera direct
+            et le score remontera tout seul. Si l'input est bricolé, l'app fera de son mieux mais
+            tu devras override des champs à la main.
+        </p>
+        <p class="font-medium">Ce qui aide :</p>
+        <ul class="ml-4 space-y-1 list-disc list-outside marker:text-warning-600">
+            <li>Un nom de fichier qui suit le pattern scène (ex: <code class="text-xs font-mono px-1 rounded bg-warning-100/70 dark:bg-warning-900/30">Foo.2024.MULTi.VFF.1080p.BluRay.DDP5.1.x265-TEAM.mkv</code>)</li>
+            <li>Pas de caractères spéciaux exotiques dans le titre (accent, &amp;, etc.)</li>
+            <li>Variante FR explicite dans le nom (VFF/VFQ/VFB/VOF/VOQ) plutôt que juste "FRENCH"</li>
+            <li>Tracks audio bien tagguées dans MediaInfo (langue, titre type "VFF")</li>
+            <li>Sous-titres en SRT/UTF-8 plutôt que PGS uniquement (Gemini préfère le texte)</li>
+        </ul>
+        <p class="text-xs text-warning-800/80 dark:text-warning-300/80 mt-2 italic">
+            Note : pour un fichier mal nommé mais bon contenu, les overrides de la page détail permettent
+            de tout corriger sans toucher au fichier source.
+        </p>
+    </div>
+</section>
+
+
+{# ============================================================
+   RESPONSABILITÉ UTILISATEUR — banner sérieux
+   ============================================================ #}
+<section class="mb-10 bg-danger-50/40 dark:bg-danger-900/15 border border-danger-200 dark:border-danger-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold text-danger-900 dark:text-danger-200 inline-flex items-center gap-2 mb-2">
+        {{ icon('alert-triangle', size='md') }}
+        Ta responsabilité
+    </h2>
+    <div class="text-sm text-danger-900/90 dark:text-danger-200/90 space-y-2 leading-relaxed">
+        <p>
+            <strong>Tu es responsable de tout ce que tu uploades sur le tracker.</strong> L'app fait des
+            inférences ; elle se trompe parfois. Tu dois <strong>vérifier chaque upload</strong> :
+        </p>
+        <ul class="ml-4 space-y-1 list-disc list-outside marker:text-danger-600">
+            <li><strong>Score &lt; 90</strong> : ouvre toujours le détail, lis chaque warning, vérifie le doublon, valide le naming.</li>
+            <li><strong>Score 95–99</strong> : un coup d'œil reste nécessaire — l'app peut s'être trompée sur la variante FR ou le TMDB.</li>
+            <li><strong>Score 100</strong> : statistiquement sûr, mais en cas de doute, ouvre le package avant l'upload.</li>
+        </ul>
+        <p class="text-xs italic mt-2">
+            En cas d'erreur d'upload, c'est sur le forum / wiki Gemini que tu dois te référer, pas sur cet outil.
+        </p>
+        <div class="mt-4 pt-3 border-t border-danger-200 dark:border-danger-800 text-xs">
+            <p class="font-medium mb-1">Disclaimer légal</p>
+            <p class="text-danger-900/80 dark:text-danger-200/80">
+                Flox Uploader est un outil de préparation et d'envoi. L'utilisateur est seul
+                responsable du contenu qu'il prépare et envoie. Vérifie les règles de ton
+                tracker et les lois en vigueur dans ta juridiction avant chaque upload.
+                Aucune donnée ne quitte ta machine sans appel API explicite (TMDB, OMDb, tracker).
+            </p>
+        </div>
+    </div>
+</section>
+
+
+{# ============================================================
+   PIÈGES COURANTS — variants, doublons, teams
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Pièges récurrents</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Les vrais cas où l'app demande ton attention.</p>
+
+    <div class="space-y-3">
+        {# 1. Variants FR #}
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('alert-triangle', size='sm', classes='text-warning-600 dark:text-warning-400') }}
+                    Variant VFF / VFQ / VFB mal indiqué
+                </h3>
+            </div>
+            <div class="p-4 text-sm text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                <p>Les releases scène sont parfois étiquetées <strong>VFF</strong> alors que le doublage est
+                    en réalité <strong>VFQ (québécois)</strong> ou <strong>VFB (belge)</strong>. L'app détecte
+                    ce qu'elle voit dans le nom ; elle ne devine pas ce qui ne s'y trouve pas.</p>
+                <p><strong>À faire</strong> : si tu doutes, écoute 10 secondes du doublage, ou consulte un site
+                    spécialisé. Force la variante via l'override "Variante FR forcée" dans la page détail.
+                    L'icône drapeau dans la carte Technique t'indique la variante détectée par piste.</p>
+            </div>
+        </div>
+
+        {# 2. Doublons #}
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('ban', size='sm', classes='text-danger-600 dark:text-danger-400') }}
+                    Doublons côté tracker
+                </h3>
+            </div>
+            <div class="p-4 text-sm text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                <p>L'app contacte l'API Gemini avant l'upload pour vérifier qu'un torrent quasi-identique
+                    n'existe pas déjà. 3 niveaux de confiance :</p>
+                <ul class="ml-4 space-y-1 list-disc list-outside marker:text-slate-400">
+                    <li><strong class="text-danger-700 dark:text-danger-400">Doublon certain</strong> : tailles identiques. L'upload est bloqué automatiquement.</li>
+                    <li><strong class="text-warning-700 dark:text-warning-400">Doublon probable</strong> : delta de taille faible. <strong>À toi de vérifier</strong> via le lien fourni.</li>
+                    <li><strong class="text-warning-700 dark:text-warning-400">Doublon ambigu</strong> : delta modéré. Possible re-encode du même fichier.</li>
+                </ul>
+                <p class="text-xs text-slate-500 dark:text-slate-400 italic mt-2">Sur la page détail, le bouton
+                    <strong>"Re-vérifier les doublons"</strong> rejoue le check (utile si tu as fait supprimer un
+                    doublon côté tracker entre-temps).</p>
+            </div>
+        </div>
+
+        {# 3. Teams interdites + qualité source #}
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('shield', size='sm', classes='text-danger-600 dark:text-danger-400') }}
+                    Teams interdites + qualité du fichier
+                </h3>
+            </div>
+            <div class="p-4 text-sm text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                <p>Gemini interdit certaines teams (qualité douteuse, re-encodes pourris). L'app détecte les teams
+                    blacklistées et bloque l'upload. La liste à jour est dans le <strong>wiki Gemini</strong>.</p>
+                <p>Tu peux ajouter tes propres teams interdites via la <a href="/config" class="text-primary-700 dark:text-primary-400 hover:underline">page Config</a>
+                    (variable <code class="text-xs font-mono">EXTRA_BANNED_TEAMS</code>).</p>
+            </div>
+        </div>
+
+        {# 4. Score stale après bug fix — rescore #}
+        <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('refresh-cw', size='sm', classes='text-primary-600 dark:text-primary-400') }}
+                    Score périmé après mise à jour de l'app
+                </h3>
+            </div>
+            <div class="p-4 text-sm text-slate-700 dark:text-slate-300 space-y-2 leading-relaxed">
+                <p>Quand les règles de scoring évoluent (bug fixé, règle assouplie), les packages déjà préparés
+                    gardent leur ancien score. Pour rafraîchir sans regénérer le <code class="text-xs font-mono">.torrent</code> :
+                    bouton <strong>"Re-calculer le score"</strong> sur la page détail.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 italic">Sécurité : ne touche jamais à l'infohash
+                    du <code class="text-xs font-mono">.torrent</code>. Tu peux l'utiliser même sur un package déjà uploadé.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+{# ============================================================
+   CONCEPTS — score
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Comprendre le score</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">6 paliers, du parfait au bloqué.</p>
+    <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <ul class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            <li class="px-4 py-3 flex items-center gap-3">
+                <span class="score-glow-parfait inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800 flex-shrink-0">
+                    {{ icon('sparkles', size='sm') }}<span class="tabular-nums">100</span>
+                </span>
+                <div class="min-w-0 flex-1"><strong class="text-slate-900 dark:text-slate-100">Parfait.</strong> <span class="text-slate-600 dark:text-slate-400">Aucune approximation détectée. Coup d'œil de sécurité conseillé.</span></div>
+            </li>
+            <li class="px-4 py-3 flex items-center gap-3">
+                <span class="score-glow-perfect inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800 flex-shrink-0">
+                    {{ icon('check', size='sm') }}<span class="tabular-nums">95–99</span>
+                </span>
+                <div class="min-w-0 flex-1"><strong class="text-slate-900 dark:text-slate-100">Quasi parfait.</strong> <span class="text-slate-600 dark:text-slate-400">1-2 fallbacks mineurs. Lecture rapide du détail.</span></div>
+            </li>
+            <li class="px-4 py-3 flex items-center gap-3">
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800 flex-shrink-0">
+                    {{ icon('arrow-up', size='sm') }}<span class="tabular-nums">80–94</span>
+                </span>
+                <div class="min-w-0 flex-1"><strong class="text-slate-900 dark:text-slate-100">Prêt / Bon.</strong> <span class="text-slate-600 dark:text-slate-400">Quelques avertissements légers. Parcours-les avant l'upload.</span></div>
+            </li>
+            <li class="px-4 py-3 flex items-center gap-3">
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 ring-1 ring-inset ring-warning-200 dark:ring-warning-800 flex-shrink-0">
+                    {{ icon('alert-triangle', size='sm') }}<span class="tabular-nums">60–79</span>
+                </span>
+                <div class="min-w-0 flex-1"><strong class="text-slate-900 dark:text-slate-100">À vérifier.</strong> <span class="text-slate-600 dark:text-slate-400">Plusieurs avertissements sérieux. Ouvre le détail, vérifie chaque ligne.</span></div>
+            </li>
+            <li class="px-4 py-3 flex items-center gap-3">
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 ring-1 ring-inset ring-danger-200 dark:ring-danger-800 flex-shrink-0">
+                    {{ icon('x', size='sm') }}<span class="tabular-nums">&lt; 60</span>
+                </span>
+                <div class="min-w-0 flex-1"><strong class="text-slate-900 dark:text-slate-100">Bloqué.</strong> <span class="text-slate-600 dark:text-slate-400">Au moins un problème dur (compliance, doublon certain). Override ou upload manuel.</span></div>
+            </li>
+        </ul>
+    </div>
+</section>
+
+
+{# ============================================================
+   RACCOURCIS CLAVIER
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Raccourcis clavier</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Les gestes qui font gagner du temps.</p>
+    <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <table class="w-full text-sm">
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+                {% set shortcuts = [
+                    (['⌘', 'K'], 'Palette de commandes (Ctrl+K sur Win/Linux)', 'Partout'),
+                    (['Shift', 'Click'], 'Sélectionner une plage de cases à cocher', 'Inbox, Queue'),
+                    (['Esc'], 'Fermer la modale, popover, ou clear un champ de recherche', 'Partout'),
+                    (['↵'], 'Confirmer la modale ouverte', 'Modales confirm/alert'),
+                    (['↑', '↓'], 'Naviguer dans les résultats de la palette', 'Command palette'),
+                ] %}
+                {% for keys, desc, scope in shortcuts %}
+                <tr>
+                    <td class="px-4 py-2.5 w-44 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-0.5">
+                            {% for k in keys %}
+                            <kbd class="inline-flex items-center justify-center min-w-6 h-6 px-1.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-[11px] font-mono font-medium text-slate-700 dark:text-slate-300">{{ k }}</kbd>
+                            {% if not loop.last %}<span class="text-slate-400 dark:text-slate-500 mx-0.5">+</span>{% endif %}
+                            {% endfor %}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2.5 text-slate-700 dark:text-slate-300">{{ desc }}</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ scope }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+
+{# ============================================================
+   LIENS UTILES
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Liens utiles</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">En cas de doute, le wiki Gemini fait foi.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {% set links = [
+            ('Wiki Gemini', 'Règles officielles, teams interdites, format des release names, naming convention.', 'https://wiki.gemini-tracker.org', 'book-open'),
+            ('Charte upload', 'Ce qui est autorisé, ce qui ne l\'est pas, comment naming. La référence finale.', 'https://wiki.gemini-tracker.org/charte', 'file-text'),
+            ('TMDB', 'Pour vérifier un ID ou un titre quand l\'app se trompe.', 'https://www.themoviedb.org', 'film'),
+            ('IMDb', 'Pour la note et les récompenses.', 'https://www.imdb.com', 'star'),
+        ] %}
+        {% for l_title, l_desc, l_href, l_icon in links %}
+        <a href="{{ l_href }}" target="_blank" rel="noopener noreferrer"
+           class="block bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-3 hover:border-primary-400 dark:hover:border-primary-700 hover:shadow-sm transition-all duration-fast">
+            <div class="flex items-start gap-3">
+                <span class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                    {{ icon(l_icon, size='sm') }}
+                </span>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-1">
+                        {{ l_title }}
+                        {{ icon('external-link', size='sm', classes='text-slate-400') }}
+                    </div>
+                    <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mt-0.5">{{ l_desc }}</p>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mt-3 italic">
+        Note : les URLs des wikis peuvent évoluer. Si un lien est cassé, demande l'URL à jour sur le forum Gemini.
+    </p>
+</section>
+
+
+{# ============================================================
+   À PROPOS
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">À propos</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Sous le capot.</p>
+    <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <dl class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Version</dt>
+                <dd class="text-sm font-mono text-slate-900 dark:text-slate-100">{{ app_version }}</dd>
+            </div>
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Périmètre actuel</dt>
+                <dd class="text-xs text-slate-600 dark:text-slate-400 text-right">Films · Documentaires · Animation · Séries TV (toutes catégories)</dd>
+            </div>
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Stack</dt>
+                <dd class="text-xs text-slate-600 dark:text-slate-400">Python 3.10+ · FastAPI · Jinja2 · Tailwind · SQLite · torf · MediaInfo</dd>
+            </div>
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Design system</dt>
+                <dd class="text-xs text-slate-600 dark:text-slate-400">Inter · JetBrains Mono · Lucide icons · Indigo primary</dd>
+            </div>
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Données locales</dt>
+                <dd class="text-xs text-slate-600 dark:text-slate-400">
+                    <code class="font-mono bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">data/upload_packages/</code> ·
+                    <code class="font-mono bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">.tmdb_cache.json</code> ·
+                    <code class="font-mono bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">jobs.db</code>
+                </dd>
+            </div>
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+                <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Confidentialité</dt>
+                <dd class="text-xs text-slate-600 dark:text-slate-400">Aucune donnée ne quitte ta machine sans appel API explicite (TMDB, OMDb, tracker).</dd>
+            </div>
+        </dl>
+    </div>
+</section>
+
+
+{# ============================================================
+   FOOTER — signature Flox
+   ============================================================ #}
+<footer class="mt-12 mb-4 text-center">
+    <p class="text-xs text-slate-400 dark:text-slate-600">
+        Flox Uploader · made with <span class="text-danger-500">♥</span> by
+        <span class="font-medium text-slate-600 dark:text-slate-400">Flox</span>
+    </p>
+</footer>
+
+{% endblock %}

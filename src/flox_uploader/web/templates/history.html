@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, card, empty_state, button, badge, link_button %}
+{% from "_icons.html" import icon %}
+
+{% block title %}History · Flox Uploader{% endblock %}
+
+{% block content %}
+{% call page_header(
+    title='History',
+    description=(packages|length ~ ' package' ~ ('s' if packages|length > 1 else '') ~ ' uploadé' ~ ('s' if packages|length > 1 else '') ~ '. Cliquer ouvre la page de détail.') if packages else 'Aucun upload pour l’instant.'
+) %}
+{# Pas d'action principale ici — la liste est read-only. #}
+{% endcall %}
+
+{% if packages %}
+<div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+    {# Toolbar : recherche live + compteur #}
+    <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-3">
+        <div class="relative flex-1 max-w-md tu-search-wrap">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                {{ icon('search', size='sm') }}
+            </div>
+            <input id="history-search" type="text" placeholder="Filtrer par nom de release…"
+                   class="tu-search-input w-full pl-9 pr-9 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-md border border-slate-300 dark:border-slate-600">
+            <button type="button" class="tu-search-clear hidden absolute inset-y-0 right-0 pr-3 items-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 interactive"
+                    aria-label="Effacer la recherche" data-tu-tooltip="Effacer">
+                {{ icon('x', size='sm') }}
+            </button>
+        </div>
+        <span id="history-count" class="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{{ total }} package(s)</span>
+    </div>
+
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <tr>
+                <th class="px-4 py-2.5 font-medium">Release</th>
+                <th class="px-4 py-2.5 w-24 text-right font-medium">Taille</th>
+                <th class="px-4 py-2.5 w-44 font-medium">Uploadé le</th>
+                <th class="px-4 py-2.5 w-32 text-center font-medium">Tracker</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            {% for p in packages %}
+            <tr class="history-row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast" data-name="{{ p.release_name | lower }}">
+                <td class="px-4 py-2.5">
+                    <a href="/packages/{{ p.package_name }}" class="font-mono text-xs text-primary-700 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300 hover:underline break-all">
+                        {{ p.release_name }}
+                    </a>
+                </td>
+                <td class="px-4 py-2.5 text-right text-slate-600 dark:text-slate-400 text-xs whitespace-nowrap tabular-nums">
+                    {{ p.size_pretty or "—" }}
+                </td>
+                <td class="px-4 py-2.5 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                    {{ p.updated_at | fmt_date }}
+                </td>
+                <td class="px-4 py-2.5 text-center">
+                    {% if p.uploaded_torrent_url %}
+                    <a href="{{ p.uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer"
+                       class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/50 ring-1 ring-inset ring-primary-200 dark:ring-primary-800 transition-colors duration-fast">
+                        <span>ID {{ p.uploaded_torrent_id }}</span>
+                        {{ icon('external-link', size='sm') }}
+                    </a>
+                    {% else %}
+                    <span class="text-xs text-slate-400 dark:text-slate-600">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+{{ empty_state(
+    icon_name='history',
+    title='Aucun upload pour l’instant',
+    description='Les packages uploadés avec succès s’afficheront ici. Va dans la Queue pour préparer et uploader tes premiers fichiers.',
+    action_label='Aller à la Queue',
+    action_href='/queue',
+    secondary_label='Ou parcourir l’Inbox',
+    secondary_href='/inbox'
+) }}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const searchInput = document.getElementById('history-search');
+  const countEl = document.getElementById('history-count');
+  const total = {{ total }};
+
+  function _foldAccents(s) {
+    return (s || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+      .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+      .toLowerCase();
+  }
+
+  function applyFilter() {
+    if (!searchInput) return;
+    const q = _foldAccents(searchInput.value).trim();
+    const tokens = q.split(/\s+/).filter(t => t.length > 0);
+    let visible = 0;
+    document.querySelectorAll('tr.history-row').forEach(row => {
+      const name = _foldAccents(row.dataset.name || '');
+      const ok = tokens.every(t => name.includes(t));
+      row.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    if (countEl) {
+      countEl.textContent = q
+        ? `${visible} / ${total} visible(s)`
+        : `${total} package(s)`;
+    }
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applyFilter);
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { searchInput.value = ''; applyFilter(); }
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,2457 @@
+{% extends "base.html" %}
+{% from "_components.html" import card, button, link_button, badge %}
+{% from "_icons.html" import icon %}
+{# SYNC-MARKER-2026-05-06 #}
+
+{% block title %}{{ release_name }} · Flox Uploader{% endblock %}
+
+{% block content %}
+
+{# NOTES round 9 P2.1 : table of contents sticky (right rail).
+   Visible uniquement xl+ (1280px+) pour ne pas surcharger les ecrans
+   moyens. Liste des sections principales avec scroll smooth + active
+   highlight via IntersectionObserver. Fixed positioning sur le right
+   margin du content area. #}
+<nav id="toc-rail" aria-label="Sections du package" class="hidden xl:block fixed top-24 right-4 w-52 z-20">
+    <div class="text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500 mb-2 px-2">Sur cette page</div>
+    <ul class="space-y-0.5 text-xs">
+        {% set toc_items = [
+            ('toc-score',    'Score',                 'sparkles'),
+            ('toc-upload',   'Upload',                'upload'),
+            ('toc-override', 'Override naming',       'rotate-ccw'),
+            ('toc-options',  'Options upload',        'settings'),
+            ('toc-media',    'Media + Technique',    'film'),
+            ('toc-tree',     'Contenu du torrent',    'folder-open'),
+            ('toc-bbcode',   'BBCode',                'file-text'),
+            ('toc-log',      'Log',                   'scroll-text'),
+        ] %}
+        {% for tid, tlabel, ticon in toc_items %}
+        <li>
+            <a href="#{{ tid }}" data-toc-target="{{ tid }}"
+               class="tu-toc-link interactive flex items-center gap-2 px-2 py-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 border-l-2 border-transparent">
+                <span class="flex-shrink-0 opacity-70">{{ icon(ticon, size='sm') }}</span>
+                <span class="truncate">{{ tlabel }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+
+{# NOTES round 9 P2.2 : sticky action bar — apparait quand l'user scroll
+   et que la section Upload n'est plus visible. Permet de cliquer Upload
+   depuis n'importe ou dans la page (utile pour les longues pages avec
+   beaucoup de warnings, NFOs, etc.). Ne se montre que si on a quelque
+   chose d'actionnable (PREPARED ou VALIDATED). UPLOADED -> rien a faire
+   sur le tracker, on cache. ABORTED_DUPLICATE / FAILED -> idem. #}
+{% if state in ['prepared', 'validated'] %}
+<div id="sticky-action-bar"
+     class="hidden fixed top-14 md:top-0 right-0 left-0 md:left-60 z-40 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 shadow-sm transition-opacity duration-fast">
+    <div class="px-4 md:px-8 py-2.5 max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
+        <span class="text-xs text-slate-500 dark:text-slate-400 font-mono truncate flex-1 min-w-0">{{ release_name }}</span>
+        <span class="inline-flex items-center gap-1.5 text-xs flex-shrink-0">
+            {% if state == 'validated' %}
+            {{ badge('Validé', tone='primary', icon_name='check') }}
+            {% elif state == 'prepared' %}
+            {{ badge('Préparé', tone='neutral') }}
+            {% endif %}
+        </span>
+        <button type="button" id="btn-upload-sticky"
+                class="interactive inline-flex items-center gap-2 h-8 px-3 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 flex-shrink-0">
+            {{ icon('upload', size='sm') }}
+            <span>Uploader</span>
+        </button>
+    </div>
+</div>
+{% endif %}
+
+<div class="mb-6 flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1">
+        <a href="/queue" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-primary-700 dark:hover:text-primary-400 transition-colors duration-fast mb-2">
+            {{ icon('arrow-left', size='sm') }}
+            Retour à la queue
+        </a>
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1.5 break-all font-mono tracking-tight">{{ release_name }}</h1>
+        <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+            <span>État</span>
+            {% if state == 'uploaded' %}{{ badge('Uploadé', tone='success', icon_name='check') }}
+            {% elif state == 'aborted-duplicate' %}{{ badge('Doublon', tone='warning', icon_name='ban') }}
+            {% elif state == 'failed' %}{{ badge('Échec', tone='danger', icon_name='x-circle') }}
+            {% elif state == 'validated' %}{{ badge('Validé', tone='primary', icon_name='arrow-right') }}
+            {% elif state == 'prepared' %}{{ badge('Préparé', tone='neutral') }}
+            {% else %}{{ badge(state, tone='neutral') }}
+            {% endif %}
+            <span class="text-slate-300 dark:text-slate-600">·</span>
+            <span>Mis à jour : {{ updated_at | fmt_date if updated_at else '—' }}</span>
+            {# NOTES round 7 : si state=uploaded ET uploaded_torrent_url disponible,
+               affiche un CTA proeminent juste apres les metadata pour aller
+               verifier la release sur Gemini en 1 clic. #}
+            {% if state == 'uploaded' and uploaded_torrent_url %}
+            <span class="text-slate-300 dark:text-slate-600">·</span>
+            <a href="{{ uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800 hover:bg-success-100 dark:hover:bg-success-900/50 transition-colors duration-fast">
+                {{ icon('external-link', size='sm') }}
+                Voir sur Gemini
+                <span class="opacity-70 ml-0.5">(ID {{ uploaded_torrent_id }})</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="flex-shrink-0 text-right">
+        {% set bucket_label = {
+            'parfait': 'Parfait',
+            'perfect': 'Quasi parfait',
+            'ready':   'Prêt',
+            'good':    'Bon',
+            'review':  'À vérifier',
+            'blocked': 'Bloqué',
+        }.get(confidence_bucket, '') %}
+        {# Score badge unifie : success / warning / danger + glow #}
+        {% if confidence_bucket == 'parfait' %}
+            <span class="score-glow-parfait inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-base font-bold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800">
+                {{ icon('sparkles', size='md') }}
+                <span class="tabular-nums">{{ confidence_score }}<span class="text-sm font-normal opacity-60">/100</span></span>
+            </span>
+        {% elif confidence_bucket == 'perfect' %}
+            <span class="score-glow-perfect inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-base font-bold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800">
+                {{ icon('check', size='md') }}
+                <span class="tabular-nums">{{ confidence_score }}<span class="text-sm font-normal opacity-60">/100</span></span>
+            </span>
+        {% elif confidence_bucket in ('ready', 'good') %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-base font-bold bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800">
+                {{ icon('arrow-up', size='md') }}
+                <span class="tabular-nums">{{ confidence_score }}<span class="text-sm font-normal opacity-60">/100</span></span>
+            </span>
+        {% elif confidence_bucket == 'review' %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-base font-bold bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 ring-1 ring-inset ring-warning-200 dark:ring-warning-800">
+                {{ icon('alert-triangle', size='md') }}
+                <span class="tabular-nums">{{ confidence_score }}<span class="text-sm font-normal opacity-60">/100</span></span>
+            </span>
+        {% elif confidence_bucket == 'blocked' %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-base font-bold bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 ring-1 ring-inset ring-danger-200 dark:ring-danger-800">
+                {{ icon('x', size='md') }}
+                <span class="tabular-nums">{{ confidence_score }}<span class="text-sm font-normal opacity-60">/100</span></span>
+            </span>
+        {% else %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-base font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+                <span class="tabular-nums">{{ confidence_score }}<span class="text-sm font-normal opacity-60">/100</span></span>
+            </span>
+        {% endif %}
+        {% if bucket_label %}
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ bucket_label }}</div>
+        {% endif %}
+    </div>
+</div>
+
+{# === Bannieres doublon / erreur (tons semantiques + icones Lucide) === #}
+{% macro alert_banner(tone, icon_name, title, body, link_url=None, link_label=None) %}
+{%- set tone_classes = {
+    'danger':  'bg-danger-50 dark:bg-danger-900/20 border-danger-200 dark:border-danger-800 text-danger-900 dark:text-danger-200',
+    'warning': 'bg-warning-50 dark:bg-warning-900/20 border-warning-200 dark:border-warning-800 text-warning-900 dark:text-warning-200',
+    'info':    'bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-900 dark:text-primary-200',
+}.get(tone, 'bg-slate-50 dark:bg-slate-900/20 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-200') -%}
+{%- set icon_cls = {
+    'danger':  'text-danger-600 dark:text-danger-400',
+    'warning': 'text-warning-600 dark:text-warning-400',
+    'info':    'text-primary-600 dark:text-primary-400',
+}.get(tone, 'text-slate-500') -%}
+<div class="mb-6 border rounded-lg p-4 {{ tone_classes }}">
+    <div class="flex items-start gap-3">
+        <span class="{{ icon_cls }} mt-0.5 flex-shrink-0">{{ icon(icon_name, size='lg') }}</span>
+        <div class="flex-1 min-w-0">
+            <h3 class="font-semibold text-sm">{{ title }}</h3>
+            <p class="text-sm mt-1 opacity-90">{{ body }}</p>
+            {% if link_url %}
+            <a href="{{ link_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 mt-2 text-sm underline hover:no-underline font-medium">
+                {{ link_label }}
+                {{ icon('external-link', size='sm') }}
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% if state == 'aborted-duplicate' %}
+{{ alert_banner('danger', 'ban',
+    'Doublon CERTAIN détecté côté tracker',
+    'Ce package ne sera pas uploadé. Le tracker a déjà cette release.',
+    existing_torrent_url, 'Voir le torrent existant (ID ' ~ existing_torrent_id ~ ')' if existing_torrent_url else None) }}
+{% elif dedup_confidence == 'very_likely' %}
+{{ alert_banner('warning', 'alert-triangle',
+    'Doublon TRÈS PROBABLE détecté',
+    'Le tracker contient un torrent très proche en taille. Vérifie avant d’uploader.',
+    existing_torrent_url, 'Voir le torrent existant (ID ' ~ existing_torrent_id ~ ')' if existing_torrent_url else None) }}
+{% elif dedup_confidence == 'ambiguous' %}
+{{ alert_banner('warning', 'help-circle',
+    'Doublon AMBIGU détecté',
+    'Le tracker contient un torrent avec un delta de taille modéré. Vérification recommandée.',
+    existing_torrent_url, 'Voir le torrent existant (ID ' ~ existing_torrent_id ~ ')' if existing_torrent_url else None) }}
+{% endif %}
+
+{# NOTES round 8 P5.7 / P5.8 : actions de "maintenance" sur le package.
+   - Re-verifier les doublons : interroge le tracker pour rafraichir
+     l'existence d'un doublon. Pertinent en pre/post-upload.
+   - Re-calculer le score : re-applique les regles compliance actuelles
+     sur les donnees deja extraites (mediainfo_data + tmdb_context du
+     prepare). NE TOUCHE PAS au .torrent (infohash preserve).
+   Le bouton dedup est restreint a prepared/validated/aborted-duplicate
+   (les autres etats sont apres-upload, pas pertinent). Le bouton rescore
+   est dispo pour TOUS les etats — typique : refresher un upload ancien
+   dont le score 50 a ete cause par un bug depuis fixe. #}
+<div class="mb-4 flex items-center gap-2 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+    {% if state in ['prepared', 'validated', 'aborted-duplicate'] %}
+    {{ button('Re-vérifier les doublons', id='btn-dedup-recheck', variant='ghost', size='sm', icon_name='shield-check',
+              tooltip="Interroge à nouveau le tracker pour vérifier si un doublon existe. Utile après une suppression côté tracker ou pour un état frais.") }}
+    {% endif %}
+    {{ button('Re-calculer le score', id='btn-rescore', variant='ghost', size='sm', icon_name='refresh-cw',
+              tooltip="Re-applique les règles de scoring/conformité actuelles avec les données déjà extraites. Le .torrent et l'infohash sont préservés (aucun risque pour un upload existant). Utile si le score reflète un ancien bug depuis corrigé.") }}
+    <span id="dedup-recheck-status" class="text-xs"></span>
+</div>
+
+{% if last_error %}
+<div class="mb-6 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg p-4">
+    <div class="flex items-start gap-3">
+        <span class="text-danger-600 dark:text-danger-400 mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='lg') }}</span>
+        <div class="flex-1 min-w-0">
+            <h3 class="font-semibold text-sm text-danger-900 dark:text-danger-200">Erreur</h3>
+            <p class="text-sm text-danger-800 dark:text-danger-300 mt-1 break-all">{{ last_error }}</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# === Detail du score (palette semantique, plus de sky/orange/red coexistants) === #}
+<section id="toc-score" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Détail du score</h3>
+        <span class="text-xs text-slate-500 dark:text-slate-400">
+            {% if penalties %}{{ penalties|length }} déduction{{ 's' if penalties|length > 1 else '' }}{% else %}aucune déduction{% endif %}
+        </span>
+    </header>
+    <table class="w-full text-sm">
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+            <tr>
+                <td class="px-4 py-2.5 text-slate-700 dark:text-slate-300">Score initial</td>
+                <td class="px-4 py-2.5 text-right text-slate-900 dark:text-slate-100 font-medium tabular-nums">100</td>
+            </tr>
+
+            {% for label, penalty in penalties %}
+            {% set is_dup_certain_label = ('contient déjà ce torrent' in label) %}
+            {% set is_dup_other_label = ('Très probablement un doublon' in label) or ('Possible doublon' in label) %}
+            {% if is_dup_certain_label %}
+                {% set sev_cls = 'text-danger-700 dark:text-danger-300 font-semibold' %}
+                {% set sev_ico = 'ban' %}
+                {% set num_cls = 'text-danger-600 dark:text-danger-400 font-medium' %}
+            {% elif is_dup_other_label or penalty >= 5 %}
+                {% set sev_cls = 'text-warning-700 dark:text-warning-400' %}
+                {% set sev_ico = 'alert-triangle' %}
+                {% set num_cls = 'text-warning-600 dark:text-warning-400 font-medium' %}
+            {% else %}
+                {% set sev_cls = 'text-primary-700 dark:text-primary-400' %}
+                {% set sev_ico = 'info' %}
+                {% set num_cls = 'text-primary-600 dark:text-primary-400 font-medium' %}
+            {% endif %}
+            <tr>
+                <td class="px-4 py-2.5 {{ sev_cls }}">
+                    <span class="inline-flex items-start gap-1.5">
+                        <span class="mt-0.5 flex-shrink-0">{{ icon(sev_ico, size='sm') }}</span>
+                        <span>
+                            {{ label }}
+                            {% if (is_dup_certain_label or is_dup_other_label) and existing_torrent_url %}
+                            <a href="{{ existing_torrent_url }}" target="_blank" rel="noopener noreferrer" class="ml-1 underline hover:no-underline inline-flex items-center gap-1">
+                                {{ icon('external-link', size='sm') }}
+                                Voir le doublon (ID {{ existing_torrent_id }})
+                            </a>
+                            {% endif %}
+                        </span>
+                    </span>
+                </td>
+                <td class="px-4 py-2.5 text-right {{ num_cls }} tabular-nums whitespace-nowrap">−{{ penalty }}</td>
+            </tr>
+            {% endfor %}
+
+            {% if not penalties %}
+            <tr>
+                <td class="px-4 py-3 text-success-700 dark:text-success-400" colspan="2">
+                    <span class="inline-flex items-center gap-1.5">
+                        {{ icon('check-circle', size='sm') }}
+                        Score parfait — aucun fallback, aucune anomalie. Le release_name a été construit directement depuis le nom source.
+                    </span>
+                </td>
+            </tr>
+            {% endif %}
+
+            <tr class="bg-slate-100/80 dark:bg-slate-700/60">
+                <td class="px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100">
+                    Total
+                    {% if confidence_bucket %}<span class="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">{{ confidence_bucket }}</span>{% endif %}
+                </td>
+                <td class="px-4 py-2.5 text-right font-bold text-slate-900 dark:text-slate-100 tabular-nums">{{ confidence_score }}/100</td>
+            </tr>
+        </tbody>
+    </table>
+    {% set has_orange_or_red = penalties | selectattr('1', 'ge', 5) | list %}
+    {% if penalties and not has_orange_or_red %}
+    <div class="px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50/60 dark:bg-slate-900/40 border-t border-slate-100 dark:border-slate-700/60 inline-flex items-center gap-1.5 w-full">
+        {{ icon('info', size='sm') }}
+        Avertissements légers : chacun signale une approximation du pipeline. Le score reste élevé tant qu'il y en a peu.
+    </div>
+    {% endif %}
+</section>
+
+{# === Section Upload (visible si state autorise) === #}
+{% if state in ('prepared', 'validated', 'failed') %}
+<section id="toc-upload" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon('upload', size='md') }}
+            Upload vers le tracker
+        </h3>
+    </header>
+    <div class="p-4 space-y-3">
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+            Appelle l'API du tracker, télécharge le .torrent final avec passkey, et marque le package comme uploadé.
+            {% if state == 'prepared' %}
+            Tu peux aussi <strong>valider</strong> le package (sans uploader) pour l'inclure dans un batch upload depuis la Queue plus tard.
+            {% endif %}
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+            {{ button('Uploader vers le tracker', id='btn-upload-real', variant='primary', icon_name='upload') }}
+            {# NOTES round 7+ : bouton toggle "Valider" / "Validé".
+               - state=prepared : variant secondary (gris) -> click POST /validate
+               - state=validated : variant primary (bleu) -> click POST /unvalidate
+               Permet de marquer/demarquer en aller-retour avant l'upload. #}
+            {% if state == 'prepared' %}
+            {{ button('Valider sans uploader',
+                      id='btn-validate-toggle',
+                      variant='secondary',
+                      icon_name='check',
+                      tooltip='Marquer comme validé pour batch-upload depuis la Queue. Cliquer à nouveau plus tard pour annuler.',
+                      attrs='data-state="prepared"') }}
+            {% elif state == 'validated' %}
+            {{ button('Validé (cliquer pour annuler)',
+                      id='btn-validate-toggle',
+                      variant='primary',
+                      icon_name='check',
+                      tooltip="Click pour revenir en 'Préparé'.",
+                      attrs='data-state="validated"') }}
+            {% endif %}
+            <span id="upload-status-badge" class="text-xs text-slate-500 dark:text-slate-400 ml-2"></span>
+        </div>
+        <div id="upload-current-line" class="hidden text-xs font-mono text-slate-700 dark:text-slate-300 truncate bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2"
+             data-tu-tooltip="Dernière ligne du log"></div>
+        <div id="upload-log-wrapper" class="hidden mt-2">
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
+                    {{ icon('scroll-text', size='sm') }} Log temps réel
+                </span>
+                <span id="upload-log-status" class="text-xs text-slate-400 dark:text-slate-500"></span>
+            </div>
+            <pre id="upload-log-preview" class="p-3 text-xs font-mono text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900/60 rounded-md border border-slate-200 dark:border-slate-700 max-h-72 overflow-y-auto whitespace-pre-wrap"></pre>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- Lot U.1 : Cartes Media + Technique repensees. Cote-a-cote en desktop,
+     empilees en mobile. La carte Media (gauche) decrit l'OEUVRE (TMDB/IMDB
+     IDs cliquables, genres, synopsis tronque, langue VO, pays, durée,
+     notes). La carte Technique (droite) decrit le FICHIER (container,
+     resolution, codec, pistes audio/sub avec drapeaux). -->
+
+{# Detection de la variante FR depuis le release_name (round 6 NOTES).
+   Permet d'afficher le bon drapeau (🇨🇦 pour VFQ/VOQ, 🇧🇪 pour VFB)
+   meme si la track MediaInfo n'a pas de region/title explicite. #}
+{% set rn_upper = (release_name or '') | upper %}
+{% set fr_variant = 'VFQ' if ('VFQ' in rn_upper or 'VOQ' in rn_upper)
+                   else ('VFB' if ('VFB' in rn_upper or 'VOB' in rn_upper)
+                   else ('VFF' if ('VFF' in rn_upper or 'VOF' in rn_upper or 'TRUEFRENCH' in rn_upper or 'FRENCH' in rn_upper)
+                   else '')) %}
+{% set fr_flag_override = '🇨🇦' if fr_variant == 'VFQ' else ('🇧🇪' if fr_variant == 'VFB' else '') %}
+
+{# NOTES round 9 UX-2 : detection PER-TRACK des variantes francophones.
+   Pour les releases MULTi qui contiennent plusieurs pistes FR (VFF + VFQ
+   par exemple), la detection au niveau release_name ne suffit pas — on
+   regarde aussi le titre de chaque piste. VF2 = doublage quebecois
+   legacy -> drapeau canadien. VFQ/VOQ -> CA, VFB/VOB -> BE. #}
+{% macro _track_fr_override(track) -%}
+  {%- set tt = (track.title or '') | upper -%}
+  {%- if 'VFQ' in tt or 'VOQ' in tt or 'VF2' in tt or 'QUEBEC' in tt or 'QUEBECOIS' in tt or 'QUÉBÉCOIS' in tt -%}
+    🇨🇦
+  {%- elif 'VFB' in tt or 'VOB' in tt or 'BELGE' in tt -%}
+    🇧🇪
+  {%- elif 'VFF' in tt or 'VOF' in tt or 'TRUEFRENCH' in tt -%}
+    🇫🇷
+  {%- else -%}{{ fr_flag_override }}{%- endif -%}
+{%- endmacro %}
+
+{% macro lang_flag(code, override_fr_flag='') -%}
+  {%- set flags = {
+    'fr': '🇫🇷', 'en': '🇬🇧', 'us': '🇺🇸', 'ja': '🇯🇵', 'ko': '🇰🇷',
+    'zh': '🇨🇳', 'es': '🇪🇸', 'it': '🇮🇹', 'de': '🇩🇪', 'pt': '🇵🇹',
+    'ru': '🇷🇺', 'ar': '🇸🇦', 'hi': '🇮🇳', 'th': '🇹🇭', 'vi': '🇻🇳',
+    'nl': '🇳🇱', 'sv': '🇸🇪', 'no': '🇳🇴', 'da': '🇩🇰', 'fi': '🇫🇮',
+    'pl': '🇵🇱', 'tr': '🇹🇷', 'el': '🇬🇷', 'he': '🇮🇱', 'cs': '🇨🇿',
+    'hu': '🇭🇺', 'ro': '🇷🇴', 'uk': '🇺🇦', 'bg': '🇧🇬', 'hr': '🇭🇷',
+    'sr': '🇷🇸', 'sk': '🇸🇰', 'sl': '🇸🇮', 'id': '🇮🇩', 'ms': '🇲🇾',
+    'fa': '🇮🇷', 'mk': '🇲🇰',
+  } -%}
+  {%- set lc = (code or '').lower() -%}
+  {%- if lc == 'fr' and override_fr_flag -%}
+    {{- override_fr_flag -}}
+  {%- else -%}
+    {{- flags.get(lc, '🌐') -}}
+  {%- endif -%}
+{%- endmacro %}
+
+<div id="toc-media" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <!-- ====== CARTE MEDIA (l'oeuvre) ====== -->
+    <section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                {{ icon('clapperboard', size='md') }}
+                Média
+            </h3>
+        </header>
+        <div class="p-4">
+            {# Round 5 : poster un peu plus gros (w-44 = 176px) + synopsis
+               sur le cote droit du poster pour densifier l'info. #}
+            <div class="flex gap-4 mb-3">
+                {% if poster_url %}
+                <a href="https://www.themoviedb.org/{% if media_type == 'movie' %}movie{% else %}tv{% endif %}/{{ tmdb_id }}" target="_blank" rel="noopener noreferrer" class="flex-shrink-0">
+                    <img src="{{ poster_url }}" alt="Poster" class="w-44 rounded shadow-sm hover:shadow-md transition" loading="lazy">
+                </a>
+                {% endif %}
+                <div class="flex-1 min-w-0">
+                    {% if tmdb_title %}
+                    <div class="font-medium text-slate-900 dark:text-slate-100 break-words text-base">
+                        {{ tmdb_title }}{% if tmdb_year %} <span class="text-slate-500 dark:text-slate-400 font-normal">({{ tmdb_year }})</span>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="text-slate-500 dark:text-slate-400 italic text-sm">Aucun match TMDB</div>
+                    {% endif %}
+                    {% if tmdb_genres %}
+                    <div class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                        {{ tmdb_genres | join(' · ') }}
+                    </div>
+                    {% endif %}
+                    {# NOTES round 9 UX-3 : realisateur (films) ou createur (series).
+                       TMDB consolide les deux sous la clef `director` pour nous. #}
+                    {% if tmdb_director %}
+                    <div class="text-xs text-slate-600 dark:text-slate-400 mt-1 inline-flex items-center gap-1.5"
+                         data-tu-tooltip="{% if media_type == 'movie' %}Réalisateur{% else %}Créateur de la série{% endif %}">
+                        {{ icon('user', size='sm') }}
+                        <span>{{ tmdb_director }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-slate-600 dark:text-slate-400">
+                        {% if tmdb_original_language %}
+                        <span data-tu-tooltip="Langue d'origine">{{ lang_flag(tmdb_original_language) }} VO {{ tmdb_original_language | upper }}</span>
+                        {% endif %}
+                        {% if tmdb_production_countries %}
+                        <span data-tu-tooltip="Pays de production" class="inline-flex items-center gap-1">
+                            {{ icon('map-pin', size='sm') }}
+                            {{ tmdb_production_countries | join(', ') }}
+                        </span>
+                        {% endif %}
+                        {% if tmdb_runtime %}
+                        <span data-tu-tooltip="Durée d'origine" class="inline-flex items-center gap-1">
+                            {{ icon('clock', size='sm') }}
+                            {{ tmdb_runtime }}min
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if tmdb_rating or imdb_rating %}
+                    <div class="flex gap-3 mt-2 text-xs">
+                        {% if tmdb_rating %}
+                        <span class="text-slate-700 dark:text-slate-300"><span class="text-slate-500 dark:text-slate-400">TMDB</span> {{ "%.1f"|format(tmdb_rating) }}/10</span>
+                        {% endif %}
+                        {% if imdb_rating %}
+                        <span class="text-slate-700 dark:text-slate-300"><span class="text-slate-500 dark:text-slate-400">IMDb</span> {{ imdb_rating }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if tmdb_overview %}
+                    <div class="mt-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                        <span id="media-synopsis-short">{{ tmdb_overview_short }}</span>
+                        <span id="media-synopsis-full" class="hidden">{{ tmdb_overview }}</span>
+                        {% if tmdb_overview != tmdb_overview_short %}
+                        <button type="button" id="btn-toggle-synopsis"
+                                class="text-primary-700 dark:text-primary-400 hover:underline text-xs ml-1">
+                            afficher tout
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {# IDs externes — pilules subtilement contrastantes mais
+               sans coexistence yellow+purple+emerald (palette unique). #}
+            <div class="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap gap-2 text-xs">
+                {% if tmdb_id %}
+                <a href="https://www.themoviedb.org/{% if media_type == 'movie' %}movie{% else %}tv{% endif %}/{{ tmdb_id }}"
+                   target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-fast">
+                    {{ icon('external-link', size='sm') }}
+                    TMDB {{ tmdb_id }}
+                </a>
+                {% endif %}
+                {% if imdb_id %}
+                <a href="https://www.imdb.com/title/{{ imdb_id }}/" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-fast">
+                    {{ icon('external-link', size='sm') }}
+                    IMDb {{ imdb_id }}
+                </a>
+                {% endif %}
+                {% if tvdb_id_ctx %}
+                <a href="https://thetvdb.com/series/{{ tvdb_id_ctx }}" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-fast">
+                    {{ icon('external-link', size='sm') }}
+                    TVDB {{ tvdb_id_ctx }}
+                </a>
+                {% endif %}
+                {% if uploaded_torrent_url %}
+                <a href="{{ uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-success-700 dark:text-success-300 bg-success-50 dark:bg-success-900/30 hover:bg-success-100 dark:hover:bg-success-900/50 transition-colors duration-fast ml-auto">
+                    {{ icon('link', size='sm') }}
+                    Tracker (ID {{ uploaded_torrent_id }})
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- ====== CARTE TECHNIQUE (le fichier) ====== -->
+    <section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                {{ icon('wrench', size='md') }}
+                Technique
+            </h3>
+        </header>
+        <div class="p-4 space-y-3 text-sm">
+            {# Ligne 1 : taille / duree / container #}
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span><span class="text-slate-500 dark:text-slate-400">Taille</span> <span class="text-slate-900 dark:text-slate-100 font-medium">{{ size_pretty or '—' }}</span></span>
+                {% if mediainfo_duration_pretty %}
+                <span><span class="text-slate-500 dark:text-slate-400">Durée</span> <span class="text-slate-900 dark:text-slate-100">{{ mediainfo_duration_pretty }}</span></span>
+                {% endif %}
+                {% if mediainfo_container %}
+                {# Round 5 : afficher MKV plutot que MATROSKA (plus parlant). #}
+                <span><span class="text-slate-500 dark:text-slate-400">Container</span> <span class="text-slate-900 dark:text-slate-100">{% if mediainfo_container|upper == 'MATROSKA' %}MKV{% else %}{{ mediainfo_container }}{% endif %}</span></span>
+                {% endif %}
+            </div>
+            {# Ligne 2 : video #}
+            {% if resolution_label or video_codec or hdr_label %}
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs pt-1 border-t border-slate-100 dark:border-slate-700">
+                {% if resolution_label %}
+                <span><span class="text-slate-500 dark:text-slate-400">Résolution</span> <span class="text-slate-900 dark:text-slate-100 font-medium">{{ resolution_label }}</span></span>
+                {% endif %}
+                {% if hdr_label and hdr_label != 'SDR' %}
+                <span><span class="text-slate-500 dark:text-slate-400">HDR</span> <span class="text-slate-900 dark:text-slate-100">{{ hdr_label }}</span></span>
+                {% endif %}
+                {% if video_codec %}
+                <span><span class="text-slate-500 dark:text-slate-400">Codec</span> <span class="font-mono text-slate-900 dark:text-slate-100">{{ video_codec }}{% if mediainfo_bit_depth %} · {{ mediainfo_bit_depth }}{% endif %}</span></span>
+                {% endif %}
+                {% if mediainfo_framerate %}
+                <span><span class="text-slate-500 dark:text-slate-400">FPS</span> <span class="text-slate-900 dark:text-slate-100">{{ mediainfo_framerate }}</span></span>
+                {% endif %}
+            </div>
+            {% endif %}
+            {# Pistes audio #}
+            {% if mediainfo_audio_tracks %}
+            <div class="pt-2 border-t border-slate-100 dark:border-slate-700">
+                <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Pistes audio ({{ mediainfo_audio_tracks | length }})</div>
+                <div class="space-y-0.5 text-xs">
+                    {% for t in mediainfo_audio_tracks %}
+                    <div class="flex flex-wrap items-center gap-x-2 text-slate-700 dark:text-slate-300">
+                        <span>{{ lang_flag(t.language, override_fr_flag=_track_fr_override(t)|trim) }}</span>
+                        <span class="font-mono text-slate-900 dark:text-slate-100">{{ t.codec or '?' }}</span>
+                        {% if t.channels %}<span class="font-mono">{{ t.channels }}</span>{% endif %}
+                        {% if t.bitrate_pretty %}<span class="text-slate-500 dark:text-slate-400">{{ t.bitrate_pretty }}</span>{% endif %}
+                        {% if t.title %}<span class="text-slate-500 dark:text-slate-400 italic truncate">· {{ t.title }}</span>{% endif %}
+                        {% if t.default %}<span class="text-xs bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-1.5 rounded ring-1 ring-inset ring-primary-200 dark:ring-primary-800">default</span>{% endif %}
+                        {% if t.is_commentary %}<span class="text-xs bg-slate-200 dark:bg-slate-700 px-1.5 rounded">comm.</span>{% endif %}
+                        {% if t.is_audio_description %}<span class="text-xs bg-slate-200 dark:bg-slate-700 px-1.5 rounded">AD</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {# Pistes sous-titres #}
+            {% if mediainfo_subtitle_tracks %}
+            <div class="pt-2 border-t border-slate-100 dark:border-slate-700">
+                <div class="text-xs text-slate-500 dark:text-slate-400 mb-1">Sous-titres ({{ mediainfo_subtitle_tracks | length }})</div>
+                <div class="space-y-0.5 text-xs">
+                    {% for s in mediainfo_subtitle_tracks %}
+                    <div class="flex flex-wrap items-center gap-x-2 text-slate-700 dark:text-slate-300">
+                        <span>{{ lang_flag(s.language, override_fr_flag=_track_fr_override(s)|trim) }}</span>
+                        <span class="font-mono text-slate-900 dark:text-slate-100">{{ s.format or '?' }}</span>
+                        <span class="text-slate-500 dark:text-slate-400">{{ s.kind or 'Complet' }}</span>
+                        {% if s.title %}<span class="text-slate-500 dark:text-slate-400 italic truncate">· {{ s.title }}</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {# Source / paths — aligne label vs valeur en grid 2 colonnes. #}
+            <div class="pt-3 border-t border-slate-100 dark:border-slate-700/60 space-y-1 text-xs">
+                {% if source_file_path %}
+                <div class="flex items-start gap-2">
+                    <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 w-16">Source</span>
+                    <span class="font-mono break-all text-slate-700 dark:text-slate-300 flex-1">{{ source_file_path }}</span>
+                </div>
+                {% endif %}
+                <div class="flex items-start gap-2">
+                    <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 w-16">Package</span>
+                    <span id="pkg-path" class="font-mono break-all text-slate-700 dark:text-slate-300 flex-1">{{ package_dir }}</span>
+                    <button id="btn-open-folder" type="button"
+                            class="interactive inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 flex-shrink-0"
+                            aria-label="Ouvrir le dossier dans l'explorateur" data-tu-tooltip="Ouvrir dans l'explorateur">
+                        {{ icon('folder-open', size='sm') }}
+                    </button>
+                    <button id="btn-copy-path" type="button"
+                            class="interactive inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 flex-shrink-0"
+                            aria-label="Copier le chemin" data-tu-tooltip="Copier le chemin">
+                        {{ icon('copy', size='sm') }}
+                    </button>
+                </div>
+                {% if source_force_fr %}
+                <div class="text-primary-700 dark:text-primary-400 inline-flex items-center gap-1 text-xs">
+                    <span class="text-slate-500 dark:text-slate-400 w-16">Force FR</span>
+                    <span>{{ source_force_fr }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+</div>
+
+{# 2 cartes distinctes — overrides re-prepare vs options upload #}
+{% if state == 'prepared' or state == 'failed' %}
+{# ============================================================
+   CARTE 1 : Override re-prepare. Toute modification ici demande de
+   re-generer le package (release_name, .torrent, NFO, BBCode).
+   ============================================================ #}
+<section id="toc-override" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-primary-200 dark:border-primary-800 mb-6 overflow-hidden">
+    {# NOTES round 9 P2.3 : header cliquable -> toggle de override-body.
+       Default fermé (cas rare ou l'user en a besoin) ; ouvert si l'user
+       a deja un override actif (auto-expand pour visibilite). #}
+    {% set _override_has_value = (source_force_fr or source_manual_tmdb_id or source_manual_release_name) %}
+    <button type="button" class="tu-section-toggle w-full px-4 py-3 border-b border-primary-200 dark:border-primary-800 bg-primary-50/60 dark:bg-primary-900/20 hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left flex items-start gap-2 transition-colors duration-fast"
+            data-section-target="override-naming-body"
+            aria-expanded="{{ 'true' if _override_has_value else 'false' }}">
+        <span class="tu-section-caret flex-shrink-0 text-primary-700 dark:text-primary-300 transition-transform duration-fast {% if _override_has_value %}rotate-90{% endif %}">
+            {{ icon('chevron-right', size='sm') }}
+        </span>
+        <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-semibold text-primary-900 dark:text-primary-200 inline-flex items-center gap-2">
+                {{ icon('rotate-ccw', size='md') }}
+                Override naming
+                <span class="text-xs font-normal text-primary-700/80 dark:text-primary-400/80">re-préparation requise</span>
+                {% if _override_has_value %}
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-200/60 dark:bg-primary-800/60 text-primary-800 dark:text-primary-200">actif</span>
+                {% endif %}
+            </h3>
+            <p class="text-xs text-primary-800/80 dark:text-primary-300/80 mt-1">
+                Modifie le naming du package. Les changements ici n'ont effet qu'après avoir cliqué <strong>Re-préparer</strong> en bas.
+            </p>
+        </div>
+    </button>
+    <div id="override-naming-body" class="p-4 space-y-4 {% if not _override_has_value %}hidden{% endif %}">
+        <!-- Force FR (re-prepare) -->
+        <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Variante FR forcée</label>
+            <div class="flex flex-wrap gap-2">
+                {% set fr_labels = {'': 'Auto', 'VFF': 'MULTi.VFF', 'VFQ': 'MULTi.VFQ', 'VFB': 'MULTi.VFB', 'VOF': 'VOF', 'VOQ': 'VOQ', 'VOB': 'VOB'} %}
+                {% for v in ['', 'VFF', 'VFQ', 'VFB', 'VOF', 'VOQ', 'VOB'] %}
+                <label class="inline-flex items-center gap-1 px-3 h-8 border rounded-md text-sm cursor-pointer transition-colors duration-fast
+                    {% if (source_force_fr or '') == v %}bg-primary-50 dark:bg-primary-900/40 border-primary-400 dark:border-primary-700 text-primary-800 dark:text-primary-200{% else %}bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/40{% endif %}">
+                    <input type="radio" name="force_fr" value="{{ v }}" {% if (source_force_fr or '') == v %}checked{% endif %} class="sr-only">
+                    <span>{{ fr_labels[v] }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- TMDB ID manuel : bypass la recherche par titre, lookup direct -->
+        <div>
+            <label for="manual_tmdb_id" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TMDB ID forcé</label>
+            <div class="flex items-center gap-2">
+                <input type="number" id="manual_tmdb_id" value="{{ manual_tmdb_id or '' }}" placeholder="Auto"
+                       class="w-32 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {% if tmdb_id %}
+                <span class="text-xs text-slate-500 dark:text-slate-400">Auto-detecté : <a href="https://www.themoviedb.org/{% if media_type == 'movie' %}movie{% else %}tv{% endif %}/{{ tmdb_id }}" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">{{ tmdb_id }}</a></span>
+                {% else %}
+                <span class="text-xs text-slate-500 dark:text-slate-400">Recherche le bon ID sur <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">themoviedb.org</a> et colle-le ici.</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Suffixe FR : ajout (Titre français) au nom de release -->
+        <div>
+            <label class="flex items-start gap-2 text-sm cursor-pointer">
+                <input type="checkbox" id="opt-append-fr" class="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
+                <div>
+                    <span class="font-medium text-slate-700 dark:text-slate-300">Ajouter le titre français entre parenthèses au nom de release</span>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Off par défaut. Quand activé : <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Foo.2024.x265-TEAM (Titre français)</code>
+                    </p>
+                </div>
+            </label>
+        </div>
+
+        <!-- Edition manuelle du release_name (verrouillee par defaut) -->
+        <div>
+            <label class="flex items-center gap-2 text-sm mb-1.5 cursor-pointer">
+                <input type="checkbox" id="opt-unlock-manual-name" class="rounded border-slate-300 dark:border-slate-600 text-warning-600 focus:ring-warning-500">
+                <span class="font-medium text-warning-700 dark:text-warning-400 inline-flex items-center gap-1.5">
+                    {{ icon('edit', size='sm') }}
+                    Activer l'édition manuelle du release_name
+                </span>
+            </label>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mb-1.5 pl-6 inline-flex items-start gap-1.5">
+                <span class="mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='sm') }}</span>
+                <span>Bypass la logique du pipeline. Le release_name doit être une string compacte sans espaces (ex : <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs font-mono">Foo.2024.MULTi.VFF.1080p.BluRay.x265-TEAM</code>).</span>
+            </p>
+            <input type="text" id="manual-release-name" value="{{ release_name_technical or release_name }}" disabled
+                   class="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-mono bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+        </div>
+
+        <!-- Bouton re-prepare -->
+        <div class="pt-2">
+            {{ button('Re-préparer avec ces options', id='btn-reprepare', variant='primary', icon_name='rotate-ccw', disabled=not source_file_path, tooltip=('Pas de fichier source connu' if not source_file_path else None)) }}
+            {% if not source_file_path %}
+            <span class="text-xs text-warning-600 dark:text-warning-400 ml-2 inline-flex items-center gap-1">
+                {{ icon('alert-triangle', size='sm') }}
+                Package legacy : pas de fichier source connu, re-prepare impossible.
+            </span>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+{# ============================================================
+   CARTE 2 : Options pour l'upload futur. Sauvegarde immediate sur change.
+   ============================================================ #}
+<section id="toc-options" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    {# NOTES round 9 P2.3 : header cliquable + body collapsable.
+       Default ferme (cas avancé) ; ouvert si un override est deja actif. #}
+    {% set _options_has_value = (
+        gemini_category_overridden or gemini_type_overridden or gemini_resolution_overridden
+        or manual_imdb_id or manual_tvdb_id or manual_mal_id or manual_keywords
+        or manual_season_number or manual_episode_number
+        or personal_release or anonymous
+    ) %}
+    <button type="button" class="tu-section-toggle w-full px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/30 hover:bg-slate-50 dark:hover:bg-slate-700/30 text-left flex items-start gap-2 transition-colors duration-fast"
+            data-section-target="upload-options-body"
+            aria-expanded="{{ 'true' if _options_has_value else 'false' }}">
+        <span class="tu-section-caret flex-shrink-0 text-slate-500 dark:text-slate-400 transition-transform duration-fast {% if _options_has_value %}rotate-90{% endif %}">
+            {{ icon('chevron-right', size='sm') }}
+        </span>
+        <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                {{ icon('upload', size='md') }}
+                Options pour l'upload
+                <span class="text-xs font-normal text-slate-500 dark:text-slate-400">sauvegarde automatique</span>
+                {% if _options_has_value %}
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">override actif</span>
+                {% endif %}
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Modifie sans re-préparer. Ces options sont envoyées au tracker au moment de l'upload réel.
+            </p>
+        </div>
+    </button>
+    <div id="upload-options-body" class="p-4 space-y-4 {% if not _options_has_value %}hidden{% endif %}">
+        <!-- Round 4 : 1 SEULE checkbox Override pour TOUTE la section.
+             Catégorie/Type/Résolution + saison/épisode + distrib/région +
+             IDs externes + mots-clés sont tous controles par le meme toggle.
+             Plus simple a comprendre pour l'utilisateur. -->
+        {% set any_override_active = (
+            gemini_category_overridden or gemini_type_overridden or gemini_resolution_overridden
+            or manual_imdb_id or manual_tvdb_id or manual_mal_id or manual_keywords
+            or manual_season_number or manual_episode_number
+            or manual_distributor_id or manual_region_id
+        ) %}
+        <div class="space-y-2">
+            <label class="inline-flex items-center gap-2 text-xs cursor-pointer text-slate-700 dark:text-slate-300">
+                <input type="checkbox" id="unified-override-toggle"
+                       {% if any_override_active %}checked{% endif %}
+                       class="rounded border-slate-300 dark:border-slate-600">
+                <span>Override (modifier manuellement)</span>
+            </label>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {# Catégorie #}
+                <div>
+                    <label for="gemini-category" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Catégorie</label>
+                    <select id="gemini-category" class="gemini-field upload-option-field w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                            data-key="manual_category_id" data-auto="{{ gemini_category_auto }}">
+                        {# Option "auto" cachee mais selectionnee par defaut quand pas override #}
+                        <option value="0" {% if not gemini_category_overridden %}selected{% endif %} hidden>
+                            {{ gemini_category_label }}
+                        </option>
+                        {% for opt_id, opt_label in gemini_category_options %}
+                        <option value="{{ opt_id }}" {% if gemini_category_overridden and gemini_category_id == opt_id %}selected{% endif %}>
+                            {{ opt_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {# Lot N.3 : source du guess affichee sous le select pour transparence #}
+                    {% if not gemini_category_overridden and gemini_category_auto_source %}
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 italic">
+                        ↳ {{ gemini_category_auto_source }}
+                    </p>
+                    {% endif %}
+                    {# Lot N.2 : hint Émission TV — auto-detect ne couvre pas cat 15 #}
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                        Talk-show, télé-réalité ou jeu télé ?
+                        Coche l'override et choisis « Émission TV ».
+                    </p>
+                </div>
+
+                {# Type #}
+                <div>
+                    <label for="gemini-type" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Type</label>
+                    <select id="gemini-type" class="gemini-field upload-option-field w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                            data-key="manual_type_id" data-auto="{{ gemini_type_auto }}">
+                        <option value="0" {% if not gemini_type_overridden %}selected{% endif %} hidden>
+                            {{ gemini_type_label }}
+                        </option>
+                        {% for opt_id, opt_label in gemini_type_options %}
+                        <option value="{{ opt_id }}" {% if gemini_type_overridden and gemini_type_id == opt_id %}selected{% endif %}>
+                            {{ opt_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {# Résolution #}
+                <div>
+                    <label for="gemini-resolution" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Résolution</label>
+                    <select id="gemini-resolution" class="gemini-field upload-option-field w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                            data-key="manual_resolution_id" data-auto="{{ gemini_resolution_auto }}">
+                        <option value="0" {% if not gemini_resolution_overridden %}selected{% endif %} hidden>
+                            {{ gemini_resolution_label }}
+                        </option>
+                        {% for opt_id, opt_label in gemini_resolution_options %}
+                        <option value="{{ opt_id }}" {% if gemini_resolution_overridden and gemini_resolution_id == opt_id %}selected{% endif %}>
+                            {{ opt_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <p id="gemini-status" class="text-xs text-slate-500 dark:text-slate-400"></p>
+        </div>
+
+        <!-- Round 4 : section champs upload supplementaires SANS sous-titre
+             (la checkbox Override en haut controle TOUTE la section). -->
+        <div class="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+
+            <!-- Saison / Épisode (visible si la cat est une série/anime/show) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="gemini-tv-row"
+                 {% if gemini_category_id not in (2, 6, 14, 15) %}style="display:none"{% endif %}>
+                <div>
+                    <label for="manual_season_number" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">N° saison</label>
+                    <input type="number" id="manual_season_number" min="0" step="1"
+                           class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_season_number"
+                           value="{{ manual_season_number or auto_season_number or '' }}"
+                           placeholder="0 = pack complet/specials">
+                </div>
+                <div>
+                    <label for="manual_episode_number" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">N° épisode</label>
+                    <input type="number" id="manual_episode_number" min="0" step="1"
+                           class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_episode_number"
+                           value="{{ manual_episode_number or auto_episode_number or '' }}"
+                           placeholder="0 = pack saison/complete">
+                </div>
+            </div>
+
+            <!-- Distributeur / Région (visible uniquement pour Full Disc, type=1) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="gemini-fulldisc-row"
+                 {% if gemini_type_id != 1 %}style="display:none"{% endif %}>
+                <div>
+                    <label for="manual_distributor_id" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Distributeur (Full Disc)</label>
+                    <input type="number" id="manual_distributor_id" min="0" step="1"
+                           class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_distributor_id"
+                           value="{{ manual_distributor_id or '' }}"
+                           placeholder="0 = laisser vide">
+                </div>
+                <div>
+                    <label for="manual_region_id" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Région (Full Disc)</label>
+                    <input type="number" id="manual_region_id" min="0" step="1"
+                           class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_region_id"
+                           value="{{ manual_region_id or '' }}"
+                           placeholder="0 = laisser vide">
+                </div>
+            </div>
+
+            <!-- IDs externes : IMDB / TVDB / MAL (controles par la checkbox
+                 Override globale au-dessus, Round 4) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label for="manual_imdb_id" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">IMDB ID</label>
+                    {# Round 4 : on affiche sans le prefixe 'tt' (= chiffres
+                       uniquement). L'API accepte les 2 formats — le backend
+                       strippe le 'tt' a la sauvegarde et avant l'envoi tracker. #}
+                    {% set imdb_value = (manual_imdb_id or auto_imdb_id or '') %}
+                    {% if imdb_value.startswith('tt') %}
+                        {% set imdb_value_display = imdb_value[2:] %}
+                    {% else %}
+                        {% set imdb_value_display = imdb_value %}
+                    {% endif %}
+                    <input type="text" id="manual_imdb_id" pattern="^(tt)?\d+$"
+                           class="ids-field extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_imdb_id"
+                           value="{{ imdb_value_display }}"
+                           placeholder="0405159">
+                </div>
+                <div>
+                    <label for="manual_tvdb_id" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        TVDB ID
+                        {% if auto_tvdb_id %}<span class="text-slate-400">(auto: {{ auto_tvdb_id }})</span>{% endif %}
+                    </label>
+                    <input type="number" id="manual_tvdb_id" min="0" step="1"
+                           class="ids-field extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_tvdb_id"
+                           value="{{ manual_tvdb_id or auto_tvdb_id or '' }}"
+                           placeholder="0 = auto">
+                </div>
+                <div>
+                    <label for="manual_mal_id" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">MAL ID (anime)</label>
+                    <input type="number" id="manual_mal_id" min="0" step="1"
+                           class="ids-field extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                           data-key="manual_mal_id"
+                           value="{{ manual_mal_id or '' }}"
+                           placeholder="0 = aucun">
+                </div>
+            </div>
+
+            <!-- Mots-clés -->
+            <div>
+                <label for="manual_keywords" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                    Mots-clés
+                    {% if auto_keywords %}<span class="text-slate-400 italic">(auto-rempli depuis TMDB : {{ auto_keywords[:80] }}{% if auto_keywords|length > 80 %}…{% endif %})</span>{% endif %}
+                </label>
+                <input type="text" id="manual_keywords"
+                       class="ids-field extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
+                       data-key="manual_keywords"
+                       value="{{ manual_keywords or auto_keywords or '' }}"
+                       placeholder="ex: super-héros, dc comics, marvel">
+            </div>
+
+            <p id="extra-fields-status" class="text-xs text-slate-500 dark:text-slate-400"></p>
+        </div>
+
+        <!-- Lot R-B : Drapeaux upload deplaces EN BAS (apres tous les champs).
+             Sans sous-titre, juste les checkboxes. -->
+        <div class="space-y-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" id="opt-personal" {% if personal_release %}checked{% endif %}
+                       class="opt-checkbox rounded border-slate-300 dark:border-slate-600 text-primary-600 dark:text-primary-400 focus:ring-primary-500">
+                <span>Marquer comme <strong>personal release</strong> (ma propre release)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" id="opt-anonymous" {% if anonymous %}checked{% endif %}
+                       class="opt-checkbox rounded border-slate-300 dark:border-slate-600 text-primary-600 dark:text-primary-400 focus:ring-primary-500">
+                <span>Upload <strong>anonyme</strong></span>
+            </label>
+            <p id="opt-status" class="text-xs text-slate-500 dark:text-slate-400"></p>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{# === Petite macro locale pour les "collapsibles" (release_name, scene NFO,
+   mediainfo NFO). Evite la duplication 3x du meme pattern. === #}
+{% macro nfo_block(target_id, title, icon_name, body, body_classes='', extra_label=None) %}
+<section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon(icon_name, size='md') }}
+            <span>{{ title }}</span>
+            {% if extra_label %}<span class="font-normal text-slate-500 dark:text-slate-400 text-xs">{{ extra_label }}</span>{% endif %}
+        </h3>
+        <div class="flex gap-1.5">
+            <button type="button" data-copy-target="{{ target_id }}"
+                    class="btn-copy interactive inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200"
+                    aria-label="Copier le contenu" data-tu-tooltip="Copier le contenu">{{ icon('copy', size='sm') }}</button>
+            <button type="button" class="btn-collapse text-xs text-primary-700 dark:text-primary-400 hover:underline px-2"
+                    data-target="{{ target_id }}" data-default-hidden="1">Afficher</button>
+        </div>
+    </header>
+    <pre id="{{ target_id }}" class="hidden p-4 text-xs font-mono text-slate-800 dark:text-slate-200 bg-slate-50/40 dark:bg-slate-900/40 overflow-x-auto {{ body_classes }}">{{ body }}</pre>
+</section>
+{% endmacro %}
+
+{# NOTES round 7 : section Tree view des fichiers du torrent. Cliquable
+   pour ouvrir/fermer. Le contenu est charge en lazy (fetch /api/packages/
+   {name}/torrent-files) a la 1ere ouverture. #}
+<section id="toc-tree" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon('folder-open', size='md') }}
+            <span>Contenu du torrent</span>
+            <span class="font-normal text-slate-500 dark:text-slate-400 text-xs" id="torrent-tree-stats"></span>
+        </h3>
+        <button type="button" class="btn-collapse inline-flex items-center gap-1 text-xs font-medium text-primary-700 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300 transition-colors duration-fast"
+                data-target="torrent-tree-body" data-default-hidden="1">
+            {{ icon('chevron-down', size='sm') }}
+            <span>Afficher</span>
+        </button>
+    </header>
+    <div id="torrent-tree-body" class="hidden p-4">
+        {# NOTES round 8 P1.D : skeleton loader (shimmer) au lieu d'un spinner
+           neutre — anticipe visuellement la structure de la liste arborescente. #}
+        <div id="torrent-tree-loading" class="space-y-2" aria-label="Chargement de la liste">
+            <div class="tu-skeleton h-3 w-2/3"></div>
+            <div class="tu-skeleton h-3 w-3/4 ml-4"></div>
+            <div class="tu-skeleton h-3 w-1/2 ml-4"></div>
+            <div class="tu-skeleton h-3 w-5/6 ml-4"></div>
+            <div class="tu-skeleton h-3 w-2/3"></div>
+            <div class="tu-skeleton h-3 w-3/5 ml-4"></div>
+        </div>
+        <div id="torrent-tree-error" class="hidden text-xs text-danger-700 dark:text-danger-400"></div>
+        <ul id="torrent-tree-list" class="hidden font-mono text-xs space-y-0.5"></ul>
+    </div>
+</section>
+
+{{ nfo_block('release-name-body', 'Nom de release', 'file-text', release_name_txt or '(absent)') }}
+
+{% if scene_nfo_text %}
+{{ nfo_block('scene-nfo-body', 'NFO d’origine — release scene', 'clapperboard', scene_nfo_text, body_classes='whitespace-pre max-h-96 overflow-y-auto', extra_label='(' ~ scene_nfo_lines ~ ' lignes)') }}
+{% endif %}
+
+{% if mediainfo_nfo_text %}
+{{ nfo_block('mediainfo-nfo-body', 'NFO MediaInfo — généré par le pipeline', 'wrench', mediainfo_nfo_text, body_classes='whitespace-pre max-h-96 overflow-y-auto', extra_label='(' ~ mediainfo_nfo_lines ~ ' lignes)') }}
+{% endif %}
+
+{% if presentation_text %}
+<section id="toc-bbcode" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon('file-text', size='md') }}
+            Présentation BBCode
+            {% if presentation_is_overridden %}
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium bg-warning-50 dark:bg-warning-900/30 text-warning-800 dark:text-warning-300 ring-1 ring-inset ring-warning-200 dark:ring-warning-800">
+                {{ icon('edit', size='sm') }}
+                Édité
+            </span>
+            {% endif %}
+        </h3>
+        <div class="flex gap-1.5 items-center">
+            <button type="button" data-copy-target="presentation-edit" data-copy-source="textarea"
+                    class="btn-copy interactive inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200"
+                    aria-label="Copier le contenu" data-tu-tooltip="Copier le contenu">{{ icon('copy', size='sm') }}</button>
+            <button type="button" id="btn-presentation-toggle"
+                    class="text-xs text-primary-700 dark:text-primary-400 hover:underline px-2">
+                Afficher
+            </button>
+        </div>
+    </header>
+    <div id="presentation-collapsible" class="hidden">
+        <div class="px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-700/20 flex gap-2 items-center flex-wrap">
+            {# Tabs Write / Preview — segmented control #}
+            <div class="inline-flex rounded-md border border-slate-300 dark:border-slate-600 overflow-hidden text-xs">
+                <button type="button" id="presentation-tab-write"
+                        class="presentation-tab px-3 h-7 bg-primary-600 text-white">Write</button>
+                <button type="button" id="presentation-tab-preview"
+                        class="presentation-tab px-3 h-7 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Aperçu</button>
+            </div>
+            <button type="button" id="btn-presentation-save"
+                    class="interactive inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700"
+                    disabled data-tu-tooltip="Aucune modification">
+                {{ icon('save', size='sm') }}
+                <span>Enregistrer</span>
+            </button>
+            <button type="button" id="btn-presentation-reset"
+                    class="interactive inline-flex items-center gap-1.5 px-2.5 h-7 text-xs font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    {% if not presentation_is_overridden %}disabled{% endif %}
+                    data-tu-tooltip="Revenir à la version régénérée par le pipeline">
+                {{ icon('rotate-ccw', size='sm') }}
+                <span>Reset</span>
+            </button>
+        </div>
+        {# Write : textarea editable avec scroll #}
+        <textarea id="presentation-edit"
+                  class="presentation-pane block w-full p-4 text-xs font-mono text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 border-0 focus:outline-none focus:ring-0 max-h-[60vh] min-h-[300px] overflow-y-auto resize-y"
+                  spellcheck="false">{{ presentation_text }}</textarea>
+        {# Preview : rendu HTML du BBCode via parser JS minimal (cf. bbcodeToHtml) #}
+        <div id="presentation-body" class="presentation-pane hidden p-4 text-sm text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-900 overflow-x-auto max-h-[60vh] min-h-[300px] overflow-y-auto"></div>
+        <footer class="px-4 py-2 border-t border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/30 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between gap-2">
+            <span id="presentation-status"></span>
+            <span class="text-slate-400 dark:text-slate-500">
+                {% if presentation_is_overridden %}
+                Cette présentation a été éditée. Reset = revenir à la version générée par le pipeline.
+                {% else %}
+                Modifie le texte si tu veux personnaliser ce qui sera uploadé. Reset n'est dispo qu'après une sauvegarde.
+                {% endif %}
+            </span>
+        </footer>
+    </div>
+    {# Original (cache, sert au reset client-side comme fallback) #}
+    <textarea id="presentation-original" class="hidden">{{ presentation_original }}</textarea>
+</section>
+{% endif %}
+
+{% if log_text %}
+<section id="toc-log" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon('scroll-text', size='md') }}
+            Log de préparation
+            <span class="text-xs font-normal text-slate-500 dark:text-slate-400">{{ log_lines }} lignes</span>
+        </h3>
+        <button type="button" class="btn-collapse text-xs text-primary-700 dark:text-primary-400 hover:underline px-2"
+                data-target="log-body" data-default-hidden="1">Afficher</button>
+    </header>
+    <pre id="log-body" class="hidden p-4 text-xs font-mono text-slate-800 dark:text-slate-200 bg-slate-50/40 dark:bg-slate-900/40 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">{{ log_text }}</pre>
+</section>
+{% endif %}
+
+{% if state != 'uploaded' %}
+<section class="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg p-4 mb-6">
+    <h3 class="text-sm font-semibold text-danger-900 dark:text-danger-200 mb-2 inline-flex items-center gap-2">
+        {{ icon('alert-triangle', size='md') }}
+        Zone dangereuse
+    </h3>
+    <p class="text-xs text-danger-700 dark:text-danger-300 mb-3">
+        Supprime ce package du disque. Le fichier source d'origine n'est pas touché, mais le dossier package, le .torrent généré, le NFO et la présentation seront perdus.
+    </p>
+    {{ button('Supprimer ce package', id='btn-delete-package', variant='danger', icon_name='trash-2') }}
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // === F2 : boutons "Copier" generiques ===
+    // Chaque bouton .btn-copy a un data-copy-target qui pointe vers l'id
+    // d'un <pre> ou <textarea>. data-copy-source="textarea" -> on lit .value
+    // (pour la version live de l'edit), sinon textContent.
+    // Btn copy : on memorise innerHTML (qui contient le SVG icon) pour
+    // pouvoir le restaurer apres le "tick" de succes (sinon le SVG est
+    // perdu et le bouton devient vide).
+    document.querySelectorAll('.btn-copy').forEach(btn => {
+        const originalHTML = btn.innerHTML;
+        btn.addEventListener('click', async () => {
+            const targetId = btn.dataset.copyTarget;
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            const text = btn.dataset.copySource === 'textarea'
+                ? (target.value || '')
+                : (target.textContent || '');
+            try {
+                await navigator.clipboard.writeText(text);
+                // Tick discret + tone success
+                btn.innerHTML = '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+                btn.classList.add('text-success-600', 'dark:text-success-400');
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.classList.remove('text-success-600', 'dark:text-success-400');
+                }, 1500);
+                tu.toast({ title: 'Copié', tone: 'success', duration: 1500 });
+            } catch (e) {
+                tu.toast({ title: 'Échec de la copie', message: e.message, tone: 'danger' });
+            }
+        });
+    });
+
+    // === B1 : parser BBCode minimal pour l'apercu ===
+    // Couvre les tags utilises par bbcode_renderer.py cote backend :
+    // [b], [i], [u], [color=#hex], [size=N], [center], [font=monospace],
+    // [img], [img=WxH], [url], [url=...], [code], [quote], et les sauts de ligne.
+    // L'echappement HTML se fait AVANT pour eviter l'injection de balises depuis
+    // le contenu du BBCode (XSS via [color=red]<script>... par exemple).
+    function escapeHtml(s) {
+        return s
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    function bbcodeToHtml(src) {
+        let html = escapeHtml(src);
+        // On loope plusieurs fois pour gerer les imbrications.
+        // Les regex non-greedy + replace en boucle convergent rapidement.
+        const rules = [
+            // [b]...[/b]
+            [/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>'],
+            // [i]...[/i]
+            [/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>'],
+            // [u]...[/u]
+            [/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>'],
+            // [center]...[/center]
+            // Lot post-NOTES round 5 : Markdown-like classique BBCode.
+            //   - \n simple   -> <br> (chaque ligne du source = ligne rendue)
+            //   - \n\n+       -> double <br> (paragraphe = espace vertical)
+            // Resultat attendu :
+            //   - Ratings : TMDB-logo + score + stars + (votes) restent
+            //     inline car le BBCode source les met sur UNE seule ligne.
+            //     IMDB sur la ligne suivante car \n entre TMDB et IMDB.
+            //   - Movie info : "Titre original : ..." \n "Sortie : ..." ->
+            //     chaque metadata sur sa propre ligne (ce que l'user veut).
+            //   - Cast images : 2 <img> adjacents (potentiellement separes
+            //     par <br>) sont recollapsed plus bas par la regle dedicate.
+            [/\[center\]([\s\S]*?)\[\/center\]/gi, (m, content) => {
+                let s = content;
+                // 1. Double newline -> double <br> (paragraphe avec spacing)
+                s = s.replace(/\n{2,}/g, '<br><br>');
+                // 2. Newline simple -> <br>
+                s = s.replace(/\n/g, '<br>');
+                return `<div style="text-align:center;line-height:1.6">${s}</div>`;
+            }],
+            // [font=monospace]...[/font]
+            [/\[font=([^\]]+)\]([\s\S]*?)\[\/font\]/gi, (m, font, content) => {
+                const safeFont = escapeHtml(font).replace(/[^a-zA-Z0-9 \-,]/g, '');
+                return `<span style="font-family:${safeFont}">${content}</span>`;
+            }],
+            // [color=#hex|name]...[/color]
+            [/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, (m, color, content) => {
+                // Sanitize : autoriser #abcdef, rgb(), ou nom de couleur basique
+                const safeColor = (color || '').replace(/[^#a-zA-Z0-9(),\s.%]/g, '').slice(0, 32);
+                return `<span style="color:${safeColor}">${content}</span>`;
+            }],
+            // [size=N]...[/size]
+            [/\[size=(\d+)\]([\s\S]*?)\[\/size\]/gi, (m, size, content) => {
+                const px = Math.max(8, Math.min(48, parseInt(size, 10) || 14));
+                return `<span style="font-size:${px}px">${content}</span>`;
+            }],
+            // [img=WxH]url[/img]
+            // Round 4 : ajout referrerpolicy="no-referrer" — imgur (et autres
+            // CDN) bloquent parfois le hotlink quand le Referer n'est pas
+            // leur propre domaine. Sans le header, imgur sert l'image.
+            [/\[img=(\d+)x(\d+)\]([\s\S]*?)\[\/img\]/gi, (m, w, h, url) => {
+                const u = String(url).replace(/\s+/g, '').replace(/['"<>]/g, '');
+                if (!u.match(/^https?:\/\//i)) {
+                    return `<span class="text-warning-600 dark:text-warning-400">⚠ [img=${w}x${h}] URL invalide</span>`;
+                }
+                const wp = parseInt(w, 10) || 0;
+                const hp = parseInt(h, 10) || 0;
+                let style = 'max-width:100%;';
+                if (wp > 0) style += `width:${wp}px;`;
+                if (hp > 0) style += `height:${hp}px;`;
+                else if (wp > 0) style += 'height:auto;';
+                return `<img src="${u}" style="${style}" loading="lazy" referrerpolicy="no-referrer" alt="" class="inline-block align-top mx-1">`;
+            }],
+            // [img=W]url[/img] (juste largeur)
+            // Round 5 fix : Tailwind preflight applique `display:block` sur
+            // TOUS les <img> par defaut, ce qui faisait passer chaque image
+            // sur sa propre ligne dans le [center] (TMDB logo, score, stars,
+            // votes, etc. tous empiles). On force `inline-block` + alignement
+            // baseline pour que les ratings restent inline.
+            [/\[img=(\d+)\]([\s\S]*?)\[\/img\]/gi, (m, w, url) => {
+                const u = String(url).replace(/\s+/g, '').replace(/['"<>]/g, '');
+                if (!u.match(/^https?:\/\//i)) {
+                    return `<span class="text-warning-600 dark:text-warning-400">⚠ [img=${w}] URL invalide : ${escapeHtml(url)}</span>`;
+                }
+                const wp = parseInt(w, 10) || 0;
+                return `<img src="${u}" style="display:inline-block;vertical-align:middle;max-width:100%;width:${wp}px;height:auto" loading="lazy" referrerpolicy="no-referrer" alt="">`;
+            }],
+            // [img]url[/img]
+            [/\[img\]([\s\S]*?)\[\/img\]/gi, (m, url) => {
+                const u = String(url).replace(/\s+/g, '').replace(/['"<>]/g, '');
+                if (!u.match(/^https?:\/\//i)) {
+                    return `<span class="text-warning-600 dark:text-warning-400">⚠ [img] URL invalide</span>`;
+                }
+                return `<img src="${u}" style="display:inline-block;vertical-align:middle;max-width:100%" loading="lazy" referrerpolicy="no-referrer" alt="">`;
+            }],
+            // [url=...]content[/url]
+            [/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, (m, href, content) => {
+                const u = String(href).trim().replace(/['"<>]/g, '');
+                if (!u.match(/^https?:\/\//i)) return content;
+                return `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 underline">${content}</a>`;
+            }],
+            // [url]http://...[/url]
+            [/\[url\]([\s\S]*?)\[\/url\]/gi, (m, url) => {
+                const u = String(url).trim().replace(/['"<>]/g, '');
+                if (!u.match(/^https?:\/\//i)) return u;
+                return `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 underline">${u}</a>`;
+            }],
+            // [code]...[/code]
+            [/\[code\]([\s\S]*?)\[\/code\]/gi, '<pre class="bg-slate-200 dark:bg-slate-800 p-2 rounded text-xs overflow-x-auto">$1</pre>'],
+            // [quote]...[/quote]
+            [/\[quote\]([\s\S]*?)\[\/quote\]/gi, '<blockquote class="border-l-4 border-slate-300 dark:border-slate-600 pl-3 italic">$1</blockquote>'],
+        ];
+        // Plusieurs passes pour gerer les imbrications (max 5 -> on a rarement
+        // plus de profondeur dans nos templates Gemini).
+        for (let pass = 0; pass < 5; pass++) {
+            const before = html;
+            for (const [re, repl] of rules) {
+                html = html.replace(re, repl);
+            }
+            if (html === before) break;
+        }
+        // Sauts de ligne -> <br> pour preserver la mise en page
+        html = html.replace(/\n/g, '<br>');
+        // Lot B3 (rev 2) : retire les `<br>` qui separent 2 `<img>` adjacents
+        // pour garder le cast / poster inline cote a cote. Iteration jusqu'a
+        // stabilite (cas N images d'affilee avec des <br> entre chaque).
+        // On accepte aussi des espaces optionnels autour du <br>.
+        let prev;
+        do {
+            prev = html;
+            html = html.replace(
+                /(<img\b[^>]*>)\s*<br\s*\/?>\s*(<img\b)/gi,
+                '$1 $2',
+            );
+        } while (html !== prev);
+        // Idem entre une image et un texte/balise [center] : si une image
+        // est immediatement suivie d'un <br> puis d'un autre tag inline
+        // type <a> ou <span> contenant une image, on laisse — moins risque.
+        return html;
+    }
+
+    const pkgName = {{ package_name | tojson }};
+    const pkgPath = {{ package_dir | tojson }};
+    const apiBase = '/api/packages/' + encodeURIComponent(pkgName);
+
+    // Lot U.1 : toggle synopsis tronque / complet
+    const btnSynopsis = document.getElementById('btn-toggle-synopsis');
+    if (btnSynopsis) {
+        const shortEl = document.getElementById('media-synopsis-short');
+        const fullEl = document.getElementById('media-synopsis-full');
+        btnSynopsis.addEventListener('click', () => {
+            const isExpanded = !fullEl.classList.contains('hidden');
+            if (isExpanded) {
+                fullEl.classList.add('hidden');
+                shortEl.classList.remove('hidden');
+                btnSynopsis.textContent = 'afficher tout';
+            } else {
+                fullEl.classList.remove('hidden');
+                shortEl.classList.add('hidden');
+                btnSynopsis.textContent = 'réduire';
+            }
+        });
+    }
+
+    // === Boutons Source : ouvrir dossier + copier path ===
+    // UI4 NOTES.md : avant on faisait window.open('file://...') qui est bloque
+    // par les browsers modernes pour des raisons de securite. On appelle
+    // maintenant un endpoint backend qui fait os.startfile / open / xdg-open
+    // sur le serveur (= la meme machine que le user en local).
+    const btnOpen = document.getElementById('btn-open-folder');
+    const btnCopy = document.getElementById('btn-copy-path');
+    if (btnOpen) {
+        // Lot post-NOTES round 5 : on memorise innerHTML (qui contient le
+        // <img> Twemoji) pas textContent (qui le perdait, faisant disparaitre
+        // l'emoji pour de bon).
+        const originalOpenHTML = btnOpen.innerHTML;
+        const _checkSvg = '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+        btnOpen.addEventListener('click', async () => {
+            btnOpen.disabled = true;
+            try {
+                const resp = await fetch(apiBase + '/open-folder', {method: 'POST'});
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                btnOpen.innerHTML = _checkSvg;
+                setTimeout(() => { btnOpen.innerHTML = originalOpenHTML; }, 1200);
+            } catch (e) {
+                tu.toast({ title: 'Impossible d\'ouvrir le dossier', message: e.message, tone: 'danger' });
+                btnOpen.innerHTML = originalOpenHTML;
+            } finally {
+                btnOpen.disabled = false;
+            }
+        });
+    }
+    if (btnCopy) {
+        const originalCopyHTML = btnCopy.innerHTML;
+        const _checkSvg2 = '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+        btnCopy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(pkgPath);
+                btnCopy.innerHTML = _checkSvg2;
+                setTimeout(() => { btnCopy.innerHTML = originalCopyHTML; }, 1500);
+                tu.toast({ title: 'Chemin copié', tone: 'success', duration: 1500 });
+            } catch (e) {
+                tu.toast({ title: 'Échec de la copie', message: e.message, tone: 'danger' });
+            }
+        });
+    }
+
+    // === Visuel des radios force_fr ===
+    // Le radio est sr-only (cache), c'est le label parent qui porte le style.
+    // On ecoute change sur les radios pour mettre a jour les classes des labels.
+    const SELECTED_CLASSES = ['bg-primary-50', 'dark:bg-primary-900/40', 'border-primary-400', 'dark:border-primary-700', 'text-primary-800', 'dark:text-primary-200'];
+    const UNSELECTED_CLASSES = ['bg-white', 'dark:bg-slate-800', 'border-slate-300', 'dark:border-slate-600', 'hover:bg-slate-50', 'dark:hover:bg-slate-700/30'];
+    function refreshRadioStyles() {
+        document.querySelectorAll('input[name="force_fr"]').forEach(r => {
+            const label = r.closest('label');
+            if (!label) return;
+            if (r.checked) {
+                label.classList.add(...SELECTED_CLASSES);
+                label.classList.remove(...UNSELECTED_CLASSES);
+            } else {
+                label.classList.remove(...SELECTED_CLASSES);
+                label.classList.add(...UNSELECTED_CLASSES);
+            }
+        });
+    }
+    document.querySelectorAll('input[name="force_fr"]').forEach(r => r.addEventListener('change', refreshRadioStyles));
+
+    // === Re-prepare ===
+    const btnRe = document.getElementById('btn-reprepare');
+    if (btnRe) {
+        btnRe.addEventListener('click', async () => {
+            const force = document.querySelector('input[name="force_fr"]:checked');
+            const force_fr = force ? force.value : '';
+            const appendFr = document.getElementById('opt-append-fr');
+            const append_fr_title = appendFr ? appendFr.checked : false;
+            const tmdbInput = document.getElementById('manual_tmdb_id');
+            const manual_tmdb_id = tmdbInput && tmdbInput.value ? parseInt(tmdbInput.value, 10) || 0 : 0;
+            // manual_release_name : seulement si le user a deverrouille ET modifie
+            const unlockCb = document.getElementById('opt-unlock-manual-name');
+            const manualNameInput = document.getElementById('manual-release-name');
+            const manual_release_name = (unlockCb && unlockCb.checked && manualNameInput) ? manualNameInput.value.trim() : '';
+            btnRe.disabled = true;
+            const reLabel = btnRe.querySelector('span');
+            if (reLabel) reLabel.textContent = 'Création du job…';
+            window.showPageLoader && window.showPageLoader();
+            try {
+                const resp = await fetch(apiBase + '/reprepare', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({force_fr, append_fr_title, manual_tmdb_id, manual_release_name})
+                });
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    throw new Error(txt || resp.statusText);
+                }
+                window.location.href = '/queue';
+            } catch (e) {
+                const loader = document.getElementById('page-loader');
+                if (loader) loader.classList.add('hidden');
+                tu.toast({ title: 'Échec re-préparation', message: e.message, tone: 'danger' });
+                btnRe.disabled = false;
+                const labelSpan = btnRe.querySelector('span');
+                if (labelSpan) labelSpan.textContent = 'Re-préparer avec ces options';
+            }
+        });
+    }
+
+    // === Options upload (auto-save) ===
+    const optStatus = document.getElementById('opt-status');
+    let saveTimeout = null;
+    function saveOptions() {
+        const personal = document.getElementById('opt-personal').checked;
+        const anon = document.getElementById('opt-anonymous').checked;
+        if (optStatus) optStatus.textContent = 'Sauvegarde…';
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(async () => {
+            try {
+                const resp = await fetch(apiBase + '/options', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({personal_release: personal, anonymous: anon})
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+                if (optStatus) optStatus.textContent = 'Sauvegardé';
+                setTimeout(() => { if (optStatus) optStatus.textContent = ''; }, 1500);
+            } catch (e) {
+                if (optStatus) optStatus.textContent = 'Échec : ' + e.message;
+            }
+        }, 300);
+    }
+    document.querySelectorAll('.opt-checkbox').forEach(cb => cb.addEventListener('change', saveOptions));
+
+    // === F3 : champs Gemini (auto-save sur change) ===
+    const geminiStatus = document.getElementById('gemini-status');
+    let geminiSaveTimer = null;
+    function saveGeminiField(selectEl) {
+        const key = selectEl.dataset.key;
+        const value = parseInt(selectEl.value, 10) || 0;
+        if (geminiStatus) geminiStatus.textContent = 'Sauvegarde…';
+        clearTimeout(geminiSaveTimer);
+        geminiSaveTimer = setTimeout(async () => {
+            try {
+                const resp = await fetch(apiBase + '/options', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({[key]: value}),
+                });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                if (geminiStatus) {
+                    geminiStatus.textContent = (
+                        value === 0
+                            ? 'Sauvegardé (auto-détection rétablie)'
+                            : 'Sauvegardé (override actif)'
+                    );
+                    geminiStatus.className = 'text-xs text-success-700 dark:text-success-400';
+                }
+                setTimeout(() => {
+                    if (geminiStatus) {
+                        geminiStatus.textContent = '';
+                        geminiStatus.className = 'text-xs text-slate-500 dark:text-slate-400';
+                    }
+                }, 2500);
+            } catch (e) {
+                if (geminiStatus) {
+                    geminiStatus.textContent = 'Échec : ' + e.message;
+                    geminiStatus.className = 'text-xs text-danger-600 dark:text-danger-400';
+                }
+            }
+        }, 250);
+    }
+    document.querySelectorAll('.gemini-field').forEach(sel => {
+        sel.addEventListener('change', () => saveGeminiField(sel));
+    });
+
+    // Round 4 : 1 SEULE checkbox Override pour TOUTE la section Options
+    // upload. Controle simultanement les selects Gemini (cat/type/res),
+    // les IDs externes (IMDb/TVDB/MAL/keywords) et les champs supplementaires
+    // (saison/episode/distrib/region). Decocher = reset aux valeurs auto.
+    const unifiedToggle = document.getElementById('unified-override-toggle');
+    function applyUnifiedOverrideState() {
+        if (!unifiedToggle) return;
+        const enabled = unifiedToggle.checked;
+        document.querySelectorAll('.upload-option-field').forEach(el => {
+            el.disabled = !enabled;
+        });
+    }
+    if (unifiedToggle) {
+        unifiedToggle.addEventListener('change', () => {
+            const enabled = unifiedToggle.checked;
+            applyUnifiedOverrideState();
+            if (!enabled) {
+                // Decoche -> reset des selects gemini a 0 (auto)
+                document.querySelectorAll('.gemini-field').forEach(sel => {
+                    sel.value = '0';
+                    saveGeminiField(sel);
+                });
+                // Reset des autres champs a vide (auto)
+                document.querySelectorAll('.extra-field').forEach(inp => {
+                    inp.value = '';
+                    inp.dispatchEvent(new Event('change'));
+                });
+            }
+        });
+        applyUnifiedOverrideState();
+    }
+
+    // === Lot Q : extra fields (saison/episode, distributeur/region, IDs, mots-cles) ===
+    // Auto-save sur change (debounce ~400ms, evite spam reseau).
+    // Toggle visibility des rows TV/FullDisc selon la categorie/type courants.
+    const extraStatus = document.getElementById('extra-fields-status');
+    function setExtraStatus(txt, color) {
+        if (!extraStatus) return;
+        extraStatus.textContent = txt;
+        extraStatus.className = 'text-xs ' + (color || 'text-slate-500 dark:text-slate-400');
+    }
+    const extraTimers = {};
+    function saveExtraField(input) {
+        const key = input.dataset.key;
+        if (!key) return;
+        clearTimeout(extraTimers[key]);
+        extraTimers[key] = setTimeout(async () => {
+            const raw = input.value;
+            const body = {};
+            // IMDB est string, le reste numerique. Vide -> 0 ou ""
+            if (key === 'manual_imdb_id' || key === 'manual_keywords') {
+                body[key] = raw.trim();
+            } else {
+                body[key] = parseInt(raw || '0', 10) || 0;
+            }
+            setExtraStatus('Sauvegarde...', 'text-slate-500');
+            try {
+                const r = await fetch('/api/packages/' + encodeURIComponent('{{ package_name }}') + '/options', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                });
+                if (!r.ok) {
+                    const j = await r.json().catch(() => ({}));
+                    throw new Error(j.detail || r.statusText);
+                }
+                setExtraStatus(key + ' sauvegardé', 'text-success-700 dark:text-success-400');
+                setTimeout(() => setExtraStatus('', ''), 2500);
+            } catch (e) {
+                setExtraStatus(key + ' : ' + e.message, 'text-danger-600 dark:text-danger-400');
+            }
+        }, 400);
+    }
+    document.querySelectorAll('.extra-field').forEach(inp => {
+        inp.addEventListener('change', () => saveExtraField(inp));
+        inp.addEventListener('blur', () => saveExtraField(inp));
+    });
+
+    // Visibility row TV (saison/episode) : actif si cat = 2 (Series), 6 (TV Anime),
+    // 14 (TV Doc), 15 (Emission TV).
+    function refreshExtraVisibility() {
+        const tvRow = document.getElementById('gemini-tv-row');
+        const fullDiscRow = document.getElementById('gemini-fulldisc-row');
+        const catSel = document.getElementById('gemini-category');
+        const typeSel = document.getElementById('gemini-type');
+        if (tvRow && catSel) {
+            const catVal = parseInt(catSel.value, 10);
+            // value 0 = auto, regarde data-auto pour la valeur effective
+            const effective = catVal > 0 ? catVal : parseInt(catSel.dataset.auto || '0', 10);
+            const tvCats = [2, 6, 14, 15];
+            tvRow.style.display = tvCats.includes(effective) ? '' : 'none';
+        }
+        if (fullDiscRow && typeSel) {
+            const tVal = parseInt(typeSel.value, 10);
+            const effective = tVal > 0 ? tVal : parseInt(typeSel.dataset.auto || '0', 10);
+            // type=1 = Full Disc
+            fullDiscRow.style.display = (effective === 1) ? '' : 'none';
+        }
+    }
+    document.getElementById('gemini-category')?.addEventListener('change', refreshExtraVisibility);
+    document.getElementById('gemini-type')?.addEventListener('change', refreshExtraVisibility);
+    // Run on load au cas ou JS re-rendre les selects
+    refreshExtraVisibility();
+
+    // === F4 : editeur Presentation BBCode (Write / Preview / Save / Reset) ===
+    const editTextarea = document.getElementById('presentation-edit');
+    const previewPre = document.getElementById('presentation-body');
+    const tabWrite = document.getElementById('presentation-tab-write');
+    const tabPreview = document.getElementById('presentation-tab-preview');
+    const btnSavePres = document.getElementById('btn-presentation-save');
+    const btnResetPres = document.getElementById('btn-presentation-reset');
+    const presStatus = document.getElementById('presentation-status');
+    const presOriginal = document.getElementById('presentation-original');
+    const initialText = editTextarea ? editTextarea.value : '';
+
+    function setPresStatus(text, color) {
+        if (!presStatus) return;
+        presStatus.textContent = text;
+        presStatus.className = color || 'text-slate-500 dark:text-slate-400';
+    }
+
+    function refreshPresButtons() {
+        if (!btnSavePres || !editTextarea) return;
+        const dirty = editTextarea.value !== initialText;
+        btnSavePres.disabled = !dirty;
+        btnSavePres.title = dirty ? 'Sauvegarder cette version' : 'Aucune modification';
+    }
+
+    if (editTextarea) {
+        editTextarea.addEventListener('input', refreshPresButtons);
+    }
+
+    function setActiveTab(which) {
+        if (!editTextarea || !previewPre) return;
+        if (which === 'write') {
+            editTextarea.classList.remove('hidden');
+            previewPre.classList.add('hidden');
+            tabWrite.classList.add('bg-primary-600', 'text-white');
+            tabWrite.classList.remove('bg-white', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-100', 'dark:hover:bg-slate-700');
+            tabPreview.classList.remove('bg-primary-600', 'text-white');
+            tabPreview.classList.add('bg-white', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-100', 'dark:hover:bg-slate-700');
+        } else {
+            // B1 : rendu HTML du BBCode via bbcodeToHtml() au lieu d'afficher le brut
+            previewPre.innerHTML = bbcodeToHtml(editTextarea.value);
+            // Twemoji : re-parse les emoji dans le HTML genere (sinon
+            // 🇨🇭 🎬 etc. s'affichent comme des glyphes systeme inconsistants).
+            if (window.tuParseEmoji) window.tuParseEmoji(previewPre);
+            editTextarea.classList.add('hidden');
+            previewPre.classList.remove('hidden');
+            tabPreview.classList.add('bg-primary-600', 'text-white');
+            tabPreview.classList.remove('bg-white', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-100', 'dark:hover:bg-slate-700');
+            tabWrite.classList.remove('bg-primary-600', 'text-white');
+            tabWrite.classList.add('bg-white', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300', 'hover:bg-slate-100', 'dark:hover:bg-slate-700');
+        }
+    }
+    if (tabWrite) tabWrite.addEventListener('click', () => setActiveTab('write'));
+    if (tabPreview) tabPreview.addEventListener('click', () => setActiveTab('preview'));
+
+    // B2 : toggle "Masquer / Afficher" qui collapse l'editeur entier.
+    // Lot R-A : la presentation est masquee par defaut (`hidden` initial dans
+    // le template). Le bouton toggle bascule entre "Afficher" (=montre) et
+    // "Masquer" (=cache).
+    const btnTogglePres = document.getElementById('btn-presentation-toggle');
+    const presCollapsible = document.getElementById('presentation-collapsible');
+    if (btnTogglePres && presCollapsible) {
+        btnTogglePres.addEventListener('click', () => {
+            const isHidden = presCollapsible.classList.toggle('hidden');
+            btnTogglePres.textContent = isHidden ? 'Afficher' : 'Masquer';
+        });
+    }
+
+    // NOTES round 9 P2.1 : TOC scrollspy.
+    // Au scroll, le lien correspondant a la section "actuellement visible"
+    // (la plus proche du haut du viewport) est surligne.
+    // Click sur un lien -> scroll smooth vers la section.
+    (function() {
+        const tocLinks = document.querySelectorAll('.tu-toc-link[data-toc-target]');
+        if (tocLinks.length === 0) return;
+        const targets = [];
+        tocLinks.forEach(link => {
+            const tid = link.dataset.tocTarget;
+            const sec = document.getElementById(tid);
+            if (sec) targets.push({link, sec, id: tid});
+        });
+        if (targets.length === 0) return;
+
+        function setActive(activeId) {
+            targets.forEach(({link, id}) => {
+                if (id === activeId) {
+                    link.classList.add('!text-primary-700', 'dark:!text-primary-400', '!border-primary-500', 'bg-primary-50', 'dark:bg-primary-900/30');
+                } else {
+                    link.classList.remove('!text-primary-700', 'dark:!text-primary-400', '!border-primary-500', 'bg-primary-50', 'dark:bg-primary-900/30');
+                }
+            });
+        }
+
+        // Click smooth scroll. On override le default pour eviter le hard
+        // jump et tenir compte du header sticky (offset).
+        tocLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tid = link.dataset.tocTarget;
+                const sec = document.getElementById(tid);
+                if (!sec) return;
+                const rect = sec.getBoundingClientRect();
+                const top = window.scrollY + rect.top - 80;  // offset for sticky bar
+                window.scrollTo({top, behavior: 'smooth'});
+                setActive(tid);
+            });
+        });
+
+        // Scrollspy : IntersectionObserver. La section "active" est celle
+        // dont le top est le plus proche du haut du viewport (sans depasser).
+        // On utilise un rootMargin pour declencher l'activation a ~25% du
+        // viewport (top + 25%) — donne une transition naturelle au scroll.
+        const obs = new IntersectionObserver((entries) => {
+            // Pick the entry with the smallest positive top (most "at top" visible)
+            let bestId = null;
+            let bestTop = Infinity;
+            targets.forEach(({sec, id}) => {
+                const rect = sec.getBoundingClientRect();
+                if (rect.top < 120 && rect.bottom > 0 && rect.top < bestTop) {
+                    bestTop = rect.top;
+                    bestId = id;
+                }
+            });
+            if (bestId) setActive(bestId);
+        }, {
+            threshold: [0, 0.1, 0.5, 1],
+            rootMargin: '-80px 0px -50% 0px',
+        });
+        targets.forEach(({sec}) => obs.observe(sec));
+    })();
+
+    // NOTES round 9 P2.2 : sticky action bar.
+    // On observe la section "Upload vers le tracker" (qui contient le
+    // btn-upload-real). Tant qu'elle est visible dans le viewport, on
+    // cache la sticky bar. Des qu'elle sort -> on la montre.
+    // Le bouton sticky declenche un click programmatique sur le vrai bouton.
+    (function() {
+        const stickyBar = document.getElementById('sticky-action-bar');
+        const realBtn = document.getElementById('btn-upload-real');
+        const stickyBtn = document.getElementById('btn-upload-sticky');
+        if (!stickyBar || !realBtn) return;
+        // Section a observer : le parent <section> du bouton real (header
+        // "Upload vers le tracker" + son body).
+        const uploadSection = realBtn.closest('section');
+        if (!uploadSection) return;
+
+        const obs = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                // Si la section est out-of-view (au-dessus du viewport,
+                // i.e. l'user a scrolle plus bas), on montre la sticky bar.
+                // intersectionRatio == 0 + boundingClientRect.top < 0 = above
+                const above = entry.boundingClientRect.top < 0;
+                if (!entry.isIntersecting && above) {
+                    stickyBar.classList.remove('hidden');
+                } else {
+                    stickyBar.classList.add('hidden');
+                }
+            });
+        }, {
+            // Threshold : on cache la sticky bar quand AU MOINS la moitie
+            // de la section upload est visible (sinon on a un flash quand
+            // on est juste a la frontiere).
+            threshold: [0, 0.1],
+        });
+        obs.observe(uploadSection);
+
+        // Bind le bouton sticky -> click sur le vrai bouton (pour reutiliser
+        // toute la logique deja en place : preconditions, poll status, etc.).
+        if (stickyBtn) {
+            stickyBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Sync disabled state du sticky avec le real (au cas ou
+                // l'upload est en cours, on doit pas reclicker).
+                if (realBtn.disabled) return;
+                realBtn.click();
+                // Scroll vers la section upload pour que l'user voie
+                // ce qui se passe (log temps reel, badge status).
+                uploadSection.scrollIntoView({behavior: 'smooth', block: 'start'});
+            });
+        }
+    })();
+
+    // NOTES round 9 P2.3 : sections cliquables avec header complet (vs
+    // .btn-collapse qui est un bouton dans une header avec autres elements).
+    // Le caret rotate de 0 -> 90deg pour indiquer expanded.
+    // L'etat est persiste en localStorage par section-target pour que le
+    // choix de l'user soit conserve a travers les reloads.
+    document.querySelectorAll('.tu-section-toggle').forEach(btn => {
+        const targetId = btn.dataset.sectionTarget;
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        const caret = btn.querySelector('.tu-section-caret');
+        const storageKey = 'tu_section_open_' + targetId;
+        // Restaurer l'etat persiste (si different du default).
+        try {
+            const stored = localStorage.getItem(storageKey);
+            if (stored === '1') {
+                target.classList.remove('hidden');
+                btn.setAttribute('aria-expanded', 'true');
+                if (caret) caret.classList.add('rotate-90');
+            } else if (stored === '0') {
+                target.classList.add('hidden');
+                btn.setAttribute('aria-expanded', 'false');
+                if (caret) caret.classList.remove('rotate-90');
+            }
+        } catch (e) {}
+        btn.addEventListener('click', () => {
+            const isHidden = target.classList.toggle('hidden');
+            btn.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+            if (caret) {
+                if (isHidden) caret.classList.remove('rotate-90');
+                else caret.classList.add('rotate-90');
+            }
+            try { localStorage.setItem(storageKey, isHidden ? '0' : '1'); } catch (e) {}
+        });
+    });
+
+    // Lot R-A : toggles generiques pour tous les blocs (release_name, NFO scene,
+    // NFO mediainfo, log). Bouton .btn-collapse avec data-target=ID. Le label
+    // alterne entre "Afficher" (cache) et "Masquer" (visible). Default =
+    // hidden (data-default-hidden=1) : on affiche "Afficher" au depart.
+    // NOTES round 7 : si le bouton contient un <span>, on ne touche que le
+    // span (pour preserver d'eventuels icons SVG cote a cote).
+    document.querySelectorAll('.btn-collapse').forEach(btn => {
+        const target = document.getElementById(btn.dataset.target);
+        if (!target) return;
+        const labelEl = btn.querySelector('span') || btn;
+        labelEl.textContent = target.classList.contains('hidden') ? 'Afficher' : 'Masquer';
+        btn.addEventListener('click', () => {
+            const isHidden = target.classList.toggle('hidden');
+            labelEl.textContent = isHidden ? 'Afficher' : 'Masquer';
+            // NOTES round 7 : si c'est la section tree torrent, on lazy-load
+            // le contenu a la 1ere ouverture.
+            if (btn.dataset.target === 'torrent-tree-body' && !isHidden) {
+                _loadTorrentTreeOnce();
+            }
+        });
+    });
+
+    // === NOTES round 9 Bug-2 : Tree view HIERARCHIQUE des fichiers du torrent ===
+    // Auparavant : flat list avec indentation visuelle. Mauvais en lisibilite
+    // pour les packs multi-dossiers (Battlestar avec S01, S02, S03 etc.).
+    // Maintenant : vrai arbre repliable a la "file explorer" :
+    //  - Chaque dossier affiche "(N fichiers)" + taille totale agregee
+    //  - Click sur le caret expand/collapse les enfants
+    //  - Racine ouverte par defaut, sous-dossiers fermes (pour ne pas
+    //    submerger les gros packs)
+    let _torrentTreeLoaded = false;
+
+    function _fmtSize(b) {
+        if (b < 1024) return b + ' o';
+        if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' Ko';
+        if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + ' Mo';
+        return (b / 1024 / 1024 / 1024).toFixed(2) + ' Go';
+    }
+    function _escHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function _fileIconSvg(name) {
+        const ext = (name.split('.').pop() || '').toLowerCase();
+        if (['mkv','mp4','avi','mov','ts','m2ts','iso','webm','m4v'].includes(ext)) {
+            return '<svg class="icon icon-sm text-primary-500" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 11 5 3-5 3v-6Z"/></svg>';
+        } else if (['nfo','txt','md'].includes(ext)) {
+            return '<svg class="icon icon-sm text-slate-500" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
+        } else if (['jpg','jpeg','png','webp','gif','bmp'].includes(ext)) {
+            return '<svg class="icon icon-sm text-success-500" viewBox="0 0 24 24"><rect width="20" height="20" x="2" y="2" rx="2.18" ry="2.18"/><line x1="7" x2="7" y1="2" y2="22"/><line x1="17" x2="17" y1="2" y2="22"/><line x1="2" x2="22" y1="12" y2="12"/></svg>';
+        } else if (['srt','sub','idx','ass','ssa','vtt'].includes(ext)) {
+            return '<svg class="icon icon-sm text-primary-400" viewBox="0 0 24 24"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/></svg>';
+        }
+        return '<svg class="icon icon-sm text-slate-400" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>';
+    }
+    const _ICON_FOLDER = '<svg class="icon icon-sm text-warning-500" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+    const _ICON_CARET = '<svg class="icon icon-sm" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>';
+
+    // Construit l'arbre depuis la liste flat [{path, size}].
+    function _buildTree(files, rootName) {
+        const root = {
+            name: rootName || '(racine)',
+            isFile: false,
+            children: {},
+            size: 0,
+            fileCount: 0,
+        };
+        files.forEach(f => {
+            const parts = f.path.split('/').filter(Boolean);
+            // Si la racine du path == rootName, on saute (deja la racine).
+            const startIdx = (parts.length > 1 && parts[0] === rootName) ? 1 : 0;
+            let cur = root;
+            for (let i = startIdx; i < parts.length; i++) {
+                const seg = parts[i];
+                const isLast = i === parts.length - 1;
+                if (!cur.children[seg]) {
+                    cur.children[seg] = {
+                        name: seg,
+                        isFile: isLast,
+                        size: isLast ? f.size : 0,
+                        children: {},
+                        fileCount: 0,
+                    };
+                }
+                cur = cur.children[seg];
+            }
+        });
+        // Agregation recursive : taille + nombre de fichiers par dossier
+        function aggregate(node) {
+            if (node.isFile) {
+                node.fileCount = 1;
+                return;
+            }
+            let total = 0, count = 0;
+            const kids = Object.values(node.children);
+            // Tri : dossiers d'abord (alpha), puis fichiers (alpha).
+            kids.sort((a, b) => {
+                if (a.isFile !== b.isFile) return a.isFile ? 1 : -1;
+                return a.name.localeCompare(b.name, undefined, {numeric: true});
+            });
+            // Re-injecte dans l'ordre trie en remplacant children par un Map
+            // qui preserve l'ordre d'insertion (un objet plain le fait aussi
+            // tant qu'on ajoute pas de clefs purement numeriques).
+            node.children = {};
+            kids.forEach(k => { node.children[k.name] = k; });
+            kids.forEach(k => {
+                aggregate(k);
+                total += k.size;
+                count += k.fileCount;
+            });
+            node.size = total;
+            node.fileCount = count;
+        }
+        aggregate(root);
+        return root;
+    }
+
+    // Rend recursivement un noeud sous forme de <li>.
+    // - Pour un fichier : <li> simple avec icon + nom + taille
+    // - Pour un dossier : <li> avec caret cliquable + icon dossier + nom +
+    //   (N fichiers) + taille agregee. Enfants dans un <ul> dont l'etat
+    //   ouvert/ferme depend de `defaultOpen`.
+    function _renderNode(node, defaultOpen) {
+        if (node.isFile) {
+            return `<li class="flex items-center gap-2 py-0.5 text-slate-700 dark:text-slate-300">
+                <span class="w-3 flex-shrink-0"></span>
+                ${_fileIconSvg(node.name)}
+                <span class="flex-1 break-all">${_escHtml(node.name)}</span>
+                <span class="text-primary-700 dark:text-primary-400 text-[11px] tabular-nums whitespace-nowrap">${_fmtSize(node.size)}</span>
+            </li>`;
+        }
+        const kids = Object.values(node.children);
+        const childrenHtml = kids.map(k => _renderNode(k, false)).join('');
+        const openCls = defaultOpen ? '' : 'hidden';
+        const caretRotate = defaultOpen ? 'rotate-90' : '';
+        const n = node.fileCount;
+        return `<li class="py-0.5">
+            <button type="button" class="tu-tree-toggle interactive w-full flex items-center gap-2 py-0.5 text-left text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/30 rounded-sm px-0.5"
+                    aria-expanded="${defaultOpen ? 'true' : 'false'}">
+                <span class="tu-tree-caret ${caretRotate} flex-shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-fast" style="display:inline-flex">${_ICON_CARET}</span>
+                ${_ICON_FOLDER}
+                <span class="flex-1 break-all font-medium">${_escHtml(node.name)}</span>
+                <span class="text-slate-500 dark:text-slate-400 text-[11px] tabular-nums whitespace-nowrap">(${n})</span>
+                <span class="text-primary-700 dark:text-primary-400 text-[11px] tabular-nums whitespace-nowrap">${_fmtSize(node.size)}</span>
+            </button>
+            <ul class="${openCls} pl-4 border-l border-slate-200 dark:border-slate-700 ml-2">
+                ${childrenHtml}
+            </ul>
+        </li>`;
+    }
+
+    async function _loadTorrentTreeOnce() {
+        if (_torrentTreeLoaded) return;
+        _torrentTreeLoaded = true;
+        const loading = document.getElementById('torrent-tree-loading');
+        const errorEl = document.getElementById('torrent-tree-error');
+        const listEl = document.getElementById('torrent-tree-list');
+        const statsEl = document.getElementById('torrent-tree-stats');
+        try {
+            const resp = await fetch(apiBase + '/torrent-files', {cache: 'no-store'});
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.detail || resp.statusText);
+            }
+            const data = await resp.json();
+            loading.classList.add('hidden');
+            const n = data.files.length;
+            statsEl.textContent = ' · ' + n + ' fichier' + (n > 1 ? 's' : '') + ' · ' + _fmtSize(data.total_size);
+
+            // Single-file torrent (movie) : on rend juste 1 ligne, pas d'arbre.
+            if (!data.is_multi && data.files.length === 1) {
+                const f = data.files[0];
+                listEl.innerHTML = `<li class="flex items-center gap-2 py-1 text-slate-700 dark:text-slate-300">
+                    ${_fileIconSvg(f.path)}
+                    <span class="flex-1 break-all">${_escHtml(f.path)}</span>
+                    <span class="text-primary-700 dark:text-primary-400 text-[11px] tabular-nums whitespace-nowrap">${_fmtSize(f.size)}</span>
+                </li>`;
+                listEl.classList.remove('hidden');
+                return;
+            }
+
+            // Multi-file : build tree, render hierarchique.
+            const tree = _buildTree(data.files, data.root || '');
+            // La racine est rendue comme un dossier ouvert par defaut.
+            listEl.innerHTML = _renderNode(tree, true);
+            listEl.classList.remove('hidden');
+
+            // Bind les caret pour expand/collapse.
+            listEl.querySelectorAll('.tu-tree-toggle').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const childUl = btn.nextElementSibling;
+                    const caret = btn.querySelector('.tu-tree-caret');
+                    if (!childUl) return;
+                    const wasHidden = childUl.classList.toggle('hidden');
+                    btn.setAttribute('aria-expanded', wasHidden ? 'false' : 'true');
+                    if (caret) {
+                        if (wasHidden) caret.classList.remove('rotate-90');
+                        else caret.classList.add('rotate-90');
+                    }
+                });
+            });
+        } catch (e) {
+            loading.classList.add('hidden');
+            errorEl.textContent = 'Erreur : ' + e.message;
+            errorEl.classList.remove('hidden');
+        }
+    }
+
+    if (btnSavePres) {
+        btnSavePres.addEventListener('click', async () => {
+            btnSavePres.disabled = true;
+            setPresStatus('Sauvegarde…', 'text-slate-500');
+            try {
+                const resp = await fetch(apiBase + '/presentation', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: editTextarea.value}),
+                });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                setPresStatus('Sauvegardé. La prochaine upload utilisera cette version.', 'text-success-700 dark:text-success-400');
+                // Le bouton reset devient actif (override)
+                if (btnResetPres) {
+                    btnResetPres.disabled = false;
+                    btnResetPres.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+                setTimeout(() => setPresStatus('', ''), 3000);
+            } catch (e) {
+                setPresStatus(e.message, 'text-danger-600 dark:text-danger-400');
+                btnSavePres.disabled = false;
+            }
+        });
+    }
+
+    if (btnResetPres) {
+        btnResetPres.addEventListener('click', async () => {
+            const ok = await tu.confirm({
+                title: 'Revenir à la version régénérée par le pipeline ?',
+                message: 'Ta version éditée sera supprimée (presentation_user.txt). Cette action ne touche pas le fichier source.',
+                confirmLabel: 'Reset',
+                tone: 'warning',
+            });
+            if (!ok) return;
+            btnResetPres.disabled = true;
+            setPresStatus('Reset…', 'text-slate-500');
+            try {
+                const resp = await fetch(apiBase + '/presentation', {method: 'DELETE'});
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                // Recharge le contenu textarea avec l'original (pour qu'on voie le revert sans reload)
+                if (editTextarea && presOriginal) {
+                    editTextarea.value = presOriginal.value;
+                }
+                setPresStatus('Reset effectué. Recharge la page pour rafraîchir l\'aperçu.', 'text-success-700 dark:text-success-400');
+                btnResetPres.classList.add('opacity-50', 'cursor-not-allowed');
+            } catch (e) {
+                setPresStatus(e.message, 'text-danger-600 dark:text-danger-400');
+                btnResetPres.disabled = false;
+            }
+        });
+    }
+
+    refreshPresButtons();
+    setActiveTab('write');
+
+    // Toggle de l'edition manuelle du release_name
+    const unlockCb = document.getElementById('opt-unlock-manual-name');
+    const manualInput = document.getElementById('manual-release-name');
+    if (unlockCb && manualInput) {
+        unlockCb.addEventListener('change', () => {
+            manualInput.disabled = !unlockCb.checked;
+            if (unlockCb.checked) {
+                manualInput.classList.remove('bg-slate-100', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400');
+                manualInput.classList.add('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-slate-100');
+                manualInput.focus();
+            } else {
+                manualInput.classList.add('bg-slate-100', 'dark:bg-slate-800', 'text-slate-500', 'dark:text-slate-400');
+                manualInput.classList.remove('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-slate-100');
+            }
+        });
+    }
+
+    // === NOTES round 7+ : bouton TOGGLE "Valider" / "Validé" ===
+    // Toggle reversible :
+    // - data-state="prepared" -> click = POST /validate (passe en validated)
+    // - data-state="validated" -> click = POST /unvalidate (revient en prepared)
+    // Le bouton se rerend avec le bon variant apres reload.
+    const btnValidateToggle = document.getElementById('btn-validate-toggle');
+    if (btnValidateToggle) {
+        btnValidateToggle.addEventListener('click', async () => {
+            const currentState = btnValidateToggle.dataset.state || 'prepared';
+            const isCurrentlyValidated = currentState === 'validated';
+            const endpoint = isCurrentlyValidated ? '/unvalidate' : '/validate';
+            btnValidateToggle.disabled = true;
+            try {
+                const resp = await fetch(apiBase + endpoint, {method: 'POST'});
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(data.detail || resp.statusText);
+                }
+                tu.toast({
+                    title: isCurrentlyValidated ? 'Package dévalidé' : 'Package validé',
+                    message: isCurrentlyValidated
+                        ? 'Le package revient en "Préparé".'
+                        : 'Tu peux maintenant batch-uploader depuis la Queue.',
+                    tone: isCurrentlyValidated ? 'info' : 'success',
+                });
+                setTimeout(() => window.location.reload(), 600);
+            } catch (e) {
+                tu.toast({
+                    title: isCurrentlyValidated
+                        ? 'Échec de la dévalidation'
+                        : 'Échec de la validation',
+                    message: e.message,
+                    tone: 'danger',
+                    duration: 6000,
+                });
+                btnValidateToggle.disabled = false;
+            }
+        });
+    }
+
+    // === NOTES round 8 P5.7 : bouton "Re-vérifier les doublons" ===
+    // POST /api/packages/{name}/dedup-check. Le backend re-interroge le
+    // tracker, persiste le resultat dans package_state, et renvoie le
+    // nouvel etat. UI : spinner inline pendant la requete (tu.button),
+    // toast avec le verdict, reload pour refleter le nouveau banner.
+    const btnDedupRecheck = document.getElementById('btn-dedup-recheck');
+    const dedupRecheckStatus = document.getElementById('dedup-recheck-status');
+    if (btnDedupRecheck) {
+        btnDedupRecheck.addEventListener('click', () => {
+            if (dedupRecheckStatus) {
+                dedupRecheckStatus.textContent = '';
+            }
+            tu.button(btnDedupRecheck, async () => {
+                const resp = await fetch(apiBase + '/dedup-check', {method: 'POST'});
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(data.detail || resp.statusText || 'Echec dedup check');
+                }
+                // Decide du toast en fonction du verdict.
+                const confidence = (data.dedup_confidence || '').toLowerCase();
+                const stateAfter = data.new_state || '';
+                if (stateAfter === 'aborted-duplicate' || confidence === 'certain') {
+                    tu.toast({
+                        title: 'Doublon CERTAIN détecté',
+                        message: 'Le tracker contient deja cette release (ID ' + (data.existing_torrent_id || '?') + ').',
+                        tone: 'danger',
+                        duration: 6000,
+                    });
+                } else if (confidence === 'very_likely' || confidence === 'ambiguous') {
+                    tu.toast({
+                        title: 'Doublon ' + (confidence === 'very_likely' ? 'tres probable' : 'ambigu'),
+                        message: 'Un torrent similaire existe cote tracker. Verifie avant d\'uploader.',
+                        tone: 'warning',
+                        duration: 6000,
+                    });
+                } else {
+                    tu.toast({
+                        title: 'Aucun doublon trouvé',
+                        message: 'Le tracker n\'a pas de release matchant. Tu peux uploader sereinement.',
+                        tone: 'success',
+                    });
+                }
+                // Reload pour mettre a jour la banniere d'alerte
+                setTimeout(() => window.location.reload(), 1200);
+            }, {
+                errorTitle: 'Échec du re-check de doublons',
+            });
+        });
+    }
+
+    // === NOTES round 8 P5.8 : bouton "Re-calculer le score" ===
+    // POST /api/packages/{name}/rescore. Le backend re-execute
+    // check_compliance() sur le mediainfo_data deja cache dans debug.json,
+    // sans regenerer le .torrent. Use case typique : un upload ancien
+    // avec score 50 (bug PGS bloquant fixe depuis) -> click ici pour
+    // rafraichir le score sans risque pour l'infohash deja sur le tracker.
+    const btnRescore = document.getElementById('btn-rescore');
+    if (btnRescore) {
+        btnRescore.addEventListener('click', () => {
+            tu.button(btnRescore, async () => {
+                const resp = await fetch(apiBase + '/rescore', {method: 'POST'});
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(data.detail || resp.statusText || 'Echec re-score');
+                }
+                const oldS = data.old_score;
+                const newS = data.new_score;
+                const delta = newS - oldS;
+                if (!data.changed) {
+                    tu.toast({
+                        title: 'Score inchangé',
+                        message: 'Le score est déjà à jour (' + newS + '). Aucune règle ne s\'applique différemment.',
+                        tone: 'info',
+                        duration: 4000,
+                    });
+                    return;
+                }
+                // Construit un message lisible
+                let msg = 'Ancien score : ' + oldS + ' → Nouveau : ' + newS;
+                if (delta > 0) msg += '  (+' + delta + ')';
+                else if (delta < 0) msg += '  (' + delta + ')';
+                if (data.removed_issues_count > 0) {
+                    msg += '\n• ' + data.removed_issues_count + ' warning' + (data.removed_issues_count > 1 ? 's' : '') + ' retiré' + (data.removed_issues_count > 1 ? 's' : '');
+                }
+                if (data.added_issues_count > 0) {
+                    msg += '\n• ' + data.added_issues_count + ' warning' + (data.added_issues_count > 1 ? 's' : '') + ' ajouté' + (data.added_issues_count > 1 ? 's' : '');
+                }
+                tu.toast({
+                    title: delta >= 0 ? 'Score recalculé' : 'Score recalculé (régression)',
+                    message: msg,
+                    tone: delta > 0 ? 'success' : (delta < 0 ? 'warning' : 'info'),
+                    duration: 6000,
+                });
+                // Reload pour refleter le nouveau score / banner / warnings
+                setTimeout(() => window.location.reload(), 1400);
+            }, {
+                errorTitle: 'Échec du re-calcul du score',
+            });
+        });
+    }
+
+    // === Upload : Q1 NOTES.md round 2 = dry-run retire de l'UI ===
+    // L'option dry_run reste dans l'API et la CLI pour les power-users / tests,
+    // mais l'UI ne l'expose plus (confusant pour user lambda). Le bouton
+    // "Uploader" appelle directement /upload avec dry_run=false.
+    const btnReal = document.getElementById('btn-upload-real');
+    const statusBadge = document.getElementById('upload-status-badge');
+    const logPreview = document.getElementById('upload-log-preview');
+    let uploadPollTimer = null;
+
+    function setUploadStatus(text, color) {
+        if (!statusBadge) return;
+        statusBadge.innerHTML = text;
+        statusBadge.className = 'text-xs ml-2 font-medium ' + (color || 'text-slate-500 dark:text-slate-400');
+    }
+
+    async function pollUploadStatus() {
+        try {
+            const resp = await fetch(apiBase + '/upload-status');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.status === 'idle') {
+                clearInterval(uploadPollTimer);
+                return;
+            }
+            if (data.status === 'queued') {
+                setUploadStatus('En attente du worker…', 'text-slate-500 dark:text-slate-400');
+            } else if (data.status === 'uploading') {
+                setUploadStatus('Upload en cours…', 'text-primary-700 dark:text-primary-400');
+            } else if (data.status === 'done') {
+                let extra = '';
+                if (data.uploaded_torrent_url) {
+                    extra = ' — <a href="" onclick="location.reload(); return false;" class="underline font-semibold">voir l\'état uploadé</a>';
+                } else {
+                    extra = ' — <a href="" onclick="location.reload(); return false;" class="underline">recharger</a>';
+                }
+                setUploadStatus(
+                    (data.message || 'Terminé') + extra,
+                    'text-success-700 dark:text-success-400'
+                );
+                clearInterval(uploadPollTimer);
+            } else if (data.status === 'failed') {
+                setUploadStatus(
+                    (data.message || 'Échec') + ' — ' +
+                    '<a href="" onclick="location.reload(); return false;" class="underline">recharger</a> pour réessayer',
+                    'text-danger-600 dark:text-danger-400'
+                );
+                clearInterval(uploadPollTimer);
+            }
+        } catch (e) {
+            console.error('poll upload-status', e);
+        }
+    }
+
+    let uploadEvtSrc = null;
+    function startLogStream() {
+        const wrapper = document.getElementById('upload-log-wrapper');
+        const pre = document.getElementById('upload-log-preview');
+        const status = document.getElementById('upload-log-status');
+        const currentLine = document.getElementById('upload-current-line');
+        if (!wrapper || !pre) return;
+        wrapper.classList.remove('hidden');
+        if (currentLine) {
+            currentLine.classList.remove('hidden');
+            currentLine.textContent = 'En attente de la 1ère ligne…';
+        }
+        pre.textContent = '';
+        if (uploadEvtSrc) { try { uploadEvtSrc.close(); } catch (e) {} }
+        const url = '/api/uploads/' + encodeURIComponent(pkgName) + '/stream';
+        uploadEvtSrc = new EventSource(url);
+        uploadEvtSrc.onmessage = (ev) => {
+            pre.textContent += ev.data + '\n';
+            pre.scrollTop = pre.scrollHeight;
+            // Met a jour la "ligne en cours" : derniere ligne non vide
+            if (currentLine && ev.data && ev.data.trim()) {
+                currentLine.textContent = ev.data.trim();
+            }
+        };
+        uploadEvtSrc.addEventListener('end', (ev) => {
+            if (status) status.textContent = '— flux terminé (' + (ev.data || 'ok') + ')';
+            if (currentLine) currentLine.textContent = 'Terminé · ' + (currentLine.textContent || '');
+            // On ferme juste la connexion, mais on GARDE le panneau visible.
+            try { uploadEvtSrc.close(); } catch (e) {}
+            uploadEvtSrc = null;
+        });
+        uploadEvtSrc.onerror = () => {
+            if (status) status.textContent = '— connexion perdue';
+            try { uploadEvtSrc.close(); } catch (e) {}
+            uploadEvtSrc = null;
+        };
+    }
+
+    async function launchUpload() {
+        const ok = await tu.confirm({
+            title: 'Lancer l’upload vers le tracker ?',
+            message: 'Cette action va appeler l’API du tracker pour soumettre le torrent, télécharger le .torrent final avec passkey, et marquer le package comme uploadé.',
+            confirmLabel: 'Uploader',
+            tone: 'primary',
+        });
+        if (!ok) return;
+        if (btnReal) btnReal.disabled = true;
+        setUploadStatus('Lancement…', 'text-slate-500 dark:text-slate-400');
+        try {
+            const resp = await fetch(apiBase + '/upload', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({dry_run: false}),
+            });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                // Erreur structuree (cas torrent_missing etc.) : data.detail
+                // est un dict avec message + indication d'action.
+                if (typeof data.detail === 'object' && data.detail !== null) {
+                    const detail = data.detail;
+                    if (detail.error === 'torrent_missing') {
+                        // Cas frequent : pre-check anticipe a marque ABORTED_DUPLICATE
+                        // sans generer le .torrent. On propose la regen direct.
+                        const wantsReprepare = await tu.confirm({
+                            title: detail.message || 'Le .torrent est absent.',
+                            message: 'Lancer la re-préparation maintenant ? Le package actuel sera remplacé, le fichier source intact.',
+                            confirmLabel: 'Re-préparer',
+                            tone: 'warning',
+                        });
+                        if (btnReal) btnReal.disabled = false;
+                        setUploadStatus('', '');
+                        if (wantsReprepare) {
+                            try {
+                                const r = await fetch(apiBase + '/reprepare', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({}),
+                                });
+                                if (!r.ok) {
+                                    const d2 = await r.json().catch(() => ({}));
+                                    throw new Error(d2.detail || r.statusText);
+                                }
+                                setUploadStatus(
+                                    'Re-préparation lancée. <a href="/queue" class="underline">Voir la queue</a>',
+                                    'text-primary-700 dark:text-primary-400'
+                                );
+                            } catch (rerr) {
+                                tu.toast({ title: 'Échec re-préparation', message: rerr.message, tone: 'danger' });
+                            }
+                        }
+                        return;
+                    }
+                    throw new Error(detail.message || JSON.stringify(detail));
+                }
+                throw new Error(data.detail || resp.statusText);
+            }
+            // Demarre le streaming du log + le polling de statut
+            // (un petit delai pour laisser le worker creer le fichier log)
+            setTimeout(startLogStream, 300);
+            uploadPollTimer = setInterval(pollUploadStatus, 1500);
+            pollUploadStatus();
+        } catch (e) {
+            setUploadStatus(e.message, 'text-danger-600 dark:text-danger-400');
+            if (btnReal) btnReal.disabled = false;
+        }
+    }
+    if (btnReal) btnReal.addEventListener('click', () => launchUpload());
+
+    // === Suppression du package (avec double confirmation) ===
+    const btnDel = document.getElementById('btn-delete-package');
+    if (btnDel) {
+        btnDel.addEventListener('click', async () => {
+            const expected = pkgName;
+            const ok = await tu.confirm({
+                title: 'Supprimer ce package ?',
+                message: 'Le dossier package sera effacé du disque (.torrent, NFO, présentation perdus). Le fichier vidéo source ne sera pas touché.',
+                confirmLabel: 'Supprimer',
+                tone: 'danger',
+            });
+            if (!ok) return;
+            btnDel.disabled = true;
+            btnDel.textContent = 'Suppression…';
+            try {
+                const resp = await fetch(apiBase, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({confirm_name: expected})
+                });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                window.location.href = '/queue';
+            } catch (e) {
+                tu.toast({ title: 'Échec de la suppression', message: e.message, tone: 'danger' });
+                btnDel.disabled = false;
+                const labelSpan = btnDel.querySelector('span');
+                if (labelSpan) labelSpan.textContent = 'Supprimer ce package';
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

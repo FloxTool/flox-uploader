@@ -1,0 +1,628 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, button, badge, empty_state, link_button %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Inbox · Flox Uploader{% endblock %}
+
+{% block content %}
+{% call page_header(
+    title='Inbox',
+    description='Navigue et sélectionne les fichiers ou dossiers à ajouter à la queue de préparation.'
+) %}
+{% endcall %}
+
+{# Banner d'info pour rassurer le user : a ce stade rien n'est uploade. #}
+<div class="mb-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-md px-4 py-2.5 flex items-start gap-2.5">
+    <span class="text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5">{{ icon('info', size='sm') }}</span>
+    <p class="text-xs text-primary-900 dark:text-primary-200 leading-relaxed">
+        <strong>Rien n'est uploadé à ce stade.</strong> L'Inbox sert juste à sélectionner les fichiers à <em>préparer</em> (analyse, génération du release_name, du .torrent et de la fiche BBCode). L'upload vers le tracker ne se déclenche que plus tard, via un clic explicite depuis la <a href="/queue" class="font-medium underline hover:no-underline">Queue</a>.
+    </p>
+</div>
+
+{# Quick roots : drives Windows + favoris #}
+{% if quick_roots %}
+<div class="mb-4 flex flex-wrap items-center gap-1.5">
+    <span class="text-xs text-slate-500 dark:text-slate-400 mr-1.5">Racines</span>
+    {% for r in quick_roots %}
+        <a href="/inbox?path={{ r.path | urlencode }}"
+           class="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors duration-fast
+                  {% if current_path == r.path %}bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800{% else %}bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700{% endif %}">
+            {{ r.label }}
+        </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{# === Carte principale : path/breadcrumb/search + table ===
+   NB : pas de `overflow-hidden` sur le wrapper, sinon les enfants
+   `sticky` sont kill (CSS quirk). Les coins arrondis sont gérés
+   par les enfants directement. #}
+<div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
+
+    {# Sticky : path input + breadcrumbs + actions.
+       top-14 sur mobile (sous la topbar fixe h-14), top-0 sur desktop. #}
+    <div class="sticky top-14 md:top-0 z-20 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 rounded-t-lg">
+
+        {# Ligne 1 : path input full-width #}
+        <div class="px-4 py-3 flex items-center gap-2">
+            <form id="path-form" class="flex items-center gap-2 flex-1" onsubmit="return false;">
+                <div class="relative flex-1 min-w-0">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        {{ icon('folder-open', size='sm') }}
+                    </div>
+                    <input id="path-input" type="text" value="{{ current_path }}"
+                           class="w-full pl-9 pr-3 py-2 text-xs font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-md border border-slate-300 dark:border-slate-600"
+                           placeholder="Tape un chemin et appuie sur Entrée">
+                </div>
+                {{ button('Aller', type='submit', id='path-go-btn', variant='secondary', size='sm') }}
+            </form>
+        </div>
+
+        {# Ligne 2 : breadcrumbs #}
+        {% set path_sep = '\\' if (current_path and '\\' in current_path) else '/' %}
+        <div class="px-4 pb-3 flex items-center gap-1.5 text-xs overflow-x-auto whitespace-nowrap text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700/60">
+            {% for crumb in crumbs %}
+                {% if not loop.last %}
+                    <a href="/inbox?path={{ crumb.path | urlencode }}" class="text-primary-700 dark:text-primary-400 hover:underline">{{ crumb.name or path_sep }}</a>
+                    <span class="text-slate-300 dark:text-slate-600">{{ path_sep }}</span>
+                {% else %}
+                    <span class="text-slate-900 dark:text-slate-100 font-medium">{{ crumb.name or path_sep }}</span>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        {# Ligne 3 : toolbar (parent, recherche, count, action) #}
+        <div class="px-4 py-2.5 bg-slate-50/60 dark:bg-slate-900/40 flex flex-wrap items-center gap-3">
+            {% if parent_path %}
+                <a href="/inbox?path={{ parent_path | urlencode }}" class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-primary-700 dark:hover:text-primary-400 transition-colors duration-fast">
+                    {{ icon('arrow-left', size='sm') }}
+                    Dossier parent
+                </a>
+            {% endif %}
+
+            <div class="relative tu-search-wrap">
+                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                    {{ icon('search', size='sm') }}
+                </div>
+                <input id="search-input" type="text" placeholder="Filtrer ce dossier…"
+                       class="tu-search-input pl-8 pr-8 h-8 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-md border border-slate-300 dark:border-slate-600 w-56">
+                <button type="button" class="tu-search-clear hidden absolute inset-y-0 right-0 pr-2 items-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 interactive"
+                        aria-label="Effacer la recherche" data-tu-tooltip="Effacer">
+                    {{ icon('x', size='sm') }}
+                </button>
+            </div>
+            <span id="search-count" class="text-xs text-slate-500 dark:text-slate-400"></span>
+
+            {# NOTES round 9 Feat-1 : toggle "Afficher tous les types de fichiers".
+               Par defaut OFF -> on liste video + companion uniquement (signal-to-noise).
+               Quand ON -> on affiche egalement les .iso, .bin, .exe et tout le reste.
+               Persiste en localStorage tu_inbox_show_all. Recharge la page avec
+               ?show_all=1 ou retire le param. #}
+            <label class="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none"
+                   data-tu-tooltip="Affiche les fichiers de tout type (par défaut : vidéos + companions seulement)">
+                <input type="checkbox" id="inbox-show-all-toggle" {% if show_all %}checked{% endif %}
+                       class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
+                <span>Tous les fichiers</span>
+            </label>
+
+            <div class="ml-auto flex items-center gap-2.5">
+                <span id="selected-count" class="text-xs text-slate-500 dark:text-slate-400">0 sélectionné(s)</span>
+                {# Split-button : action principale "Ajouter à la queue" + chevron qui ouvre un dropdown
+                   avec l'option "Packager en 1 seul torrent" (visible quand 2+ items selectionnes). #}
+                <div class="relative inline-flex">
+                    <button id="add-to-queue-btn" type="button" disabled
+                            class="inline-flex items-center gap-2 h-9 px-3.5 text-sm font-medium rounded-l-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast">
+                        <span>Ajouter à la queue</span>
+                        {{ icon('arrow-right', size='sm') }}
+                    </button>
+                    <button id="add-options-btn" type="button" disabled aria-haspopup="true" aria-expanded="false"
+                            aria-label="Plus d'options"
+                            class="inline-flex items-center justify-center h-9 w-8 rounded-r-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast border-l border-primary-700">
+                        {{ icon('chevron-down', size='sm') }}
+                    </button>
+                    {# Dropdown (hidden by default) #}
+                    <div id="add-options-menu" class="hidden absolute right-0 top-full mt-1 z-30 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden">
+                        <button type="button" data-action="default"
+                                class="w-full text-left px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors duration-fast">
+                            <div class="text-sm font-medium text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                                {{ icon('arrow-right', size='sm', classes='text-primary-600 dark:text-primary-400') }}
+                                Ajouter (1 item = 1 torrent)
+                            </div>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 pl-6">Comportement normal : chaque fichier devient un torrent séparé.</div>
+                        </button>
+                        <div class="border-t border-slate-100 dark:border-slate-700/60"></div>
+                        <button type="button" data-action="bundle"
+                                class="w-full text-left px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors duration-fast">
+                            <div class="text-sm font-medium text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                                {{ icon('package', size='sm', classes='text-primary-600 dark:text-primary-400') }}
+                                Packager en 1 seul torrent
+                            </div>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 pl-6">Tous les items sélectionnés (fichiers + dossiers) regroupés dans UN torrent. Pour les rares cas non-emboîtés.</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Modal "Packager en 1 seul torrent" — affiche la liste + permet d'editer le nom du bundle #}
+    <div id="bundle-modal" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+        <div class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 w-full max-w-lg">
+            <header class="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('package', size='md', classes='text-primary-600 dark:text-primary-400') }}
+                    Packager en 1 seul torrent
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Les items seront regroupés dans un dossier racine portant le nom ci-dessous. Tu pourras ajuster le release name après la préparation si besoin.</p>
+            </header>
+            <div class="p-5 space-y-4">
+                <div>
+                    <label for="bundle-name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Nom du dossier racine</label>
+                    <input type="text" id="bundle-name"
+                           class="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-md border border-slate-300 dark:border-slate-600"
+                           placeholder="Ex: My.Release.2024.MULTi.VFF.1080p.x265-TEAM">
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">C'est aussi le release_name initial. Sans espaces, points pour les séparateurs.</p>
+                </div>
+                <div>
+                    <div class="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">Contenu (<span id="bundle-count">0</span> item<span id="bundle-plural"></span>)</div>
+                    <ul id="bundle-list" class="max-h-48 overflow-y-auto bg-slate-50 dark:bg-slate-900/40 rounded-md border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700/60 text-xs font-mono"></ul>
+                </div>
+                <div class="bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-md p-3 inline-flex items-start gap-2">
+                    <span class="text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='sm') }}</span>
+                    <div class="text-xs text-warning-800 dark:text-warning-300">
+                        <strong>Cas avancé.</strong> Le pipeline analysera ces items comme un seul ensemble. Vérifie le résultat avant l'upload. Si la détection se trompe (catégorie, langue), tu pourras override via la page package.
+                    </div>
+                </div>
+            </div>
+            <footer class="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button id="bundle-cancel" type="button" class="h-9 px-3.5 text-sm font-medium rounded-md text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Annuler</button>
+                <button id="bundle-confirm" type="button" disabled class="h-9 px-3.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5">
+                    {{ icon('package', size='sm') }}
+                    Créer le bundle
+                </button>
+            </footer>
+        </div>
+    </div>
+
+    {# === Contenu : table OU erreur OU empty === #}
+    {% if error %}
+        <div class="p-4 m-4 rounded-md bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 flex items-start gap-2.5 text-sm text-danger-800 dark:text-danger-200">
+            {{ icon('alert-triangle', size='md', classes='text-danger-600 dark:text-danger-400 mt-0.5 flex-shrink-0') }}
+            <span>{{ error }}</span>
+        </div>
+    {% elif not entries %}
+        {{ empty_state(
+            icon_name='folder-open',
+            title='Dossier vide',
+            description='Ce dossier ne contient ni sous-dossier ni fichier vidéo. Remonte au parent ou choisis une autre racine.',
+            action_label='Remonter d’un niveau' if parent_path else None,
+            action_href=('/inbox?path=' ~ parent_path) if parent_path else None
+        ) }}
+    {% else %}
+        <table class="w-full text-sm">
+            <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
+                <tr>
+                    <th class="px-4 py-2.5 w-10 text-center">
+                        <input type="checkbox" id="inbox-check-all" class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500" data-tu-tooltip="Tout cocher / décocher">
+                    </th>
+                    <th class="px-4 py-2.5 font-medium">Nom</th>
+                    <th class="px-4 py-2.5 w-32 text-right font-medium">Taille</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+                {# NOTES round 7 : map kind -> (lucide icon name, tailwind color class).
+                   Permet de visualiser d'un coup d'oeil le type de chaque fichier. #}
+                {% set kind_styles = {
+                    'dir':      ('folder',       'text-warning-500'),
+                    'video':    ('file-video',   'text-primary-500 dark:text-primary-400'),
+                    'image':    ('film',         'text-success-500'),
+                    'subtitle': ('scroll-text',  'text-primary-400 dark:text-primary-300'),
+                    'nfo':      ('file-text',    'text-slate-500 dark:text-slate-400'),
+                    'archive':  ('package',      'text-warning-600 dark:text-warning-400'),
+                    'torrent':  ('upload',       'text-primary-600 dark:text-primary-400'),
+                    'other':    ('file-text',    'text-slate-400 dark:text-slate-500'),
+                } %}
+                {% for entry in entries %}
+                {% set ks = kind_styles.get(entry.kind, kind_styles['other']) %}
+                <tr class="entry-row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast" data-name="{{ entry.name | lower }}">
+                    <td class="px-4 py-2" onclick="event.stopPropagation()">
+                        {# Toutes les entrees sont selectionnables (bundle de mix
+                           fichiers/dossiers possible via le menu deroulant). #}
+                        <input type="checkbox" class="file-checkbox w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500" data-path="{{ entry.path }}" data-kind="{{ entry.kind }}" onclick="event.stopPropagation()">
+                    </td>
+                    <td class="px-4 py-2">
+                        {% if entry.is_dir %}
+                            <a href="/inbox?path={{ entry.path | urlencode }}" class="inline-flex items-center gap-2 text-slate-900 dark:text-slate-100 hover:text-primary-700 dark:hover:text-primary-400 transition-colors duration-fast">
+                                <span class="{{ ks[1] }}">{{ icon(ks[0], size='md') }}</span>
+                                <span>{{ entry.name }}</span>
+                            </a>
+                        {% else %}
+                            <span class="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                                <span class="{{ ks[1] }}">{{ icon(ks[0], size='md') }}</span>
+                                <span>{{ entry.name }}</span>
+                                {% if entry.kind != 'video' and entry.kind != 'dir' %}
+                                    <span class="ml-1 inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-wide">{{ entry.kind }}</span>
+                                {% endif %}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-right text-slate-500 dark:text-slate-400 text-xs tabular-nums">{{ entry.size_pretty }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+</div>
+
+{# Astuce secondaire — discrete, secondary text #}
+<div class="mt-4 inline-flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
+    {{ icon('lightbulb', size='sm', classes='mt-0.5 flex-shrink-0') }}
+    <span>
+        Astuce : tu peux naviguer dans n'importe quel dossier de ton disque. Définis <code class="font-mono bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded text-[11px]">BROWSE_ROOT</code> dans ton fichier <code class="font-mono bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded text-[11px]">.env</code> pour changer le dossier de départ par défaut.
+    </span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// NOTES round 9 Feat-1 : toggle "Afficher tous les types de fichiers".
+// Au changement, on update l'URL (ajout ou retrait du query param show_all=1)
+// et on reload pour que le serveur re-liste avec le filtre approprie.
+// Persiste en localStorage pour que la preference soit appliquee au prochain
+// load (handled cote serveur via le query param transmis automatiquement
+// dans tous les liens de navigation grace a _injectShowAllParam).
+(function() {
+    const toggle = document.getElementById('inbox-show-all-toggle');
+    if (!toggle) return;
+    const STORAGE_KEY = 'tu_inbox_show_all';
+    // Sync : si localStorage dit true mais URL n'a pas le param, on l'ajoute.
+    // Si localStorage dit false mais URL l'a, on retire. Au premier load,
+    // l'attribut checked vient du template (qui lit le query param).
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        const urlHas = new URLSearchParams(window.location.search).get('show_all') === '1';
+        if (stored === '1' && !urlHas) {
+            // Etat persiste mais pas dans URL : on redirige avec le param
+            const url = new URL(window.location);
+            url.searchParams.set('show_all', '1');
+            window.location.replace(url.toString());
+            return;
+        }
+        if (stored === '0' && urlHas) {
+            const url = new URL(window.location);
+            url.searchParams.delete('show_all');
+            window.location.replace(url.toString());
+            return;
+        }
+    } catch (e) {}
+    toggle.addEventListener('change', () => {
+        const url = new URL(window.location);
+        try {
+            localStorage.setItem(STORAGE_KEY, toggle.checked ? '1' : '0');
+        } catch (e) {}
+        if (toggle.checked) url.searchParams.set('show_all', '1');
+        else url.searchParams.delete('show_all');
+        if (typeof window.showPageLoader === 'function') window.showPageLoader();
+        window.location.href = url.toString();
+    });
+    // Propage le param show_all=1 sur tous les liens internes de navigation
+    // d'inbox (breadcrumbs, dossiers, quick_roots). Sinon naviguer ferait
+    // perdre l'etat.
+    if (toggle.checked) {
+        document.querySelectorAll('a[href^="/inbox"]').forEach(a => {
+            try {
+                const u = new URL(a.href, window.location.origin);
+                if (u.pathname.startsWith('/inbox')) {
+                    u.searchParams.set('show_all', '1');
+                    a.href = u.toString();
+                }
+            } catch (e) {}
+        });
+    }
+})();
+</script>
+<script>
+(function() {
+    const checkboxes = () => document.querySelectorAll('.file-checkbox');
+    const selectedCount = document.getElementById('selected-count');
+    const addBtn = document.getElementById('add-to-queue-btn');
+
+    const addOptionsBtn = document.getElementById('add-options-btn');
+    const checkAll = document.getElementById('inbox-check-all');
+    function refreshSelection() {
+        const all = Array.from(checkboxes());
+        const selected = all.filter(cb => cb.checked);
+        selectedCount.textContent = `${selected.length} sélectionné(s)`;
+        addBtn.disabled = selected.length === 0;
+        // Le chevron dropdown n'est utile que si >= 2 items (pour proposer
+        // "Packager en 1 seul torrent" qui demande au moins 2 items).
+        if (addOptionsBtn) addOptionsBtn.disabled = selected.length < 2;
+        if (checkAll) {
+            if (selected.length === 0) {
+                checkAll.checked = false;
+                checkAll.indeterminate = false;
+            } else if (selected.length === all.length) {
+                checkAll.checked = true;
+                checkAll.indeterminate = false;
+            } else {
+                checkAll.checked = false;
+                checkAll.indeterminate = true;
+            }
+        }
+    }
+
+    checkboxes().forEach(cb => cb.addEventListener('change', refreshSelection));
+    if (checkAll) {
+        checkAll.addEventListener('change', () => {
+            const target = checkAll.checked;
+            checkboxes().forEach(cb => { cb.checked = target; });
+            refreshSelection();
+        });
+    }
+
+    // Shift+click range select
+    let lastClickedIdx = -1;
+    function _idxOfCb(cb) {
+        return Array.from(checkboxes()).indexOf(cb);
+    }
+    checkboxes().forEach(cb => {
+        cb.addEventListener('click', (event) => {
+            const idx = _idxOfCb(cb);
+            if (event.shiftKey && lastClickedIdx >= 0 && idx !== lastClickedIdx) {
+                const all = Array.from(checkboxes());
+                const [start, end] = idx < lastClickedIdx
+                    ? [idx, lastClickedIdx] : [lastClickedIdx, idx];
+                const newState = cb.checked;
+                for (let i = start; i <= end; i++) {
+                    all[i].checked = newState;
+                }
+                refreshSelection();
+            }
+            lastClickedIdx = idx;
+        });
+    });
+
+    // === Dropdown options menu ===
+    const optionsMenu = document.getElementById('add-options-menu');
+    if (addOptionsBtn && optionsMenu) {
+        addOptionsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const hidden = optionsMenu.classList.toggle('hidden');
+            addOptionsBtn.setAttribute('aria-expanded', String(!hidden));
+        });
+        document.addEventListener('click', (e) => {
+            if (!optionsMenu.contains(e.target) && e.target !== addOptionsBtn) {
+                optionsMenu.classList.add('hidden');
+                addOptionsBtn.setAttribute('aria-expanded', 'false');
+            }
+        });
+        optionsMenu.querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                optionsMenu.classList.add('hidden');
+                addOptionsBtn.setAttribute('aria-expanded', 'false');
+                const action = btn.dataset.action;
+                if (action === 'default') {
+                    doAddDefault();
+                } else if (action === 'bundle') {
+                    openBundleModal();
+                }
+            });
+        });
+    }
+
+    // === Bundle modal (Packager en 1 seul torrent) ===
+    const bundleModal = document.getElementById('bundle-modal');
+    const bundleNameInput = document.getElementById('bundle-name');
+    const bundleList = document.getElementById('bundle-list');
+    const bundleCount = document.getElementById('bundle-count');
+    const bundlePlural = document.getElementById('bundle-plural');
+    const bundleConfirm = document.getElementById('bundle-confirm');
+    const bundleCancel = document.getElementById('bundle-cancel');
+
+    function openBundleModal() {
+        const selected = Array.from(checkboxes()).filter(cb => cb.checked);
+        if (selected.length < 2) return;
+        const paths = selected.map(cb => cb.dataset.path);
+        // Pre-rempli un nom par defaut base sur le 1er item (nom de fichier
+        // sans extension) — le user pourra editer.
+        const firstName = (paths[0].split(/[\\/]/).pop() || '').replace(/\.[^.]+$/, '');
+        bundleNameInput.value = firstName || 'My.Bundle.2024.MULTi.VFF.1080p.x265-TEAM';
+        bundleList.innerHTML = '';
+        paths.forEach(p => {
+            const li = document.createElement('li');
+            li.className = 'px-2.5 py-1.5 text-slate-700 dark:text-slate-300 break-all';
+            li.textContent = p;
+            bundleList.appendChild(li);
+        });
+        bundleCount.textContent = paths.length;
+        bundlePlural.textContent = paths.length > 1 ? 's' : '';
+        _updateBundleConfirmState();
+        bundleModal.classList.remove('hidden');
+        setTimeout(() => bundleNameInput.focus(), 30);
+    }
+    function closeBundleModal() {
+        bundleModal.classList.add('hidden');
+    }
+    function _updateBundleConfirmState() {
+        const v = (bundleNameInput.value || '').trim();
+        // Validation : pas vide, pas d'espaces (convention release_name)
+        bundleConfirm.disabled = !v || / /.test(v);
+    }
+    if (bundleNameInput) {
+        bundleNameInput.addEventListener('input', _updateBundleConfirmState);
+    }
+    if (bundleCancel) bundleCancel.addEventListener('click', closeBundleModal);
+    if (bundleModal) {
+        bundleModal.addEventListener('click', (e) => {
+            if (e.target === bundleModal) closeBundleModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !bundleModal.classList.contains('hidden')) closeBundleModal();
+        });
+    }
+    if (bundleConfirm) {
+        bundleConfirm.addEventListener('click', () => {
+            const selected = Array.from(checkboxes()).filter(cb => cb.checked);
+            const paths = selected.map(cb => cb.dataset.path);
+            const bundleName = (bundleNameInput.value || '').trim();
+            if (!bundleName || paths.length < 2) return;
+            closeBundleModal();
+            doAddBundle(paths, bundleName);
+        });
+    }
+
+    async function doAddBundle(paths, bundleName) {
+        addBtn.disabled = true;
+        addOptionsBtn.disabled = true;
+        try {
+            const resp = await fetch('/api/queue/add-bundle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths, bundle_name: bundleName }),
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                tu.toast({
+                    title: 'Bundle ajouté',
+                    message: `${paths.length} items regroupés sous "${bundleName}"`,
+                    tone: 'success',
+                });
+                checkboxes().forEach(cb => cb.checked = false);
+                refreshSelection();
+                setTimeout(() => { window.location.href = '/queue'; }, 600);
+            } else {
+                tu.toast({
+                    title: 'Échec du bundle',
+                    message: data.detail || resp.statusText,
+                    tone: 'danger',
+                    duration: 6000,
+                });
+                refreshSelection();
+            }
+        } catch (e) {
+            tu.toast({
+                title: 'Erreur réseau',
+                message: String(e),
+                tone: 'danger',
+                duration: 6000,
+            });
+            refreshSelection();
+        }
+    }
+
+    async function doAddDefault() {
+        await _addToQueueCore();
+    }
+
+    addBtn.addEventListener('click', () => doAddDefault());
+
+    async function _addToQueueCore() {
+        const paths = Array.from(checkboxes())
+            .filter(cb => cb.checked)
+            .map(cb => cb.dataset.path);
+        if (paths.length === 0) return;
+        addBtn.disabled = true;
+        const labelSpan = addBtn.querySelector('span');
+        const originalLabel = labelSpan ? labelSpan.textContent : 'Ajouter à la queue';
+        if (labelSpan) labelSpan.textContent = 'En cours…';
+        try {
+            const resp = await fetch('/api/queue/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths }),
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                tu.toast({
+                    title: data.message || `${paths.length} fichier(s) ajouté(s)`,
+                    tone: 'success',
+                });
+                checkboxes().forEach(cb => cb.checked = false);
+                refreshSelection();
+                // Redirige vers la queue apres un court delai pour que le toast soit vu
+                setTimeout(() => { window.location.href = '/queue'; }, 600);
+            } else {
+                tu.toast({
+                    title: 'Erreur',
+                    message: data.detail || resp.statusText,
+                    tone: 'danger',
+                    duration: 6000,
+                });
+            }
+        } catch (e) {
+            tu.toast({
+                title: 'Erreur réseau',
+                message: String(e),
+                tone: 'danger',
+                duration: 6000,
+            });
+        } finally {
+            addBtn.disabled = false;
+            if (labelSpan) labelSpan.textContent = originalLabel;
+            refreshSelection();
+        }
+    }
+
+    refreshSelection();
+
+    // Loader sur navigation inbox
+    document.querySelectorAll('a[href*="/inbox?path="]').forEach(a => {
+        a.addEventListener('click', () => {
+            if (typeof window.showPageLoader === 'function') {
+                window.showPageLoader();
+            }
+        });
+    });
+
+    // Path input submit
+    const pathInput = document.getElementById('path-input');
+    const pathForm = document.getElementById('path-form');
+    if (pathForm) {
+        pathForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const target = (pathInput.value || '').trim();
+            if (target) {
+                if (typeof window.showPageLoader === 'function') window.showPageLoader();
+                window.location.href = '/inbox?path=' + encodeURIComponent(target);
+            }
+        });
+    }
+
+    // Recherche live (accent-insensitive)
+    const searchInput = document.getElementById('search-input');
+    const searchCount = document.getElementById('search-count');
+    const allRows = () => document.querySelectorAll('tr.entry-row');
+    function _foldAccents(s) {
+        return (s || '')
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+            .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+            .toLowerCase();
+    }
+    function applySearch() {
+        if (!searchInput) return;
+        const q = _foldAccents(searchInput.value).trim();
+        const tokens = q.split(/\s+/).filter(t => t.length > 0);
+        let visible = 0;
+        let total = 0;
+        allRows().forEach(row => {
+            total++;
+            const name = _foldAccents(row.dataset.name || '');
+            const ok = tokens.every(t => name.includes(t));
+            row.style.display = ok ? '' : 'none';
+            if (ok) visible++;
+        });
+        if (searchCount) {
+            searchCount.textContent = q ? `${visible} / ${total} visible(s)` : '';
+        }
+    }
+    if (searchInput) {
+        searchInput.addEventListener('input', applySearch);
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { searchInput.value = ''; applySearch(); }
+        });
+    }
+})();
+</script>
+{% endblock %}

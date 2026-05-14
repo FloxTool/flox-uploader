@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Permet de lancer le workflow manuellement depuis l'onglet Actions
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: pytest · Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install MediaInfo CLI (binaire système requis par pymediainfo)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mediainfo
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Run pytest
+        run: pytest tests/ --tb=short -q
+
+      - name: Show test summary
+        if: always()
+        run: |
+          echo "## Test results" >> $GITHUB_STEP_SUMMARY
+          pytest tests/ --tb=no -q 2>&1 | tail -5 >> $GITHUB_STEP_SUMMARY || true

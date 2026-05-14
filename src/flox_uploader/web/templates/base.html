@@ -1,0 +1,1727 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Flox Uploader{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    {# NOTES round 8 P4.7 : meta tags mobiles / PWA-ish polish.
+       - apple-touch-icon : icone home-screen iOS (Safari ajoute le site sur
+         iPhone). On reuse logo.png 512x512.
+       - theme-color : la barre d'adresse Chrome/Safari prend cette couleur
+         en mobile, donne un look "app native" au lieu du blanc cassant.
+         On utilise slate-950 (#020617) qui matche le bg dark + s'integre OK
+         en light aussi.
+       - manifest : pour l'install "Ajouter a l'ecran d'accueil" (Chrome,
+         Edge mobile, Samsung Internet). Le manifest.webmanifest decrit
+         l'app (nom, theme, icones). #}
+    <link rel="apple-touch-icon" href="/static/logo.png">
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Init early du dark mode pour eviter le flash blanc au chargement.
+         NOTES round 8 P5.3 : on applique aussi un background-color inline
+         sur <html> AVANT que Tailwind CDN charge, sinon entre le parse-HTML
+         et le moment ou Tailwind injecte sa CSS, le body est blanc. -->
+    <style>
+      html             { background-color: rgb(241, 245, 249); }  /* slate-100 */
+      html.dark        { background-color: rgb(2, 6, 23); }       /* slate-950 */
+    </style>
+    <script>
+      (function() {
+        try {
+          var pref = localStorage.getItem('tu_theme');
+          if (pref === 'dark' || (pref === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // ============================================================
+      // DESIGN TOKENS (Sprint 0) — Indigo primary, semantic colors,
+      // disciplined scale. NE PAS ajouter de couleurs hors palette.
+      // ============================================================
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              // Couleur de marque (CTAs, liens, focus, accent)
+              primary: {
+                50:  '#eef2ff',
+                100: '#e0e7ff',
+                200: '#c7d2fe',
+                300: '#a5b4fc',
+                400: '#818cf8',
+                500: '#6366f1',
+                600: '#4f46e5',
+                700: '#4338ca',
+                800: '#3730a3',
+                900: '#312e81',
+                950: '#1e1b4b',
+              },
+              // Success (emerald)
+              success: {
+                50:  '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0',
+                300: '#6ee7b7', 400: '#34d399', 500: '#10b981',
+                600: '#059669', 700: '#047857', 800: '#065f46',
+                900: '#064e3b', 950: '#022c22',
+              },
+              // Warning (amber)
+              warning: {
+                50:  '#fffbeb', 100: '#fef3c7', 200: '#fde68a',
+                300: '#fcd34d', 400: '#fbbf24', 500: '#f59e0b',
+                600: '#d97706', 700: '#b45309', 800: '#92400e',
+                900: '#78350f', 950: '#451a03',
+              },
+              // Danger (red)
+              danger: {
+                50:  '#fef2f2', 100: '#fee2e2', 200: '#fecaca',
+                300: '#fca5a5', 400: '#f87171', 500: '#ef4444',
+                600: '#dc2626', 700: '#b91c1c', 800: '#991b1b',
+                900: '#7f1d1d', 950: '#450a0a',
+              },
+              // Note : neutral = slate (deja utilise partout, rename
+              // serait couteux ; on conserve `slate-*` comme alias neutre).
+            },
+            boxShadow: {
+              'xs':    '0 1px 2px rgba(0,0,0,0.05)',
+              'sm':    '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
+              'md':    '0 4px 6px -1px rgba(0,0,0,0.10), 0 2px 4px -2px rgba(0,0,0,0.06)',
+              'lg':    '0 10px 15px -3px rgba(0,0,0,0.12), 0 4px 6px -4px rgba(0,0,0,0.05)',
+              'focus': '0 0 0 3px rgba(99,102,241,0.4)',
+            },
+            fontFamily: {
+              sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'system-ui', 'sans-serif'],
+              mono: ['"JetBrains Mono"', '"SF Mono"', 'Consolas', 'Menlo', 'monospace'],
+            },
+            ringWidth: {
+              DEFAULT: '2px',
+              focus: '3px',
+            },
+            transitionDuration: {
+              // NOTES round 8 P0.A : echelle de timing unifiee.
+              // fast (180ms) : interactions standard (hover, color change)
+              // base (240ms) : transitions structurelles (modals, popovers)
+              // slow (320ms) : enter/exit majeurs (page transitions)
+              fast: '180ms',
+              base: '240ms',
+              slow: '320ms',
+            },
+            transitionTimingFunction: {
+              // Easing custom "smooth spring" inspire Linear / Vercel
+              // (cubic-bezier qui demarre rapide et finit doux, donne
+              // une sensation naturelle vs ease-out classique trop sec).
+              'tu': 'cubic-bezier(0.16, 1, 0.3, 1)',
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <!-- Twemoji (Lot post-NOTES.md round 4) : remplace les emoji par des
+         SVG colorés universels. Sans ça, les drapeaux 🇫🇷🇬🇧🇯🇵 et autres
+         emoji ne s'affichent pas sur Windows hors Edge récent.
+         Le script `twemoji.parse(document.body)` est appelé apres chaque
+         rendu (et apres chaque rendu BBCode dynamique). -->
+    <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js"
+            crossorigin="anonymous"></script>
+    {# Inter web font (variable axis 100-900) + JetBrains Mono.
+       NOTES round 8 P4.6 : on utilise la variable font Inter (1 fichier
+       d'environ 30KB couvrant tous les poids 100-900) au lieu des 4 statiques
+       (400/500/600/700) auparavant — economie ~40% de poids + tous les poids
+       intermediaires (550, 650, etc.) deviennent disponibles si jamais.
+       JetBrains Mono reste en static (uniquement 400+500 servent en pratique).
+       display=swap pour eviter le FOIT. #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================================
+           GLOBAL : reset minimal, focus, transitions, scrollbar
+           ============================================================ */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        /* NOTES round 8 P4.5 : tracking-tight (-0.015em) sur tous les h1/h2
+           pour le look premium "Linear/Vercel" — les titres serres lookent
+           plus volontaires/intentionnels qu'avec un letter-spacing par defaut.
+           Les h3+ et le body restent en default tracking (lecture confort). */
+        h1, h2 {
+            letter-spacing: -0.015em;
+        }
+        h1 { letter-spacing: -0.025em; }   /* page titles : encore plus serres */
+        /* NOTES round 8 P4.2 : tabular-nums sur tous les contextes ou les
+           chiffres doivent s'aligner verticalement — tables (dates / tailles
+           / scores), kbd badges, et elements explicitement tagges. Inter a
+           des chiffres proportionnels par defaut (largeur variable), ce qui
+           rend les colonnes numeriques "dansantes" — `tnum` les rend tous
+           a la meme largeur. */
+        tbody td,
+        kbd,
+        .tu-num,
+        .tabular-nums,
+        [data-tu-num] {
+            font-variant-numeric: tabular-nums;
+        }
+        /* ============================================================
+           NOTES round 8 P0.A : design tokens CSS pour timing + colors
+           ============================================================
+
+           ECHELLE DE SPACING (4px-grid Tailwind, valeurs autorisees) :
+             0.5 (2px)  : tres tight — badge interieur, icon adjacent texte
+             1   (4px)  : tight        — chip gap, micro-padding
+             1.5 (6px)  : moyen-tight  — icon + label dans bouton sm
+             2   (8px)  : normal       — gap standard between items
+             2.5 (10px) : table cell   — densite confortable mais compacte
+             3   (12px) : large        — padding card horizontal
+             3.5 (14px) : button med   — padding x bouton md
+             4   (16px) : section gap  — entre cartes/sections
+             5   (20px) : button lg    — padding x bouton lg
+             6   (24px) : large gap    — page header sep
+             8   (32px) : extra-large
+           Eviter : 7, 9, 10, 11, 13, 14, 15. Toujours retomber sur la liste
+           ci-dessus. Si un cas particulier exige une autre valeur, mettre
+           un commentaire qui justifie. */
+        :root {
+            --tu-primary: 99, 102, 241;             /* indigo-500 RGB */
+            --tu-ease:    cubic-bezier(0.16, 1, 0.3, 1);
+            --tu-fast:    180ms;
+            --tu-base:    240ms;
+            --tu-press:   80ms;
+            /* NOTES round 8 P4.3 : 2 niveaux de border canonical.
+               - subtle    : separation discrete (table rows, divider sections,
+                             popover borders) — utiliser pour 80% des cas.
+               - prominent : separation marquee (header de section, alert
+                             banner, focus indicator) — n'utiliser qu'au-dessus
+                             d'un changement de contexte visuel fort.
+               En Tailwind : Object correspondants
+                 subtle    light = slate-100 / dark = slate-700/60
+                 prominent light = slate-200 / dark = slate-700
+               Ces vars ne sont PAS encore utilisees dans tous les composants
+               (migration progressive) — mais documentees ici comme reference. */
+            --tu-border-subtle:           rgb(241, 245, 249);   /* slate-100 */
+            --tu-border-prominent:        rgb(226, 232, 240);   /* slate-200 */
+        }
+        html.dark {
+            --tu-border-subtle:           rgba(51, 65, 85, 0.6); /* slate-700/60 */
+            --tu-border-prominent:        rgb(51, 65, 85);       /* slate-700 */
+        }
+
+        /* Focus ring uniforme primary, qui HÉRITE du border-radius parent
+           (outline + outline-offset suit naturellement la forme de l'élément,
+           contrairement à box-shadow qui imposait un radius fixe à 4px).
+           Resultat : halo qui suit propres les coins arrondis 6/8/12/full. */
+        :focus-visible {
+            outline: 2px solid rgba(var(--tu-primary), 0.85);
+            outline-offset: 2px;
+            transition: outline-offset 80ms var(--tu-ease);
+        }
+        /* On retire le focus visible des elements interactifs au mouse hover
+           (style standard : focus apparait au tab clavier, pas au click). */
+        :focus:not(:focus-visible) {
+            outline: none;
+        }
+
+        /* Classe utilitaire .interactive : transitions standard + press feedback.
+           A appliquer sur tout bouton / chip / lien clickable pour avoir le
+           feedback haptique-like "press" subtle (scale 0.97 pendant 80ms).
+           Cubic-bezier ease-out custom donne une sensation naturelle. */
+        .interactive {
+            transition:
+                background-color var(--tu-fast) var(--tu-ease),
+                border-color var(--tu-fast) var(--tu-ease),
+                color var(--tu-fast) var(--tu-ease),
+                opacity var(--tu-fast) var(--tu-ease),
+                box-shadow var(--tu-fast) var(--tu-ease),
+                transform var(--tu-press) var(--tu-ease);
+        }
+        .interactive:active:not(:disabled):not([aria-disabled="true"]) {
+            transform: scale(0.97);
+        }
+        .interactive:disabled,
+        .interactive[aria-disabled="true"] {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        /* NOTES round 8 P1.C : checkbox flash subtile au check, donne un
+           feedback visuel "ok j'ai bien recu ton click" sans etre tape-a-l-oeil. */
+        @keyframes tu-checkbox-flash {
+            0%   { box-shadow: 0 0 0 0 rgba(var(--tu-primary), 0.35); }
+            60%  { box-shadow: 0 0 0 6px rgba(var(--tu-primary), 0); }
+            100% { box-shadow: 0 0 0 0 rgba(var(--tu-primary), 0); }
+        }
+        input[type="checkbox"].tu-checkbox-flash {
+            animation: tu-checkbox-flash 360ms var(--tu-ease);
+        }
+
+        /* NOTES round 8 P5.1 : pulse subtile sur le badge ⌘K en sidebar
+           pour aider la decouverte la 1ere fois qu'on visite l'app.
+           Se desactive automatiquement apres usage (cf. tu_cmdk_used flag). */
+        @keyframes tu-cmdk-pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(var(--tu-primary), 0.6);
+                background-color: rgba(var(--tu-primary), 0.15);
+            }
+            50% {
+                box-shadow: 0 0 0 5px rgba(var(--tu-primary), 0);
+                background-color: rgba(var(--tu-primary), 0.05);
+            }
+        }
+        .tu-cmdk-hint {
+            animation: tu-cmdk-pulse 2.2s ease-in-out infinite;
+            border-color: rgba(var(--tu-primary), 0.5) !important;
+            color: rgb(165, 180, 252) !important;  /* indigo-300 */
+        }
+
+        /* Spinner inline (pour les boutons en loading state).
+           Affiche un cercle qui tourne, hérite la couleur (currentColor). */
+        @keyframes tu-spin {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        .tu-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: tu-spin 600ms linear infinite;
+            vertical-align: -2px;
+        }
+        .tu-spinner.tu-spinner-sm { width: 12px; height: 12px; border-width: 1.5px; }
+        .tu-spinner.tu-spinner-lg { width: 18px; height: 18px; }
+        /* NOTES round 8 P1.D : skeleton loader (shimmer animation).
+           Usage : <div class="tu-skeleton h-4 w-32"></div>
+           Combine avec les utilities Tailwind pour la taille. */
+        @keyframes tu-skeleton-shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position:  200% 0; }
+        }
+        .tu-skeleton {
+            background: linear-gradient(
+                90deg,
+                rgba(148, 163, 184, 0.10) 25%,
+                rgba(148, 163, 184, 0.22) 50%,
+                rgba(148, 163, 184, 0.10) 75%
+            );
+            background-size: 200% 100%;
+            animation: tu-skeleton-shimmer 1.6s ease-in-out infinite;
+            border-radius: 4px;
+        }
+        html.dark .tu-skeleton {
+            background: linear-gradient(
+                90deg,
+                rgba(148, 163, 184, 0.06) 25%,
+                rgba(148, 163, 184, 0.18) 50%,
+                rgba(148, 163, 184, 0.06) 75%
+            );
+            background-size: 200% 100%;
+        }
+        /* Reduce motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+        /* Scrollbar subtile (dark + light auto).
+           NOTES round 8 P4.4 : 7px (Linear-style) au lieu de 10px — plus
+           discret, donne au contenu plus de place. Le thumb a un petit
+           padding via border transparente pour ne pas coller aux bords. */
+        ::-webkit-scrollbar { width: 7px; height: 7px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
+            background-color: rgba(148, 163, 184, 0.35);
+            border-radius: 4px;
+            background-clip: padding-box;
+            border: 1px solid transparent;
+        }
+        ::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, 0.55); }
+        /* Firefox : scrollbar-width thin = ~6px */
+        * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.35) transparent; }
+
+        /* ============================================================
+           NAVIGATION SIDEBAR (theme-aware via classes)
+           ============================================================ */
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: #cbd5e1;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 120ms, color 120ms;
+        }
+        .nav-link:hover { background-color: rgba(30, 41, 59, 0.6); color: #f1f5f9; }
+        .nav-link.active { background-color: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+        .nav-link.active .nav-icon { color: #a5b4fc; }
+        .nav-icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+        /* ============================================================
+           ICON DEFAULTS (lucide inline SVG)
+           ============================================================ */
+        svg.icon {
+            width: 1em;
+            height: 1em;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            flex-shrink: 0;
+            display: inline-block;
+            vertical-align: -0.125em;
+        }
+        svg.icon.icon-sm { width: 14px; height: 14px; }
+        svg.icon.icon-md { width: 16px; height: 16px; }
+        svg.icon.icon-lg { width: 20px; height: 20px; }
+        svg.icon.icon-xl { width: 24px; height: 24px; }
+
+        /* ============================================================
+           SCORE GLOW (parfait/perfect) — atténué post-audit
+           Avant : box-shadow halo agressif type "neon". Maintenant : ring
+           subtil + accent emerald conservé via couleur de bg.
+           ============================================================ */
+        .score-glow-parfait {
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.5),
+                        0 0 12px 0 rgba(16, 185, 129, 0.25);
+        }
+        .score-glow-perfect {
+            box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35);
+        }
+
+        /* ============================================================
+           TOAST — animation slide-in-right
+           ============================================================ */
+        @keyframes toast-in {
+            from { transform: translateX(110%); opacity: 0; }
+            to   { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes toast-out {
+            from { transform: translateX(0); opacity: 1; }
+            to   { transform: translateX(110%); opacity: 0; }
+        }
+        .toast { animation: toast-in 180ms ease-out; }
+        .toast.toast-leaving { animation: toast-out 160ms ease-in forwards; }
+
+        /* ============================================================
+           MODAL — backdrop + dialog pop-in
+           ============================================================ */
+        @keyframes modal-in {
+            from { opacity: 0; transform: scale(0.96); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        .modal-dialog { animation: modal-in 160ms ease-out; }
+
+        /* ============================================================
+           TOOLTIP v2 — popover sur hover ET focus clavier (a11y).
+           NOTES round 8 P0.B :
+           - Timing 160ms in / 100ms out avec easing tu
+           - Fleche pointee vers le trigger (rotate 45deg, position auto)
+           - Support kbd inline pour les raccourcis
+           - Fond slate-950 light / slate-50 dark avec ring subtle
+           ============================================================ */
+        .tu-tooltip {
+            position: fixed;
+            z-index: 80;
+            max-width: 280px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: rgb(15, 23, 42);
+            color: rgb(241, 245, 249);
+            font-size: 12px;
+            line-height: 1.5;
+            font-weight: 500;
+            letter-spacing: -0.005em;
+            box-shadow:
+                0 4px 12px -2px rgba(0, 0, 0, 0.18),
+                0 0 0 1px rgba(255, 255, 255, 0.05);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(-2px);
+            transition: opacity 100ms ease-out, transform 160ms var(--tu-ease);
+        }
+        .tu-tooltip.tu-tooltip-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Fleche - top (par defaut tooltip apparait sous le trigger) */
+        .tu-tooltip::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: 12px;
+            width: 6px;
+            height: 6px;
+            background: inherit;
+            transform: rotate(45deg);
+            border-radius: 1px;
+        }
+        /* Fleche - bottom (quand tooltip flip au-dessus) */
+        .tu-tooltip[data-flip="up"]::before {
+            top: auto;
+            bottom: -3px;
+        }
+        html.dark .tu-tooltip {
+            background: rgb(241, 245, 249);
+            color: rgb(15, 23, 42);
+            box-shadow:
+                0 4px 12px -2px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(0, 0, 0, 0.05);
+        }
+        /* Support kbd inline pour les raccourcis : <kbd>⌘K</kbd> dans le texte */
+        .tu-tooltip kbd {
+            display: inline-flex;
+            align-items: center;
+            padding: 0 4px;
+            margin-left: 4px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 500;
+            line-height: 1;
+            color: inherit;
+        }
+        html.dark .tu-tooltip kbd {
+            background: rgba(0, 0, 0, 0.08);
+            border-color: rgba(0, 0, 0, 0.12);
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
+    {# Skip-to-content link — visible uniquement quand focus clavier #}
+    <a href="#main-content"
+       class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-2 focus:bg-primary-600 focus:text-white focus:rounded-md focus:shadow-lg focus:text-sm focus:font-medium">
+        Aller au contenu principal
+    </a>
+
+    <!-- ====================================================
+         PAGE LOADER — overlay subtle, primary spinner
+         ==================================================== -->
+    <div id="page-loader" class="hidden fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div class="bg-white dark:bg-slate-800 rounded-lg shadow-lg px-5 py-4 flex items-center gap-3 border border-slate-200 dark:border-slate-700">
+            <svg class="animate-spin w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v3a8 8 0 100 16v0"></path>
+            </svg>
+            <span class="text-slate-700 dark:text-slate-200 text-sm font-medium">Chargement…</span>
+        </div>
+    </div>
+
+    <!-- ====================================================
+         TOAST CONTAINER — notifications
+         tu.toast({title, message, tone, duration}) globalement.
+
+         NOTES round 8 P5.6 : z-[70] place les toasts AU-DESSUS des modals
+         (z-[55]) et de la command palette (z-[60]). Garantit qu'un toast
+         de feedback action (succes / erreur upload) reste visible meme
+         si un modal de confirmation est encore ouvert.
+
+         Z-INDEX LADDER (NE PAS DEPASSER 80 OU LES TOOLTIPS PASSENT EN-DESSOUS) :
+           80  : tooltips (.tu-tooltip)
+           70  : toast-container
+           60  : cmdk-root (command palette)
+           55  : modal-root, bundle-modal, log-modal
+           50  : page-loader
+           40  : mobile topbar, sidebar
+           30  : sidebar-backdrop, dropdowns
+           20  : sticky toolbars
+           10  : sticky page chrome
+         ==================================================== -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[70] flex flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- ====================================================
+         COMMAND PALETTE — Cmd+K / Ctrl+K
+         Navigation rapide pages + actions + packages.
+         ==================================================== -->
+    <div id="cmdk-root" class="hidden fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[10vh] bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette">
+        <div id="cmdk-panel" class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 w-full max-w-xl overflow-hidden">
+            {# Search input — toujours visible #}
+            <div class="flex items-center gap-2.5 px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                <span class="text-slate-400 dark:text-slate-500">{{ icon('search', size='md') }}</span>
+                <input id="cmdk-input" type="text" placeholder="Rechercher des pages, actions, packages…"
+                       class="flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
+                       autocomplete="off" spellcheck="false">
+                <kbd class="hidden md:inline-flex items-center px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-mono text-slate-500 dark:text-slate-400">ESC</kbd>
+            </div>
+            {# Resultats #}
+            <div id="cmdk-results" class="max-h-[55vh] overflow-y-auto py-1.5">
+                {# Rempli dynamiquement par JS #}
+            </div>
+            {# Footer info #}
+            <div class="px-4 py-2 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center gap-1">
+                        <kbd class="inline-flex items-center px-1 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-mono">↑</kbd>
+                        <kbd class="inline-flex items-center px-1 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-mono">↓</kbd>
+                        naviguer
+                    </span>
+                    <span class="inline-flex items-center gap-1">
+                        <kbd class="inline-flex items-center px-1 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-mono">↵</kbd>
+                        sélectionner
+                    </span>
+                </div>
+                <span class="hidden md:inline-flex items-center gap-1 opacity-70">
+                    {{ icon('command', size='sm') }}
+                    K pour ouvrir
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================
+         MODAL ROOT — confirm() + alert() de remplacement
+         tu.confirm({title, message, confirmLabel, tone}) renvoie une Promise.
+         ==================================================== -->
+    <div id="modal-root" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+        <div id="modal-dialog" class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 w-full max-w-md">
+            <div class="p-5">
+                <div class="flex items-start gap-3">
+                    <div id="modal-icon-wrap" class="hidden flex-shrink-0 w-10 h-10 rounded-full items-center justify-center"></div>
+                    <div class="flex-1 min-w-0">
+                        <h3 id="modal-title" class="text-base font-semibold text-slate-900 dark:text-slate-100"></h3>
+                        <p id="modal-message" class="text-sm text-slate-600 dark:text-slate-300 mt-1.5 whitespace-pre-line"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button id="modal-cancel" type="button" class="h-9 px-3.5 text-sm font-medium rounded-md text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Annuler</button>
+                <button id="modal-confirm" type="button" class="h-9 px-3.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors">Confirmer</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // ====================================================
+        // window.tu — namespace global pour les helpers UI
+        // (toast, confirm, alert, page loader)
+        // ====================================================
+        window.tu = window.tu || {};
+
+        // ----- Page loader -----
+        tu.showPageLoader = function() {
+            const el = document.getElementById('page-loader');
+            if (el) el.classList.remove('hidden');
+        };
+        tu.hidePageLoader = function() {
+            const el = document.getElementById('page-loader');
+            if (el) el.classList.add('hidden');
+        };
+        // Compat legacy : certains scripts appellent window.showPageLoader
+        window.showPageLoader = tu.showPageLoader;
+        window.hidePageLoader = tu.hidePageLoader;
+        window.addEventListener('pageshow', () => tu.hidePageLoader());
+
+        // ====================================================
+        // TOAST
+        //
+        // Usage :
+        //   tu.toast({ title: 'Sauvegardé', tone: 'success' });
+        //   tu.toast({ title: 'Erreur', message: 'Détail...', tone: 'danger', duration: 0 /* persistent */ });
+        //
+        // tones : info | success | warning | danger
+        // duration : ms (default 4000). 0 = manuel (croix obligatoire).
+        // ====================================================
+        const _TOAST_ICONS = {
+            info:    '<svg class="icon icon-md" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+            success: '<svg class="icon icon-md" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
+            warning: '<svg class="icon icon-md" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+            danger:  '<svg class="icon icon-md" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+        };
+        const _TOAST_CLASSES = {
+            info:    'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100',
+            success: 'bg-white dark:bg-slate-800 border-success-200 dark:border-success-800 text-slate-900 dark:text-slate-100',
+            warning: 'bg-white dark:bg-slate-800 border-warning-200 dark:border-warning-800 text-slate-900 dark:text-slate-100',
+            danger:  'bg-white dark:bg-slate-800 border-danger-200 dark:border-danger-800 text-slate-900 dark:text-slate-100',
+        };
+        const _TOAST_ICON_CLASSES = {
+            info:    'text-primary-600 dark:text-primary-400',
+            success: 'text-success-600 dark:text-success-400',
+            warning: 'text-warning-600 dark:text-warning-400',
+            danger:  'text-danger-600 dark:text-danger-400',
+        };
+        tu.toast = function({title, message, tone='info', duration=4000} = {}) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const t = document.createElement('div');
+            t.className = `toast pointer-events-auto flex items-start gap-3 w-80 max-w-[calc(100vw-2rem)] rounded-lg shadow-md border p-3 ${_TOAST_CLASSES[tone] || _TOAST_CLASSES.info}`;
+            t.setAttribute('role', 'status');
+            t.innerHTML = `
+                <div class="flex-shrink-0 ${_TOAST_ICON_CLASSES[tone] || _TOAST_ICON_CLASSES.info}">${_TOAST_ICONS[tone] || _TOAST_ICONS.info}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium">${_escapeHtml(title || '')}</div>
+                    ${message ? `<div class="text-xs text-slate-600 dark:text-slate-300 mt-0.5">${_escapeHtml(message)}</div>` : ''}
+                </div>
+                <button type="button" class="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 -mt-0.5 -mr-0.5 p-0.5 rounded transition-colors" aria-label="Fermer">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            `;
+            const dismiss = () => {
+                t.classList.add('toast-leaving');
+                setTimeout(() => t.remove(), 180);
+            };
+            t.querySelector('button').addEventListener('click', dismiss);
+            container.appendChild(t);
+            if (duration > 0) setTimeout(dismiss, duration);
+        };
+        function _escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // ====================================================
+        // CONFIRM MODAL
+        //
+        // Remplace window.confirm() :
+        //   const ok = await tu.confirm({
+        //     title: 'Supprimer ?',
+        //     message: 'Action irreversible.',
+        //     confirmLabel: 'Supprimer',
+        //     tone: 'danger'
+        //   });
+        //   if (!ok) return;
+        //
+        // tones : default (primary) | danger | warning
+        // ====================================================
+        const _MODAL_ICON_BG = {
+            primary: 'bg-primary-50 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400',
+            danger:  'bg-danger-50 dark:bg-danger-900/40 text-danger-600 dark:text-danger-400',
+            warning: 'bg-warning-50 dark:bg-warning-900/40 text-warning-600 dark:text-warning-400',
+            success: 'bg-success-50 dark:bg-success-900/40 text-success-600 dark:text-success-400',
+        };
+        const _MODAL_ICON_SVG = {
+            primary: '<svg class="icon icon-lg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+            danger:  '<svg class="icon icon-lg" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+            warning: '<svg class="icon icon-lg" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+            success: '<svg class="icon icon-lg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
+        };
+        const _MODAL_CONFIRM_BG = {
+            primary: 'bg-primary-600 hover:bg-primary-700',
+            danger:  'bg-danger-600 hover:bg-danger-700',
+            warning: 'bg-warning-600 hover:bg-warning-700',
+            success: 'bg-success-600 hover:bg-success-700',
+        };
+        tu.confirm = function({
+            title = 'Confirmer ?',
+            message = '',
+            confirmLabel = 'Confirmer',
+            cancelLabel = 'Annuler',
+            tone = 'primary',
+            hideCancel = false,
+        } = {}) {
+            return new Promise((resolve) => {
+                const root = document.getElementById('modal-root');
+                const titleEl = document.getElementById('modal-title');
+                const msgEl = document.getElementById('modal-message');
+                const iconWrap = document.getElementById('modal-icon-wrap');
+                const okBtn = document.getElementById('modal-confirm');
+                const cancelBtn = document.getElementById('modal-cancel');
+                titleEl.textContent = title;
+                msgEl.textContent = message || '';
+                msgEl.style.display = message ? '' : 'none';
+                // Icon : seulement si tone != primary par defaut, pour eviter le bruit visuel
+                if (tone !== 'primary' || message.length > 0) {
+                    iconWrap.className = `flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${_MODAL_ICON_BG[tone] || _MODAL_ICON_BG.primary}`;
+                    iconWrap.innerHTML = _MODAL_ICON_SVG[tone] || _MODAL_ICON_SVG.primary;
+                    iconWrap.classList.remove('hidden');
+                } else {
+                    iconWrap.classList.add('hidden');
+                }
+                okBtn.textContent = confirmLabel;
+                okBtn.className = `h-9 px-3.5 text-sm font-medium rounded-md text-white transition-colors ${_MODAL_CONFIRM_BG[tone] || _MODAL_CONFIRM_BG.primary}`;
+                cancelBtn.textContent = cancelLabel;
+                cancelBtn.style.display = hideCancel ? 'none' : '';
+                root.classList.remove('hidden');
+                const close = (result) => {
+                    root.classList.add('hidden');
+                    okBtn.replaceWith(okBtn.cloneNode(true));
+                    cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+                    root.removeEventListener('click', onBackdrop);
+                    document.removeEventListener('keydown', onKey);
+                    resolve(result);
+                };
+                const onBackdrop = (e) => { if (e.target === root) close(false); };
+                // NOTES round 8 P5.2 : focus initial selon destructivite.
+                // - tone primary/success/info : on focus le bouton CONFIRM
+                //   (Enter active immediatement, workflow rapide non-destructif)
+                // - tone danger/warning : on focus le bouton CANCEL
+                //   (Enter par defaut = ANNULE, evite les destructions accidentelles)
+                // Le user peut toujours Tab vers l'autre et Enter.
+                const isDestructive = (tone === 'danger' || tone === 'warning');
+                const onKey = (e) => {
+                    if (e.key === 'Escape') close(false);
+                    else if (e.key === 'Enter') {
+                        // Si on est focus sur cancel, Enter = cancel ; sinon = confirm.
+                        const active = document.activeElement;
+                        if (active === cancelBtn && !hideCancel) close(false);
+                        else close(true);
+                    }
+                };
+                document.getElementById('modal-confirm').addEventListener('click', () => close(true));
+                document.getElementById('modal-cancel').addEventListener('click', () => close(false));
+                root.addEventListener('click', onBackdrop);
+                document.addEventListener('keydown', onKey);
+                // Focus initial : confirm si non-destructif, cancel si destructif.
+                setTimeout(() => {
+                    const toFocus = (isDestructive && !hideCancel)
+                        ? document.getElementById('modal-cancel')
+                        : document.getElementById('modal-confirm');
+                    if (toFocus) toFocus.focus();
+                }, 50);
+            });
+        };
+
+        // Alert simple (juste un OK), built on top of tu.confirm
+        tu.alert = function({title, message, tone='info'} = {}) {
+            return tu.confirm({
+                title, message, tone, confirmLabel: 'OK', hideCancel: true,
+            });
+        };
+
+        // ====================================================
+        // BUTTON HELPER — tu.button(el, asyncFn, options)
+        //
+        // Wrappe un click async pour fournir :
+        //  - spinner inline (remplace l'icone si presente)
+        //  - disabled + aria-busy="true" pendant la requete
+        //  - re-enable propre apres succes ou erreur
+        //  - toast d'erreur automatique si la promise reject
+        //
+        // Usage :
+        //   const btn = document.getElementById('btn-upload');
+        //   btn.addEventListener('click', () => tu.button(btn, async () => {
+        //     const r = await fetch('/api/.../upload', {method:'POST'});
+        //     if (!r.ok) throw new Error(await r.text() || 'Upload echoue');
+        //     tu.toast({title: 'Upload demarre', tone: 'success'});
+        //   }));
+        //
+        // Options :
+        //   keepLabel    : bool (true par defaut) - conserve le texte du bouton
+        //                  pendant le loading state. Sinon, ne montre que le spinner.
+        //   errorTitle   : string custom pour le toast d'erreur (defaut 'Erreur')
+        //   onError      : fn(err) — si on prefere gerer l'erreur soi-meme
+        //                  au lieu du toast par defaut.
+        //
+        // Note : pour les boutons construits via la macro `button(loading=true)`,
+        // le HTML deja le spinner inline. Cet helper sert pour les boutons
+        // existants ou il faut JUST le loading state au moment du click.
+        // ====================================================
+        tu.button = function(el, asyncFn, options = {}) {
+            if (!el || el.disabled || el.getAttribute('data-loading') === 'true') {
+                // Click pendant un loading existant : on ignore.
+                return Promise.resolve();
+            }
+            const {
+                keepLabel = true,
+                errorTitle = 'Erreur',
+                onError = null,
+            } = options;
+
+            // Snapshot du contenu original pour restauration.
+            const origHTML = el.innerHTML;
+            const origAriaBusy = el.getAttribute('aria-busy');
+            const origDisabled = el.disabled;
+
+            // Construit le spinner. Taille selon la hauteur du bouton :
+            // h-7 → sm, h-11 → lg, sinon md.
+            const h = el.offsetHeight;
+            let spinnerCls = 'tu-spinner';
+            if (h <= 28) spinnerCls += ' tu-spinner-sm';
+            else if (h >= 44) spinnerCls += ' tu-spinner-lg';
+            const spinnerHTML = `<span class="${spinnerCls}" aria-hidden="true"></span>`;
+
+            if (keepLabel) {
+                // On remplace seulement le 1er <svg.icon> par le spinner si
+                // present, sinon on prepend.
+                const iconSvg = el.querySelector('svg.icon');
+                const spinnerEl = document.createElement('span');
+                spinnerEl.className = spinnerCls;
+                spinnerEl.setAttribute('aria-hidden', 'true');
+                if (iconSvg) {
+                    iconSvg.replaceWith(spinnerEl);
+                } else {
+                    el.prepend(spinnerEl);
+                }
+            } else {
+                el.innerHTML = '';
+                const spinnerEl = document.createElement('span');
+                spinnerEl.className = spinnerCls;
+                spinnerEl.setAttribute('aria-hidden', 'true');
+                el.appendChild(spinnerEl);
+            }
+            el.disabled = true;
+            el.setAttribute('aria-busy', 'true');
+            el.setAttribute('data-loading', 'true');
+
+            const restore = () => {
+                el.innerHTML = origHTML;
+                el.disabled = origDisabled;
+                if (origAriaBusy === null) el.removeAttribute('aria-busy');
+                else el.setAttribute('aria-busy', origAriaBusy);
+                el.removeAttribute('data-loading');
+            };
+
+            return Promise.resolve()
+                .then(() => asyncFn())
+                .then((result) => {
+                    restore();
+                    return result;
+                })
+                .catch((err) => {
+                    restore();
+                    if (typeof onError === 'function') {
+                        try { onError(err); } catch (_) {}
+                    } else {
+                        // Toast par defaut. err.message si Error, sinon string.
+                        const msg = (err && err.message) ? String(err.message)
+                                  : (typeof err === 'string') ? err
+                                  : 'Une erreur est survenue.';
+                        tu.toast({
+                            title: errorTitle,
+                            message: msg.length > 200 ? msg.slice(0, 200) + '…' : msg,
+                            tone: 'danger',
+                            duration: 6000,
+                        });
+                    }
+                    throw err;
+                });
+        };
+
+        // ====================================================
+        // TOOLTIP SYSTEM v2 (NOTES round 8 P0.B)
+        //
+        // Usage de base :
+        //   <button data-tu-tooltip="Description utile">Action</button>
+        //
+        // Avec raccourci clavier (rendu en <kbd> safe, pas d'HTML injection) :
+        //   <button data-tu-tooltip="Ouvrir la recherche"
+        //           data-tu-tooltip-kbd="⌘K">…</button>
+        //
+        // Apparait au hover ET au focus clavier (a11y).
+        // - Show delay : 220ms (snappy mais pas trop sensible aux mouvements)
+        // - Hide delay :  80ms (rapide a fermer, evite le delai trainant)
+        // - Au focus clavier : show immediat (power users qui tabbent vite)
+        // - ARIA : role="tooltip" + aria-describedby auto sur le trigger
+        // - Escape ferme tout tooltip ouvert.
+        // - Event delegation sur document -> support elements dynamiques.
+        // ====================================================
+        (function() {
+            let activeTooltip = null;
+            let activeTarget = null;
+            let showTimer = null;
+            let hideTimer = null;
+            let tipIdCounter = 0;
+
+            const SHOW_DELAY = 220;
+            const HIDE_DELAY = 80;
+            const ANIM_OUT_MS = 110;  // doit matcher CSS opacity transition
+
+            function _restoreAria(target) {
+                if (!target) return;
+                const prev = target.getAttribute('data-tu-prev-described-by');
+                if (prev) {
+                    target.setAttribute('aria-describedby', prev);
+                    target.removeAttribute('data-tu-prev-described-by');
+                } else {
+                    target.removeAttribute('aria-describedby');
+                }
+            }
+
+            function _removeTip(tip, target, animate) {
+                _restoreAria(target);
+                if (animate) {
+                    tip.classList.remove('tu-tooltip-visible');
+                    setTimeout(() => { if (tip.parentNode) tip.remove(); }, ANIM_OUT_MS);
+                } else {
+                    if (tip.parentNode) tip.remove();
+                }
+            }
+
+            function _show(target) {
+                if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                const text = target.getAttribute('data-tu-tooltip');
+                if (!text) return;
+                // Si un tooltip est deja ouvert (sur un autre element), on le
+                // retire instantanement avant d'en creer un nouveau.
+                if (activeTooltip) {
+                    _removeTip(activeTooltip, activeTarget, false);
+                    activeTooltip = null;
+                    activeTarget = null;
+                }
+                const tip = document.createElement('div');
+                tip.className = 'tu-tooltip';
+                tip.setAttribute('role', 'tooltip');
+                tip.id = 'tu-tip-' + (++tipIdCounter);
+
+                // Contenu : texte + raccourci clavier optionnel (kbd safe).
+                // On n'accepte JAMAIS d'HTML brut depuis data-tu-tooltip pour
+                // eviter les injections ; on construit les nodes manuellement.
+                const textSpan = document.createElement('span');
+                textSpan.textContent = text;
+                tip.appendChild(textSpan);
+                const kbdText = target.getAttribute('data-tu-tooltip-kbd');
+                if (kbdText) {
+                    const kbd = document.createElement('kbd');
+                    kbd.textContent = kbdText;
+                    tip.appendChild(kbd);
+                }
+
+                document.body.appendChild(tip);
+                const rect = target.getBoundingClientRect();
+                const tipRect = tip.getBoundingClientRect();
+                // Default : sous le target
+                let top = rect.bottom + 8;
+                let left = rect.left;
+                let flipped = false;
+                if (top + tipRect.height > window.innerHeight - 10) {
+                    top = rect.top - tipRect.height - 8;
+                    flipped = true;
+                }
+                if (left + tipRect.width > window.innerWidth - 10) {
+                    left = window.innerWidth - tipRect.width - 10;
+                }
+                if (left < 10) left = 10;
+                tip.style.top = top + 'px';
+                tip.style.left = left + 'px';
+                if (flipped) tip.setAttribute('data-flip', 'up');
+
+                // ARIA : associe le tooltip au trigger via aria-describedby.
+                // On sauvegarde l'ancienne valeur pour la restaurer au close.
+                const prevDescribedBy = target.getAttribute('aria-describedby');
+                if (prevDescribedBy) {
+                    target.setAttribute('data-tu-prev-described-by', prevDescribedBy);
+                }
+                target.setAttribute('aria-describedby', tip.id);
+
+                // Force reflow puis ajoute la classe visible (animation in)
+                tip.offsetHeight;
+                tip.classList.add('tu-tooltip-visible');
+                activeTooltip = tip;
+                activeTarget = target;
+            }
+
+            function _hide(delay) {
+                if (delay === undefined) delay = HIDE_DELAY;
+                if (!activeTooltip) return;
+                if (hideTimer) clearTimeout(hideTimer);
+                // Capture par closure : si activeTooltip change avant que le
+                // timer fire, on retire seulement celui qu'on avait en main.
+                const tipToHide = activeTooltip;
+                const targetToHide = activeTarget;
+                hideTimer = setTimeout(() => {
+                    _removeTip(tipToHide, targetToHide, true);
+                    if (activeTooltip === tipToHide) {
+                        activeTooltip = null;
+                        activeTarget = null;
+                    }
+                    hideTimer = null;
+                }, delay);
+            }
+
+            function _cancelShow() {
+                if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+            }
+
+            // ----- Mouse events -----
+            document.addEventListener('mouseover', (e) => {
+                const trigger = e.target.closest('[data-tu-tooltip]');
+                if (!trigger) return;
+                if (trigger === activeTarget) {
+                    // Re-survol du meme : annule le hideTimer (l'utilisateur
+                    // revient avant que ca ne disparaisse).
+                    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                    return;
+                }
+                _cancelShow();
+                showTimer = setTimeout(() => _show(trigger), SHOW_DELAY);
+            });
+            document.addEventListener('mouseout', (e) => {
+                const trigger = e.target.closest('[data-tu-tooltip]');
+                if (!trigger) return;
+                // Si on rentre dans un enfant du meme trigger, on ignore
+                // (sinon le mouseout fire faussement et le tooltip clignote).
+                if (e.relatedTarget && trigger.contains(e.relatedTarget)) return;
+                _cancelShow();
+                _hide();
+            });
+
+            // ----- Focus clavier (a11y) -----
+            // Au focus clavier on affiche IMMEDIATEMENT (pas de delay), parce
+            // que les power-users qui tabbent vont vite et on veut leur donner
+            // l'info de suite. focusin/focusout bubble, contrairement a focus/blur.
+            document.addEventListener('focusin', (e) => {
+                const trigger = e.target.closest('[data-tu-tooltip]');
+                if (!trigger) return;
+                _cancelShow();
+                if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                if (trigger !== activeTarget) _show(trigger);
+            });
+            document.addEventListener('focusout', (e) => {
+                const trigger = e.target.closest('[data-tu-tooltip]');
+                if (!trigger) return;
+                _cancelShow();
+                _hide();
+            });
+
+            // ----- Escape ferme tout tooltip ouvert -----
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && activeTooltip) _hide(0);
+            });
+            // Scroll de la page ferme le tooltip (sinon il flotte mal)
+            window.addEventListener('scroll', () => _hide(0), {passive: true, capture: true});
+        })();
+
+        // ====================================================
+        // SEARCH CLEAR BUTTON (NOTES round 8 P4.1)
+        //
+        // Tout input dans un wrapper `.tu-search-wrap` avec un sibling
+        // `.tu-search-clear` voit le bouton apparaitre des qu'il y a du
+        // contenu, et disparaitre quand le champ est vide. Le click sur
+        // le bouton clear le champ ET dispatch un evenement 'input' pour
+        // que les handlers existants (filtres, search, etc.) se re-runnent.
+        // Egalement support de la touche Escape : clear le champ.
+        // ====================================================
+        (function() {
+            function _updateClearVisibility(wrap) {
+                const input = wrap.querySelector('.tu-search-input');
+                const btn = wrap.querySelector('.tu-search-clear');
+                if (!input || !btn) return;
+                if (input.value && input.value.length > 0) {
+                    btn.classList.remove('hidden');
+                    btn.classList.add('flex');
+                } else {
+                    btn.classList.add('hidden');
+                    btn.classList.remove('flex');
+                }
+            }
+
+            function _wireWrap(wrap) {
+                if (wrap.dataset.tuSearchWired === '1') return;
+                wrap.dataset.tuSearchWired = '1';
+                const input = wrap.querySelector('.tu-search-input');
+                const btn = wrap.querySelector('.tu-search-clear');
+                if (!input || !btn) return;
+                _updateClearVisibility(wrap);
+                input.addEventListener('input', () => _updateClearVisibility(wrap));
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && input.value) {
+                        e.preventDefault();
+                        input.value = '';
+                        input.dispatchEvent(new Event('input', {bubbles: true}));
+                        _updateClearVisibility(wrap);
+                    }
+                });
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    input.value = '';
+                    input.dispatchEvent(new Event('input', {bubbles: true}));
+                    _updateClearVisibility(wrap);
+                    input.focus();
+                });
+            }
+
+            document.querySelectorAll('.tu-search-wrap').forEach(_wireWrap);
+            // Au cas ou des wraps soient injectes plus tard (peu probable mais sain)
+            const obs = new MutationObserver((muts) => {
+                muts.forEach(m => {
+                    m.addedNodes && m.addedNodes.forEach(n => {
+                        if (n.nodeType !== 1) return;
+                        if (n.classList && n.classList.contains('tu-search-wrap')) _wireWrap(n);
+                        n.querySelectorAll && n.querySelectorAll('.tu-search-wrap').forEach(_wireWrap);
+                    });
+                });
+            });
+            obs.observe(document.body, {childList: true, subtree: true});
+        })();
+
+        // ====================================================
+        // CHECKBOX FLASH (NOTES round 8 P1.C)
+        //
+        // Au click utilisateur sur une checkbox, on flashe un halo primary
+        // (animation tu-checkbox-flash 360ms). Donne un feedback visuel
+        // subtle "ton click a bien ete enregistre", utile sur les rows de
+        // selection ou la cible (4x4 px) est petite.
+        // On utilise 'click' (intentionnel) et pas 'change' (qui fire aussi
+        // sur les selections programmatiques type select-all).
+        // ====================================================
+        document.addEventListener('click', (e) => {
+            const cb = e.target.closest('input[type="checkbox"]');
+            if (!cb || cb.disabled) return;
+            cb.classList.remove('tu-checkbox-flash');
+            // Force reflow pour permettre la re-animation au click successif
+            void cb.offsetWidth;
+            cb.classList.add('tu-checkbox-flash');
+            setTimeout(() => cb.classList.remove('tu-checkbox-flash'), 400);
+        });
+    </script>
+
+    {% from "_icons.html" import icon %}
+
+    <!-- ====================================================
+         MOBILE TOPBAR — visible < md (768px). Hamburger + brand
+         ==================================================== -->
+    <header class="md:hidden fixed top-0 left-0 right-0 h-14 z-40 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-3">
+        <button id="mobile-menu-btn" type="button"
+                class="inline-flex items-center justify-center w-10 h-10 rounded-md text-slate-300 hover:bg-slate-800 transition-colors duration-fast"
+                aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mobile-sidebar">
+            {{ icon('menu', size='lg') }}
+        </button>
+        <div class="flex items-center gap-2">
+            <img src="/static/logo.svg" alt="" class="w-7 h-7 flex-shrink-0" aria-hidden="true">
+            <span class="text-sm font-semibold text-white">Flox Uploader</span>
+        </div>
+        <div class="w-10"></div> {# spacer pour centrer le brand #}
+    </header>
+
+    <!-- ====================================================
+         SIDEBAR — fixed left desktop ; off-screen drawer mobile
+         ==================================================== -->
+    {# Backdrop visible UNIQUEMENT en mobile + quand drawer ouvert #}
+    <div id="sidebar-backdrop" class="md:hidden hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30" aria-hidden="true"></div>
+
+    <aside id="mobile-sidebar"
+           class="fixed top-0 left-0 h-screen w-60 bg-slate-950 text-slate-300 flex flex-col z-40 border-r border-slate-800 transform transition-transform duration-200 ease-out -translate-x-full md:translate-x-0">
+        <div class="px-5 py-5 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <img src="/static/logo.svg" alt="" class="w-9 h-9 flex-shrink-0" aria-hidden="true">
+                <div class="min-w-0">
+                    <h1 class="text-sm font-semibold text-white leading-tight">Flox Uploader</h1>
+                    <p class="text-[11px] text-slate-500 leading-tight mt-0.5">Local · v{{ app_version|default('0.3') }}</p>
+                </div>
+            </div>
+            {# Close button mobile-only #}
+            <button id="mobile-close-btn" type="button"
+                    class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors duration-fast"
+                    aria-label="Fermer le menu">
+                {{ icon('x', size='md') }}
+            </button>
+        </div>
+        <nav class="flex-1 p-2.5 space-y-0.5 overflow-y-auto" aria-label="Navigation principale">
+            <a id="nav-inbox" href="/inbox" class="nav-link {% if page == 'inbox' %}active{% endif %}">
+                {{ icon('inbox', size='md', classes='nav-icon') }}
+                <span>Inbox</span>
+            </a>
+            <a href="/queue" class="nav-link {% if page == 'queue' %}active{% endif %}">
+                {{ icon('list', size='md', classes='nav-icon') }}
+                <span>Queue</span>
+            </a>
+            <a href="/history" class="nav-link {% if page == 'history' %}active{% endif %}">
+                {{ icon('history', size='md', classes='nav-icon') }}
+                <span>History</span>
+            </a>
+            <a href="/config" class="nav-link {% if page == 'config' %}active{% endif %}">
+                {{ icon('settings', size='md', classes='nav-icon') }}
+                <span>Config</span>
+            </a>
+            {# Divider visuel entre workflow et meta #}
+            <div class="my-2 border-t border-slate-800/60"></div>
+            <a href="/guide" class="nav-link {% if page == 'guide' %}active{% endif %}">
+                {{ icon('book-open', size='md', classes='nav-icon') }}
+                <span>Guide</span>
+            </a>
+        </nav>
+        <div class="p-2.5 border-t border-slate-800 space-y-0.5">
+            {# Trigger command palette (sidebar + tooltip Ctrl/Cmd+K).
+               NOTES round 8 P5.1 : kbd recoit la classe `tu-cmdk-hint` au
+               1er load (until first usage), avec une pulse primary subtle
+               pour aider la decouverte. Cf. JS plus bas. #}
+            <button type="button" onclick="if(window.tu) tu.openCommandPalette();"
+                    class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm text-slate-300 hover:bg-slate-800/60 transition-colors duration-fast"
+                    aria-label="Ouvrir la palette de commandes">
+                <span class="flex items-center gap-2.5">
+                    {{ icon('search', size='md') }}
+                    <span>Recherche rapide</span>
+                </span>
+                <kbd id="cmdk-hint-kbd" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-700 text-[10px] font-mono text-slate-500">
+                    <span>⌘</span><span>K</span>
+                </kbd>
+            </button>
+            <button id="theme-toggle" type="button"
+                    class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm text-slate-300 hover:bg-slate-800/60 transition-colors duration-fast">
+                <span class="flex items-center gap-2.5">
+                    <span id="theme-icon-light" class="hidden">{{ icon('sun', size='md') }}</span>
+                    <span id="theme-icon-dark" class="hidden">{{ icon('moon', size='md') }}</span>
+                    <span id="theme-label">Mode</span>
+                </span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main content :
+         - mobile  : pt-14 (compense la topbar mobile), pas de ml
+         - desktop : ml-60 (compense la sidebar fixed) -->
+    <main id="main-content" class="pt-14 md:pt-0 md:ml-60 min-h-screen" tabindex="-1">
+        {# Banner persistant si setup incomplet. #}
+        {% set _missing = setup_missing() %}
+        {% if setup_incomplete() and page != 'setup' %}
+        <div class="bg-warning-50 dark:bg-warning-900/20 border-b border-warning-200 dark:border-warning-800 px-4 md:px-8 py-2.5 text-sm text-warning-800 dark:text-warning-200 flex items-center justify-between gap-3 flex-wrap">
+            <span class="inline-flex items-center gap-2">
+                {{ icon('alert-triangle', size='sm') }}
+                Configuration incomplète{% if _missing %} (manque : <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-warning-100 dark:bg-warning-900/40">{{ _missing | join(', ') }}</code>){% endif %} — l'upload sera bloqué tant que ce n'est pas configuré.
+            </span>
+            <a href="/setup" class="inline-flex items-center gap-1.5 px-3 h-7 bg-warning-600 hover:bg-warning-700 text-white rounded-md text-xs font-medium whitespace-nowrap transition-colors duration-fast">
+                Configurer
+                {{ icon('arrow-right', size='sm') }}
+            </a>
+        </div>
+        {% endif %}
+        <div class="px-4 md:px-8 py-6 max-w-7xl mx-auto">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <script>
+        // Memoire du dernier path inbox visite : on met a jour le href du lien
+        // "Inbox" de la sidebar pour qu'il pointe vers la derniere navigation.
+        (function() {
+            const STORAGE_KEY = 'tu_inbox_last_path';
+            const navInbox = document.getElementById('nav-inbox');
+            const lastPath = localStorage.getItem(STORAGE_KEY);
+            if (navInbox && lastPath) {
+                navInbox.href = '/inbox?path=' + encodeURIComponent(lastPath);
+            }
+            {% if page == 'inbox' and current_path is defined %}
+            try {
+                localStorage.setItem(STORAGE_KEY, {{ current_path | tojson }});
+            } catch (e) {}
+            {% endif %}
+        })();
+    </script>
+
+    <script>
+      // Loader plein-ecran : declenche sur tous les liens de navigation top-level
+      // (sidebar, retour a la queue, lien vers package detail) pour donner un
+      // feedback immediat sur les pages lourdes (200+ packages a lister, etc.).
+      (function() {
+        document.addEventListener('click', (e) => {
+          const a = e.target.closest('a[href]');
+          if (!a) return;
+          const href = a.getAttribute('href');
+          if (!href || href.startsWith('#') || href.startsWith('http://') || href.startsWith('https://') || href.startsWith('file://')) return;
+          if (a.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+          // Cible : pages internes lourdes
+          if (href.startsWith('/inbox') || href.startsWith('/queue') || href.startsWith('/packages/') || href === '/') {
+            if (typeof window.showPageLoader === 'function') window.showPageLoader();
+          }
+        });
+      })();
+    </script>
+    <script>
+      // ====================================================
+      // COMMAND PALETTE — Cmd+K / Ctrl+K
+      // ====================================================
+      (function() {
+        const root = document.getElementById('cmdk-root');
+        const panel = document.getElementById('cmdk-panel');
+        const input = document.getElementById('cmdk-input');
+        const results = document.getElementById('cmdk-results');
+        if (!root || !panel || !input || !results) return;
+
+        // === Item registry ===
+        // type: 'page' | 'action' | 'package' | 'external'
+        // icon: lucide path (just the <path/> innerHTML)
+        const _ICONS = {
+          inbox:    '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+          list:     '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+          history:  '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+          settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+          'book-open': '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+          package:  '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+          refresh:  '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>',
+          sun:      '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+          moon:     '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+          external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+        };
+        function _iconSvg(name) {
+          const path = _ICONS[name] || '';
+          return `<svg class="icon icon-md" viewBox="0 0 24 24">${path}</svg>`;
+        }
+
+        // === Items statiques (toujours dispo) ===
+        const _STATIC_ITEMS = [
+          {kind: 'page', icon: 'inbox',    title: 'Inbox',     subtitle: 'Parcourir et sélectionner des fichiers',                            href: '/inbox'},
+          {kind: 'page', icon: 'list',     title: 'Queue',     subtitle: 'Préparations en cours + packages prêts',                           href: '/queue'},
+          {kind: 'page', icon: 'history',  title: 'History',   subtitle: 'Packages déjà uploadés',                                            href: '/history'},
+          {kind: 'page', icon: 'settings', title: 'Config',    subtitle: 'Édite ton fichier .env',                                            href: '/config'},
+          {kind: 'page', icon: 'book-open', title: 'Guide',    subtitle: 'Présentation, concepts, raccourcis',                                href: '/guide'},
+          {kind: 'action', icon: 'refresh', title: 'Rafraîchir la page', subtitle: 'Recharger le contenu courant', action: () => window.location.reload()},
+          {
+            kind: 'action',
+            get icon() { return document.documentElement.classList.contains('dark') ? 'sun' : 'moon'; },
+            get title() { return document.documentElement.classList.contains('dark') ? 'Passer en mode clair' : 'Passer en mode sombre'; },
+            subtitle: 'Basculer le thème',
+            action: () => {
+              const btn = document.getElementById('theme-toggle');
+              if (btn) btn.click();
+            },
+          },
+        ];
+
+        // === Items dynamiques (packages) — fetch lazy a l'ouverture ===
+        let _packageItems = null;
+        let _packageItemsPromise = null;
+        function _loadPackages() {
+          if (_packageItems !== null) return Promise.resolve(_packageItems);
+          if (_packageItemsPromise) return _packageItemsPromise;
+          _packageItemsPromise = fetch('/api/command-palette', {cache: 'no-store'})
+            .then(r => r.ok ? r.json() : {packages: []})
+            .then(data => {
+              _packageItems = (data.packages || []).map(p => ({
+                kind: 'package',
+                icon: 'package',
+                title: p.release_name || p.name,
+                subtitle: (p.state ? p.state + ' · ' : '') + (p.score != null ? 'score ' + p.score : ''),
+                href: '/packages/' + encodeURIComponent(p.name),
+              }));
+              return _packageItems;
+            })
+            .catch(() => { _packageItems = []; return []; });
+          return _packageItemsPromise;
+        }
+
+        // === Filtering + ranking ===
+        function _foldAccents(s) {
+          return (s || '')
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+            .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+            .toLowerCase();
+        }
+        function _matches(item, q) {
+          if (!q) return true;
+          const hay = _foldAccents((item.title || '') + ' ' + (item.subtitle || ''));
+          // Tous les tokens doivent etre presents
+          return q.split(/\s+/).filter(Boolean).every(t => hay.includes(t));
+        }
+
+        // === Render ===
+        let _allItems = _STATIC_ITEMS.slice();  // packages s'ajouteront apres _loadPackages
+        let _selectedIdx = 0;
+        let _visibleItems = [];
+
+        function render() {
+          const q = _foldAccents(input.value).trim();
+          _visibleItems = _allItems.filter(i => _matches(i, q));
+          if (_selectedIdx >= _visibleItems.length) _selectedIdx = 0;
+
+          if (_visibleItems.length === 0) {
+            results.innerHTML = `
+              <div class="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                Aucun résultat pour <span class="font-medium text-slate-700 dark:text-slate-300">"${q}"</span>
+              </div>
+            `;
+            return;
+          }
+
+          // Group by kind
+          const groups = {
+            'page':     {label: 'Pages',     items: []},
+            'action':   {label: 'Actions',   items: []},
+            'package':  {label: 'Packages',  items: []},
+            'external': {label: 'Liens',     items: []},
+          };
+          _visibleItems.forEach((item, idx) => {
+            groups[item.kind].items.push({item, idx});
+          });
+
+          const parts = [];
+          Object.values(groups).forEach(group => {
+            if (group.items.length === 0) return;
+            parts.push(`<div class="px-3 pt-2 pb-1 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">${group.label}</div>`);
+            group.items.forEach(({item, idx}) => {
+              const isSelected = idx === _selectedIdx;
+              const iconName = (typeof item.icon === 'function') ? item.icon() : item.icon;
+              parts.push(`
+                <button type="button" data-idx="${idx}" role="option" aria-selected="${isSelected}"
+                        class="cmdk-item w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors duration-fast
+                               ${isSelected ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-900 dark:text-primary-100' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50'}">
+                  <span class="${isSelected ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400 dark:text-slate-500'} flex-shrink-0">${_iconSvg(iconName)}</span>
+                  <span class="flex-1 min-w-0">
+                    <span class="block font-medium truncate">${_escapeHtml(item.title)}</span>
+                    ${item.subtitle ? `<span class="block text-xs text-slate-500 dark:text-slate-400 truncate">${_escapeHtml(item.subtitle)}</span>` : ''}
+                  </span>
+                  ${item.kind === 'page' ? '<span class="text-[10px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wider flex-shrink-0">Aller</span>' : ''}
+                </button>
+              `);
+            });
+          });
+          results.innerHTML = parts.join('');
+
+          // Bind clicks
+          results.querySelectorAll('.cmdk-item').forEach(btn => {
+            btn.addEventListener('mouseenter', () => {
+              _selectedIdx = parseInt(btn.dataset.idx, 10);
+              _updateSelection();
+            });
+            btn.addEventListener('click', () => activateItem(_visibleItems[parseInt(btn.dataset.idx, 10)]));
+          });
+
+          // Ensure selected is visible (auto-scroll)
+          _scrollSelectedIntoView();
+        }
+
+        function _updateSelection() {
+          results.querySelectorAll('.cmdk-item').forEach(btn => {
+            const idx = parseInt(btn.dataset.idx, 10);
+            const selected = idx === _selectedIdx;
+            btn.setAttribute('aria-selected', selected);
+            if (selected) {
+              btn.classList.add('bg-primary-50', 'dark:bg-primary-900/30', 'text-primary-900', 'dark:text-primary-100');
+              btn.classList.remove('text-slate-700', 'dark:text-slate-200', 'hover:bg-slate-50', 'dark:hover:bg-slate-700/50');
+              const iconSpan = btn.querySelector('span:first-child');
+              if (iconSpan) {
+                iconSpan.classList.remove('text-slate-400', 'dark:text-slate-500');
+                iconSpan.classList.add('text-primary-600', 'dark:text-primary-400');
+              }
+            } else {
+              btn.classList.remove('bg-primary-50', 'dark:bg-primary-900/30', 'text-primary-900', 'dark:text-primary-100');
+              btn.classList.add('text-slate-700', 'dark:text-slate-200', 'hover:bg-slate-50', 'dark:hover:bg-slate-700/50');
+              const iconSpan = btn.querySelector('span:first-child');
+              if (iconSpan) {
+                iconSpan.classList.add('text-slate-400', 'dark:text-slate-500');
+                iconSpan.classList.remove('text-primary-600', 'dark:text-primary-400');
+              }
+            }
+          });
+          _scrollSelectedIntoView();
+        }
+
+        function _scrollSelectedIntoView() {
+          const selected = results.querySelector(`[data-idx="${_selectedIdx}"]`);
+          if (selected) selected.scrollIntoView({block: 'nearest'});
+        }
+
+        function _escapeHtml(s) {
+          return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function activateItem(item) {
+          if (!item) return;
+          close();
+          if (item.href) {
+            window.location.href = item.href;
+          } else if (typeof item.action === 'function') {
+            item.action();
+          }
+        }
+
+        // === Open / close ===
+        function open() {
+          root.classList.remove('hidden');
+          input.value = '';
+          _selectedIdx = 0;
+          // Render initial avec items statiques, puis re-render apres fetch packages
+          _allItems = _STATIC_ITEMS.slice();
+          render();
+          setTimeout(() => input.focus(), 30);
+          // Charge les packages (async)
+          _loadPackages().then(pkgs => {
+            _allItems = _STATIC_ITEMS.concat(pkgs);
+            render();
+          });
+          document.body.style.overflow = 'hidden';
+          // NOTES round 8 P5.1 : marque la premiere utilisation pour
+          // arreter la pulse hint sur le badge sidebar.
+          try {
+            localStorage.setItem('tu_cmdk_used', '1');
+            const hintKbd = document.getElementById('cmdk-hint-kbd');
+            if (hintKbd) hintKbd.classList.remove('tu-cmdk-hint');
+          } catch (e) {}
+        }
+        function close() {
+          root.classList.add('hidden');
+          document.body.style.overflow = '';
+        }
+
+        // === Keyboard handlers ===
+        input.addEventListener('input', () => {
+          _selectedIdx = 0;
+          render();
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            _selectedIdx = Math.min(_selectedIdx + 1, _visibleItems.length - 1);
+            _updateSelection();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            _selectedIdx = Math.max(_selectedIdx - 1, 0);
+            _updateSelection();
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            activateItem(_visibleItems[_selectedIdx]);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+          }
+        });
+
+        root.addEventListener('click', (e) => {
+          if (e.target === root) close();
+        });
+
+        // Global keyboard shortcut Cmd/Ctrl + K
+        document.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            if (root.classList.contains('hidden')) {
+              open();
+            } else {
+              close();
+            }
+          }
+        });
+
+        // Expose pour debugging / pour le bouton trigger
+        window.tu = window.tu || {};
+        window.tu.openCommandPalette = open;
+        window.tu.closeCommandPalette = close;
+
+        // NOTES round 8 P5.1 : pulse decouverte ⌘K.
+        // On active la classe `tu-cmdk-hint` sur le kbd sidebar si l'user
+        // n'a JAMAIS ouvert la palette (flag `tu_cmdk_used` absent en
+        // localStorage). Une fois ouverte une 1ere fois, le flag est pose
+        // dans open() et la pulse s'arrete. Sur desktop (md+) seulement,
+        // pour eviter de pulser un element invisible en mobile.
+        (function() {
+          if (window.innerWidth < 768) return;  // pulse desktop only
+          try {
+            if (localStorage.getItem('tu_cmdk_used') === '1') return;
+          } catch (e) {}
+          const hintKbd = document.getElementById('cmdk-hint-kbd');
+          if (!hintKbd) return;
+          // Delay leger pour ne pas pulser pendant le mount initial
+          setTimeout(() => hintKbd.classList.add('tu-cmdk-hint'), 1200);
+        })();
+      })();
+    </script>
+
+    <script>
+      // ====================================================
+      // MOBILE SIDEBAR DRAWER
+      // ====================================================
+      (function() {
+        const sidebar = document.getElementById('mobile-sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        const btnOpen = document.getElementById('mobile-menu-btn');
+        const btnClose = document.getElementById('mobile-close-btn');
+        if (!sidebar || !backdrop || !btnOpen) return;
+
+        function openDrawer() {
+          sidebar.classList.remove('-translate-x-full');
+          backdrop.classList.remove('hidden');
+          btnOpen.setAttribute('aria-expanded', 'true');
+          document.body.style.overflow = 'hidden';  // bloque scroll body
+        }
+        function closeDrawer() {
+          sidebar.classList.add('-translate-x-full');
+          backdrop.classList.add('hidden');
+          btnOpen.setAttribute('aria-expanded', 'false');
+          document.body.style.overflow = '';
+        }
+        btnOpen.addEventListener('click', openDrawer);
+        if (btnClose) btnClose.addEventListener('click', closeDrawer);
+        backdrop.addEventListener('click', closeDrawer);
+        // Close avec Escape
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && !sidebar.classList.contains('-translate-x-full') && window.innerWidth < 768) {
+            closeDrawer();
+          }
+        });
+        // Si on redimensionne vers desktop, on s'assure que le body scroll est restaure
+        window.addEventListener('resize', () => {
+          if (window.innerWidth >= 768) {
+            backdrop.classList.add('hidden');
+            document.body.style.overflow = '';
+          }
+        });
+        // Close en cliquant sur un lien de la nav (sinon en mobile, on
+        // navigue avec le drawer toujours ouvert -> jamais ferme)
+        sidebar.querySelectorAll('a[href]').forEach(a => {
+          a.addEventListener('click', () => {
+            if (window.innerWidth < 768) closeDrawer();
+          });
+        });
+      })();
+    </script>
+
+    <script>
+      // Theme toggle
+      (function() {
+        const btn = document.getElementById('theme-toggle');
+        const iconL = document.getElementById('theme-icon-light');
+        const iconD = document.getElementById('theme-icon-dark');
+        const label = document.getElementById('theme-label');
+        function refresh() {
+          const dark = document.documentElement.classList.contains('dark');
+          if (dark) {
+            iconL.classList.remove('hidden');
+            iconD.classList.add('hidden');
+            label.textContent = 'Mode clair';
+          } else {
+            iconL.classList.add('hidden');
+            iconD.classList.remove('hidden');
+            label.textContent = 'Mode sombre';
+          }
+        }
+        if (btn) {
+          btn.addEventListener('click', () => {
+            const dark = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('tu_theme', dark ? 'dark' : 'light'); } catch (e) {}
+            refresh();
+          });
+          refresh();
+        }
+      })();
+    </script>
+    <!-- Twemoji init : remplace tous les emoji du DOM par des <img> SVG
+         pour un rendu coherent toutes plateformes (Windows / macOS / Linux).
+         On parse au DOMContentLoaded + on expose window.tuParseEmoji() pour
+         que les rendus dynamiques (preview BBCode, nouveaux warnings) puissent
+         re-appliquer apres modification du DOM. -->
+    <script>
+        (function() {
+            // Helper expose globalement pour les re-rendus dynamiques.
+            window.tuParseEmoji = function(target) {
+                if (window.twemoji && target) {
+                    try {
+                        window.twemoji.parse(target, {
+                            folder: 'svg',
+                            ext: '.svg',
+                            className: 'twemoji',
+                        });
+                    } catch (e) { /* fallback silencieux */ }
+                }
+            };
+            // CSS pour les emoji SVG inline : alignement vertical + taille
+            // 1em pour suivre le texte courant.
+            const style = document.createElement('style');
+            style.textContent =
+                '.twemoji { height: 1em; width: 1em; ' +
+                'vertical-align: -0.15em; display: inline-block; }';
+            document.head.appendChild(style);
+            // Parse initial au DOMContentLoaded
+            document.addEventListener('DOMContentLoaded', function() {
+                window.tuParseEmoji(document.body);
+            });
+        })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

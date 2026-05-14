@@ -1,0 +1,266 @@
+{
+  "strict_mode": true,
+  "require_precise_multi_language": true,
+
+  "presentation_assets": {
+    "_comment": "URLs des images utilisees dans la fiche BBCode. Heberge tes propres images (Imgur etc.) et remplace les URLs ci-dessous.",
+    "star_full_url": "https://i.imgur.com/RsA9a7e.png",
+    "star_half_url": "https://i.imgur.com/Ap8PMdK.png",
+    "star_empty_url": "https://i.imgur.com/qg8wnMl.png",
+    "tmdb_logo_url": "https://i.imgur.com/SeQLsIq.png",
+    "imdb_logo_url": "https://i.imgur.com/mE7nRfY.png",
+    "youtube_logo_url": "https://i.imgur.com/6pR5Vub.png"
+  },
+
+
+  "drop_tokens": [
+    "4KLight",
+    "Hybrid",
+    "Atmos",
+    "mHD",
+    "HDLight",
+    "Light",
+    "NoTag",
+    "NoTAG",
+    "NoGRP",
+    "NoGroup",
+    "iT",
+    "NF",
+    "NFLX",
+    "AMZN",
+    "DSNP",
+    "ATVP",
+    "HMAX",
+    "MAX",
+    "PCOK",
+    "PMTP",
+    "STAN",
+    "SHO",
+    "HULU",
+    "10Bit",
+    "10BIT",
+    "8Bit",
+    "8BIT",
+    "12Bit",
+    "12BIT"
+  ],
+
+  "replace_tokens": {
+    "MULTI": "MULTi",
+    "MULTI.VFF": "MULTi.VFF",
+    "MULTI.VFQ": "MULTi.VFQ",
+    "MULTI.VFB": "MULTi.VFB",
+    "MULTI.VF2": "MULTi.VF2",
+
+    "VFI": "VFF",
+
+    "BLURAY": "BluRay",
+    "BDRIP": "BDRip",
+    "BRRIP": "BRRip",
+    "DVDRIP": "DVDRip",
+    "HDRIP": "HDRip",
+    "TVRIP": "TVRip",
+    "WEBRIP": "WEBRip",
+    "WEBDL": "WEB-DL",
+
+    "REMUX": "REMUX",
+
+    "EAC3": "E-AC3",
+    "DD+": "DDP",
+    "DDPLUS": "DDP",
+
+    "DOVI": "DV",
+    "DOLBYVISION": "DV",
+    "DOLBY.VISION": "DV",
+    "DV": "DV",
+
+    "HDR10PLUS": "HDR10P",
+    "HDR10+": "HDR10P",
+    "HDR10P": "HDR10P",
+
+    "H264": "H.264",
+    "H265": "H.265",
+    "X264": "x264",
+    "X265": "x265",
+    "HEVC": "HEVC",
+    "AVC": "AVC",
+    "AV1": "AV1",
+    "VC1": "VC-1",
+
+    "DD20": "DD.2.0",
+    "DD51": "DD.5.1",
+    "DD71": "DD.7.1",
+
+    "DDP20": "DDP.2.0",
+    "DDP51": "DDP.5.1",
+    "DDP71": "DDP.7.1",
+
+    "AC320": "AC3.2.0",
+    "AC351": "AC3.5.1",
+    "AC371": "AC3.7.1",
+
+    "EAC320": "E-AC3.2.0",
+    "EAC351": "E-AC3.5.1",
+    "EAC371": "E-AC3.7.1",
+
+    "AAC20": "AAC.2.0",
+    "AAC51": "AAC.5.1",
+    "AAC71": "AAC.7.1",
+
+    "DTS20": "DTS.2.0",
+    "DTS51": "DTS.5.1",
+    "DTS71": "DTS.7.1",
+
+    "DDP2.0": "DDP.2.0",
+    "DDP5.1": "DDP.5.1",
+    "DDP7.1": "DDP.7.1",
+
+    "DD2.0": "DD.2.0",
+    "DD5.1": "DD.5.1",
+    "DD7.1": "DD.7.1",
+
+    "DTS2.0": "DTS.2.0",
+    "DTS5.1": "DTS.5.1",
+    "DTS7.1": "DTS.7.1",
+
+    "AAC2.0": "AAC.2.0",
+    "AAC5.1": "AAC.5.1",
+    "AAC7.1": "AAC.7.1",
+
+    "AC32.0": "AC3.2.0",
+    "AC35.1": "AC3.5.1",
+    "AC37.1": "AC3.7.1",
+
+    "EAC32.0": "E-AC3.2.0",
+    "EAC35.1": "E-AC3.5.1",
+    "EAC37.1": "E-AC3.7.1"
+  },
+
+  "language_tokens": [
+    "MULTi.VFF",
+    "MULTi.VFQ",
+    "MULTi.VFB",
+    "MULTi.VF2",
+    "MULTi",
+    "VFF",
+    "VFQ",
+    "VFB",
+    "VF2",
+    "VOF",
+    "VOQ",
+    "VOB",
+    "VOSTFR",
+    "FR",
+    "FRENCH",
+    "SUBFRENCH",
+    "SUBFORCED"
+  ],
+
+  "resolution_tokens": [
+    "480p",
+    "480i",
+    "576p",
+    "576i",
+    "720p",
+    "1080p",
+    "1080i",
+    "2160p"
+  ],
+
+  "source_tokens": [
+    "BluRay",
+    "WEB",
+    "WEBRip",
+    "WEB-DL",
+    "HDRip",
+    "BDRip",
+    "BRRip",
+    "REMUX",
+    "HDTV",
+    "DVD",
+    "DVDRip",
+    "TVRip"
+  ],
+
+  "audio_codec_tokens": [
+    "DD",
+    "DDP",
+    "TrueHD",
+    "DTS",
+    "DTS-HD",
+    "DTS-HDMA",
+    "DTS-HD.HRA",
+    "AAC",
+    "HE-AAC",
+    "AAC-LC",
+    "AC3",
+    "E-AC3",
+    "FLAC",
+    "OPUS"
+  ],
+
+  "audio_channel_tokens": [
+    "1.0",
+    "2.0",
+    "4.0",
+    "5.1",
+    "6.1",
+    "7.1",
+    "2CH",
+    "6CH",
+    "8CH"
+  ],
+
+  "video_codec_tokens": [
+    "x264",
+    "x265",
+    "H.264",
+    "H.265",
+    "AV1",
+    "HEVC",
+    "AVC",
+    "VP9",
+    "VC-1",
+    "MPEG-2"
+  ],
+
+  "allowed_optional_tokens": [
+    "AD",
+    "REPACK",
+    "PROPER",
+    "EXTENDED",
+    "DIRECTORS",
+    "CUT",
+    "THEATRICAL",
+    "UNRATED",
+    "UNCUT",
+    "UNCENSORED",
+    "HDR",
+    "HDR10",
+    "HDR10+",
+    "HDR10P",
+    "DoVi",
+    "DV",
+    "DV.HLG",
+    "HLG",
+    "PQ10",
+    "SDR",
+    "CUSTOM",
+    "INTERNAL",
+    "REMASTERED",
+    "4K.REMASTER",
+    "LIMITED",
+    "IMAX",
+    "IMAX.EDITION",
+    "DiRFiX",
+    "DIRFIX",
+    "READ.NFO",
+    "LEAK",
+    "3D",
+    "SBS",
+    "HSBS",
+    "TAB",
+    "HTAB",
+    "MVC"
+  ]
+}

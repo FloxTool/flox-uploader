@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header, card, button %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Config · Flox Uploader{% endblock %}
+
+{% block content %}
+{% call page_header(
+    title='Configuration',
+    description='Édite ton fichier .env sans toucher au terminal. Les secrets sont masqués par défaut.'
+) %}
+{% endcall %}
+
+<form id="config-form" onsubmit="return false;" class="space-y-6 pb-24">
+    {% for section_name, fields in sections %}
+    <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
+        <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ section_name }}</h3>
+        </div>
+        <div class="p-4 space-y-5">
+            {% for f, raw_value, display in fields %}
+            <div>
+                <div class="flex items-baseline justify-between gap-3 mb-1.5">
+                    <label for="cfg-{{ f.key }}" class="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        {{ f.label }}
+                    </label>
+                    <code class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{{ f.key }}</code>
+                </div>
+
+                {% if f.kind == 'bool' %}
+                    <label class="inline-flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="cfg-{{ f.key }}"
+                               class="cfg-input w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
+                               data-key="{{ f.key }}" data-kind="bool"
+                               {% if raw_value in ('1', 'true', 'yes', 'on') %}checked{% endif %}>
+                        <span class="text-sm text-slate-700 dark:text-slate-300">Activé</span>
+                    </label>
+                {% elif f.kind == 'password' %}
+                    <div class="flex items-center gap-2">
+                        <input type="password" id="cfg-{{ f.key }}"
+                               class="cfg-input flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                               data-key="{{ f.key }}" data-kind="password"
+                               value="{{ display }}"
+                               placeholder="{{ f.placeholder }}">
+                        <button type="button"
+                                class="btn-toggle-secret interactive inline-flex items-center justify-center h-9 w-9 rounded-md bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700"
+                                data-target="cfg-{{ f.key }}"
+                                aria-label="Afficher ou masquer la valeur"
+                                data-tu-tooltip="Afficher / masquer">
+                            {{ icon('eye', size='sm') }}
+                        </button>
+                    </div>
+                {% elif f.kind == 'textarea' %}
+                    <textarea id="cfg-{{ f.key }}"
+                              class="cfg-input w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                              data-key="{{ f.key }}" data-kind="text"
+                              rows="3"
+                              placeholder="{{ f.placeholder }}">{{ display }}</textarea>
+                {% else %}
+                    <input type="text" id="cfg-{{ f.key }}"
+                           class="cfg-input w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                           data-key="{{ f.key }}" data-kind="{{ f.kind }}"
+                           value="{{ display }}"
+                           placeholder="{{ f.placeholder }}">
+                {% endif %}
+
+                {% if f.description %}
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">{{ f.description }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</form>
+
+{# Sticky action bar (en bas) — extrait du formulaire pour rester visible #}
+<div class="fixed bottom-0 right-0 left-0 md:left-60 bg-white/95 dark:bg-slate-950/95 backdrop-blur-sm border-t border-slate-200 dark:border-slate-800 z-20 px-4 md:px-8 py-3">
+    <div class="max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
+        {{ button('Sauvegarder', id='btn-save-config', variant='primary', icon_name='save') }}
+        {{ button('Recharger', id='btn-reload-config', variant='secondary', icon_name='refresh-cw') }}
+        <span id="config-status" class="text-sm text-slate-500 dark:text-slate-400 ml-2"></span>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const SECRET_PLACEHOLDER = '***';
+
+    // Toggle visibilite des secrets
+    document.querySelectorAll('.btn-toggle-secret').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const input = document.getElementById(btn.dataset.target);
+            if (!input) return;
+            // 1er click : reveal via API
+            if (input.value === SECRET_PLACEHOLDER && input.type === 'password') {
+                btn.disabled = true;
+                try {
+                    const resp = await fetch('/api/config/reveal?key=' + encodeURIComponent(input.dataset.key));
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        input.value = data.value || '';
+                        input.dataset.original = input.value;
+                    } else {
+                        console.warn('Reveal echoue : HTTP', resp.status);
+                    }
+                } catch (e) {
+                    console.warn('Reveal erreur :', e);
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+            input.type = input.type === 'password' ? 'text' : 'password';
+        });
+    });
+
+    function setStatus(text, tone) {
+        const el = document.getElementById('config-status');
+        if (!el) return;
+        el.textContent = text;
+        const toneClasses = {
+            success: 'text-success-700 dark:text-success-400',
+            danger: 'text-danger-600 dark:text-danger-400',
+            neutral: 'text-slate-500 dark:text-slate-400',
+        };
+        el.className = 'text-sm ml-2 ' + (toneClasses[tone] || toneClasses.neutral);
+    }
+
+    document.getElementById('btn-reload-config').addEventListener('click', () => {
+        window.location.reload();
+    });
+
+    document.getElementById('btn-save-config').addEventListener('click', async () => {
+        const values = {};
+        document.querySelectorAll('.cfg-input').forEach(el => {
+            const key = el.dataset.key;
+            const kind = el.dataset.kind;
+            if (kind === 'bool') {
+                values[key] = el.checked ? '1' : '0';
+            } else {
+                values[key] = el.value;
+            }
+        });
+        const btn = document.getElementById('btn-save-config');
+        btn.disabled = true;
+        setStatus('Sauvegarde…', 'neutral');
+        try {
+            const resp = await fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({values}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || resp.statusText);
+            setStatus('', '');
+            tu.toast({
+                title: data.message || 'Configuration sauvegardée',
+                tone: 'success',
+            });
+        } catch (e) {
+            setStatus('', '');
+            tu.toast({
+                title: 'Échec de sauvegarde',
+                message: e.message,
+                tone: 'danger',
+                duration: 6000,
+            });
+        } finally {
+            btn.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}
