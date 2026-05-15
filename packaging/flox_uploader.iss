@@ -55,8 +55,8 @@ UninstallDisplayName={#MyAppName} {#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Compatibility
 MinVersion=10.0
-; Couleur de l'installeur (optionnel - default OK)
-SetupIconFile=
+; Icone du setup.exe lui-meme + des fenetres du wizard.
+SetupIconFile=icon.ico
 ; Privacy : on ne reste pas en haut, pas plein ecran
 WindowVisible=yes
 

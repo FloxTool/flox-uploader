@@ -160,6 +160,7 @@ pyz = PYZ(a.pure)
 # Override via env var FLOX_CONSOLE=1 si on veut forcer le mode debug.
 console_mode = os.getenv("FLOX_CONSOLE", "0").strip() in ("1", "true", "yes")
 
+_icon_path = SPEC_ROOT / "icon.ico"
 exe = EXE(
     pyz,
     a.scripts,
@@ -176,7 +177,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon=str(SPEC_ROOT / "icon.ico"),   # TODO Sprint 5+ : icone .ico
+    icon=str(_icon_path) if _icon_path.is_file() else None,
 )
 
 coll = COLLECT(
