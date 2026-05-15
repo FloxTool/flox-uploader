@@ -17,6 +17,38 @@ Sprint 5 PLAN-V1.md.
 """
 from __future__ import annotations
 
+# ============================================================
+# IMPORTANT : reparation sys.stdout/stderr AVANT tout autre import.
+# ============================================================
+# En mode PyInstaller --windowed (pas de console), Python definit
+# sys.stdout, sys.stderr et sys.stdin a None. Beaucoup de libs (uvicorn,
+# logging, click, etc.) crashent quand elles font `sys.stdout.isatty()`
+# ou `sys.stdout.write(...)`.
+#
+# Erreur typique :
+#   AttributeError: 'NoneType' object has no attribute 'isatty'
+#   ValueError: Unable to configure formatter 'default'
+#
+# Fix : on remplace None par des wrappers vers os.devnull qui acceptent
+# .write() et .isatty() (renvoie False). Comme ca tout le code en aval
+# (uvicorn logging, jinja2, fastapi) fonctionne sans modifier leur code.
+#
+# Apres ce patch les print() partent dans le neant — c'est OK en mode
+# windowed parce que l'user ne voit rien de toute facon. Pour debug, on
+# rajoutera une option --console plus tard ou un log file dans data_dir.
+import sys as _sys
+
+if _sys.stdout is None or _sys.stderr is None or _sys.stdin is None:
+    import os as _os
+    _devnull = open(_os.devnull, "w", encoding="utf-8")
+    if _sys.stdout is None:
+        _sys.stdout = _devnull
+    if _sys.stderr is None:
+        _sys.stderr = _devnull
+    if _sys.stdin is None:
+        _sys.stdin = open(_os.devnull, "r", encoding="utf-8")
+
+
 import argparse
 import sys
 from pathlib import Path

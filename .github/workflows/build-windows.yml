@@ -69,11 +69,12 @@ jobs:
           echo "OK : --help fonctionne (exit $($proc.ExitCode))"
         shell: pwsh
 
-      - name: Smoke test 2 — boot complet uvicorn (detecte les ImportError)
-        # On lance le serveur 5s puis on le tue. Ca exerce le code path qui
-        # importe le module flox_uploader, FastAPI, uvicorn, jinja2, etc.
-        # Si un hidden import manque, on plante ici (vs --help qui n'a pas
-        # encore importe le serveur).
+      - name: Smoke test 2 — boot uvicorn avec stdout redirige (pour stack traces)
+        # Premier test : on redirige stdout/stderr vers des fichiers pour
+        # pouvoir LIRE les erreurs detaillees. ATTENTION : ce mode MASQUE
+        # les bugs lies a sys.stdout=None / sys.stderr=None (mode --windowed
+        # double-clic), parce que la redirection fournit de vraies streams.
+        # Le smoke test 3 ci-dessous teste les vraies conditions double-clic.
         run: |
           $proc = Start-Process -FilePath 'dist/Flox Uploader/Flox Uploader.exe' -ArgumentList '--no-browser','--port','18765' -PassThru -NoNewWindow -RedirectStandardOutput boot_stdout.txt -RedirectStandardError boot_stderr.txt
           Start-Sleep -Seconds 5
@@ -85,7 +86,6 @@ jobs:
             Get-Content boot_stderr.txt -ErrorAction SilentlyContinue
             exit 1
           }
-          # Verifier que uvicorn a bien demarre (cherche la signature dans stdout)
           $bootLog = Get-Content boot_stdout.txt -Raw -ErrorAction SilentlyContinue
           $stderrLog = Get-Content boot_stderr.txt -Raw -ErrorAction SilentlyContinue
           echo "--- stdout ---"
@@ -93,7 +93,6 @@ jobs:
           echo "--- stderr ---"
           Write-Output $stderrLog
           Stop-Process -Id $proc.Id -Force
-          # Verification du contenu : si stderr contient ImportError / Traceback / unhandled
           if ($stderrLog -match "ImportError|attempted relative import|ModuleNotFoundError|unhandled exception") {
             echo "::error::Boot a detecte une erreur d'import"
             exit 1
@@ -102,7 +101,37 @@ jobs:
             echo "::error::Uvicorn n'a pas demarre (signature 'Uvicorn running' absente du stdout)"
             exit 1
           }
-          echo "OK : serveur a demarre proprement et a ete arrete"
+          echo "OK : serveur a demarre proprement (mode stdout-redirige)"
+        shell: pwsh
+
+      - name: Smoke test 3 — windowed mode (simule double-clic, sys.stdout=None)
+        # Le bug `AttributeError: 'NoneType' object has no attribute 'isatty'`
+        # ne se reproduit QUE quand sys.stdout/stderr sont None — cas du
+        # double-clic Windows ou de Start-Process sans -RedirectStandardOutput.
+        # Ici on NE redirige PAS. Check : proc still alive after 5s + HTTP 200.
+        run: |
+          $proc = Start-Process -FilePath 'dist/Flox Uploader/Flox Uploader.exe' -ArgumentList '--no-browser','--port','18766' -PassThru
+          Start-Sleep -Seconds 6
+          if ($proc.HasExited) {
+            echo "::error::Process crashed en mode windowed (sys.stdout=None probable). Exit code : $($proc.ExitCode)"
+            echo "::error::Cause typique : une lib a fait sys.stdout.write() ou sys.stderr.isatty() sans defense"
+            exit 1
+          }
+          # Test HTTP : si le serveur tourne ET que les templates Jinja se rendent
+          try {
+            $resp = Invoke-WebRequest -Uri 'http://127.0.0.1:18766/setup' -UseBasicParsing -TimeoutSec 5
+            if ($resp.StatusCode -ne 200) {
+              echo "::error::HTTP /setup retourne $($resp.StatusCode), attendu 200"
+              Stop-Process -Id $proc.Id -Force
+              exit 1
+            }
+            echo "OK : windowed mode + HTTP /setup 200 + content length $($resp.Content.Length)"
+          } catch {
+            echo "::error::HTTP test failed : $_"
+            Stop-Process -Id $proc.Id -Force
+            exit 1
+          }
+          Stop-Process -Id $proc.Id -Force
         shell: pwsh
 
       - name: Zip the bundle for artifact upload
