@@ -9,7 +9,46 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-_Rien pour l'instant — Sprint 3 (OMDb gracieux quand vide) en attente._
+_Rien pour l'instant — Sprint 4 (préparation distribution) en attente._
+
+---
+
+## [0.3.3] — 2026-05-14
+
+Sprint 3 de `PLAN-V1.md` — **OMDb pleinement optionnel** : un user qui choisit
+de ne pas configurer OMDb n'est plus pénalisé sur son score de confiance.
+
+### Modifié
+
+- **Pipeline** (`pipeline.py`) : `SIG_OMDB_DATA_MISSING` ne s'émet plus quand
+  `OMDB_API_KEY` est absent. Avant : tout package perdait -1 pt + voyait un
+  warning "Pas de note IMDb / récompenses (OMDb non disponible)" même si
+  l'user n'avait jamais configuré OMDb. C'était pénaliser un choix explicite.
+- **Pipeline** : flag debug `omdb_not_configured: true` quand la clé est
+  absente (trace pour debug, pas un warning visible côté UI).
+- **BBCode** (`_build_awards_section`) : retour vide pour les inputs
+  whitespace-only et None (plus défensif). Évite les sections "Récompenses"
+  fantômes avec titre mais sans contenu.
+
+### Conservé
+
+- Le signal `SIG_OMDB_DATA_MISSING` s'émet toujours quand l'user **a une clé
+  OMDb configurée** mais que l'API ne renvoie rien (cas légitime — la donnée
+  manque vraiment).
+- Lot O.5 conservé : films sortis < 6 mois ne déclenchent pas le signal (délai
+  d'indexation OMDb attendu).
+- Le `/setup` documente déjà OMDb comme "Optionnel mais encouragé" (Sprint 2).
+
+### Ajouté
+
+- **8 nouveaux tests** (`test_omdb_optional.py`) qui couvrent :
+  - `fetch_omdb_data` sans clé → retour vide + flag debug
+  - `fetch_omdb_data` sans IMDB ID → retour vide sans flag (cas neutre)
+  - Métadonnée du signal `SIG_OMDB_DATA_MISSING`
+  - `_build_awards_section` : vide / whitespace / N/A / NONE / texte réel
+  - Confidence score : pas de pénalité quand le signal n'est pas émis
+  - Confidence score : pénalité présente quand le signal est explicitement émis
+  - Logique conditionnelle du pipeline en isolation
 
 ---
 

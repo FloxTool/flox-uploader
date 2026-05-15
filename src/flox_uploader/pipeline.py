@@ -329,11 +329,23 @@ def process_one(
             print(f"[OK] Recompenses : {omdb_data['awards']}")
         # Signal trust badge : OMDb n'a rien retourne (Lot E NOTES.md)
         # Critere : on a un IMDB ID mais pas de note recuperee.
+        #
         # Lot O.5 : on N'EMET PAS le signal pour les films < 6 mois — OMDb
         # peut prendre plusieurs semaines a indexer une nouvelle sortie, ce
         # n'est pas un signal de fiche partielle, juste un delai externe.
+        #
+        # Sprint 3 PLAN-V1.md : on N'EMET PAS NON PLUS si OMDB_API_KEY est
+        # absent. L'user a explicitement choisi de ne pas configurer OMDb
+        # (champ optionnel dans /setup), on ne va pas le penaliser pour ce
+        # choix volontaire. Sans cle, le pipeline saute proprement les
+        # appels OMDb et ne genere pas de warning.
         from .core import naming_signals as _ns_omdb
-        if tmdb_context.get("imdb_id") and not omdb_data["imdb_rating"]:
+        omdb_configured = bool((omdb_api_key or "").strip())
+        if (
+            omdb_configured
+            and tmdb_context.get("imdb_id")
+            and not omdb_data["imdb_rating"]
+        ):
             release_date_str = (tmdb_context.get("release_date") or "").strip()
             is_recent = False
             if release_date_str and len(release_date_str) >= 10:
@@ -355,6 +367,9 @@ def process_one(
                 )
             else:
                 _ns_omdb.emit_signal(debug, _ns_omdb.SIG_OMDB_DATA_MISSING, True)
+        elif not omdb_configured:
+            # Trace de debug uniquement (pas un warning visible cote UI)
+            debug.set("omdb_not_configured", True)
 
     poster_url = pick_best_poster_url(tmdb_context, omdb_data["poster_url"])
     debug.set("poster_url", poster_url)

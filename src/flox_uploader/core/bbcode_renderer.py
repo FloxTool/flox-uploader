@@ -595,12 +595,18 @@ def _build_cast_section(tmdb_context: dict | None) -> str:
 
 
 def _build_awards_section(awards_text: str) -> str:
-    """OMDb retourne par ex. 'Won 4 Oscars. 86 wins & 158 nominations total'."""
-    if not awards_text or awards_text.strip().upper() in {"N/A", "NONE"}:
+    """OMDb retourne par ex. 'Won 4 Oscars. 86 wins & 158 nominations total'.
+
+    Sprint 3 PLAN-V1.md : retour vide si texte vide / whitespace-only / N/A /
+    None. Garantit que la BBCode n'a aucune section "Recompenses" quand
+    OMDb est absent ou n'a rien retourne.
+    """
+    cleaned = (awards_text or "").strip()
+    if not cleaned or cleaned.upper() in {"N/A", "NONE"}:
         return ""
     return (
         f"\n[color={COLOR_GOLD}][b][size=20]🏆 Récompenses 🏆[/size][/b][/color]\n"
-        f"{awards_text.strip()}"
+        f"{cleaned}"
     )
 
 
