@@ -101,3 +101,11 @@ docs_externes/
 jobs.db
 jobs/
 .claude/
+
+# ============================================================
+# Packaging artifacts (Sprint 5 PLAN-V1.md)
+# ============================================================
+# MediaInfo CLI Windows telecharge par fetch_mediainfo_windows.py
+# (recree en CI avant chaque build, pas dans le repo)
+packaging/vendor/
+# Specs PyInstaller en revanche restent dans le repo (committed)

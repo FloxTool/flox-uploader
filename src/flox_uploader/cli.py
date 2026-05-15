@@ -339,11 +339,25 @@ def cmd_serve(args: argparse.Namespace) -> int:
     app = create_app()
     print(f"[INFO] Flox Uploader Web demarre sur http://{host}:{port}/")
     print("[INFO] Ctrl+C pour arreter.")
-    # En mode packagé (frozen) : ouvrir le navigateur automatiquement
-    if getattr(sys, "frozen", False) and is_local:
+    # Auto-launch navigateur :
+    # - En mode packagé (frozen) : oui par defaut (user lambda ne tape rien)
+    # - En mode dev : non par defaut (le dev a deja son onglet ouvert)
+    # - Override : --no-browser (skip dans tous les cas) si l'arg existe
+    skip_browser = getattr(args, "no_browser", False)
+    is_packaged = getattr(sys, "frozen", False)
+    if not skip_browser and is_local and is_packaged:
         try:
             import webbrowser
-            webbrowser.open(f"http://{host}:{port}/")
+            # Petit delai pour laisser uvicorn binder le port (sinon le browser
+            # tente de se connecter avant que le serveur ecoute -> page d'erreur).
+            # Sprint 5 PLAN-V1.md : besoin d'un timer cote thread pour pas
+            # bloquer uvicorn.run() qui est bloquant.
+            import threading
+            def _open_later():
+                webbrowser.open(f"http://{host}:{port}/")
+            t = threading.Timer(1.5, _open_later)
+            t.daemon = True
+            t.start()
         except Exception:
             pass
     uvicorn.run(app, host=host, port=port, log_level="info")

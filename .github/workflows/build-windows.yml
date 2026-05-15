@@ -1,0 +1,102 @@
+name: Build Windows .exe
+
+# Triggers :
+# - workflow_dispatch : bouton manuel "Run workflow" depuis l'onglet Actions
+# - push tag v* : auto-build sur chaque release tag
+# - PAS sur chaque push main (eviterait gaspiller des minutes CI)
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+# Opt-in Node 24 (cf. workflows/tests.yml)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build-windows:
+    name: PyInstaller · Windows .exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[web,dev]
+          pip install pyinstaller>=6.0
+
+      - name: Download MediaInfo CLI Windows (vendoring)
+        run: python packaging/fetch_mediainfo_windows.py
+
+      - name: Run unit tests (sanity check avant build)
+        run: pytest tests/ --tb=short -q
+
+      - name: Build .exe with PyInstaller
+        run: pyinstaller packaging/flox_uploader.spec --clean --noconfirm
+
+      - name: Show build output structure
+        run: |
+          echo "=== Contenu dist/ ==="
+          Get-ChildItem -Path dist -Recurse -Depth 2 | Select-Object FullName, Length | Format-Table -AutoSize
+          echo ""
+          echo "=== Taille totale du bundle ==="
+          $size = (Get-ChildItem -Path 'dist/Flox Uploader' -Recurse | Measure-Object -Property Length -Sum).Sum
+          $mb = [math]::Round($size / 1MB, 1)
+          echo "Bundle = $mb MB"
+        shell: pwsh
+
+      - name: Smoke test — l'exe demarre puis exit propre
+        # On lance l'exe avec --help ou on le tue rapidement. Si l'import du module
+        # rate au boot, --help renvoie un code != 0.
+        run: |
+          $proc = Start-Process -FilePath 'dist/Flox Uploader/Flox Uploader.exe' -ArgumentList '--help' -PassThru -NoNewWindow -Wait -RedirectStandardOutput stdout.txt -RedirectStandardError stderr.txt
+          echo "--- stdout ---"
+          Get-Content stdout.txt -ErrorAction SilentlyContinue
+          echo "--- stderr ---"
+          Get-Content stderr.txt -ErrorAction SilentlyContinue
+          if ($proc.ExitCode -ne 0) {
+            echo "::error::Smoke test failed avec exit code $($proc.ExitCode)"
+            exit 1
+          }
+          echo "OK : l'exe demarre proprement (exit code $($proc.ExitCode))"
+        shell: pwsh
+
+      - name: Zip the bundle for artifact upload
+        run: |
+          $version = python -c "from flox_uploader import __version__; print(__version__)"
+          $zipName = "FloxUploader-$version-Windows-x64.zip"
+          Compress-Archive -Path 'dist/Flox Uploader/*' -DestinationPath "$zipName" -CompressionLevel Optimal
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          $zipSize = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
+          echo "ZIP genere : $zipName ($zipSize MB)"
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flox-uploader-windows
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 30
+
+      # Pour les pushes de tag : on attache le ZIP a la GitHub Release
+      # automatiquement. Si la release n'existe pas encore (premier push tag),
+      # softprops/action-gh-release la cree.
+      - name: Attach to GitHub Release (sur tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          draft: true                       # on revoit le contenu avant publication
+          generate_release_notes: true      # auto-generate from commits since prev tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
