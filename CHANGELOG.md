@@ -9,7 +9,46 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-_Rien pour l'instant — Sprint 5 (bundling Windows PyInstaller) en attente._
+### Modifié (Sprint 5 en cours)
+
+- **Bundling Windows fonctionnel** : `.exe` PyInstaller + MediaInfo CLI
+  embarqué + workflow GitHub Actions `Build Windows .exe`. Premier `.exe`
+  testable via `gh run download` + double-clic.
+
+### Retiré
+
+- **Feature "migration data legacy"** (v0.3.4) : la détection automatique
+  d'un `<repo>/data/` orphelin + bannière d'import dans l'UI a été retirée.
+  Raisons :
+  - En mode packagé, `PROJECT_ROOT` pointe vers le bundle (pas le repo),
+    donc la détection auto ne pouvait pas fonctionner.
+  - Les futurs users ne clonent jamais le repo — ils n'auront pas de data
+    "legacy" orphelin.
+  - La fonctionnalité ne servait essentiellement personne.
+  - Conservé : `platformdirs` actif, Protocol `TrackerClient`, backward
+    compat env var `TRACKER_UPLOADER_DATA_DIR`.
+  - Si besoin futur (import explicite Win → Mac, backup/restore) on
+    ajoutera un bouton "Importer un dossier" avec sélecteur de path.
+- 14 tests `test_distribution_prep.py` qui couvraient cette feature
+  retirée. 2 tests `TrackerClient` Protocol conservés.
+
+### Corrigé
+
+- **Launcher PyInstaller** : `from .cli` → `from flox_uploader.cli`
+  (absolute import obligatoire en script top-level).
+- **sys.stdout/stderr `None`** en mode windowed PyInstaller : patch
+  vers `os.devnull` au tout début du launcher, AVANT tout import.
+  Évite `AttributeError: 'NoneType' object has no attribute 'isatty'`
+  d'uvicorn.
+- **Test `test_bucket_thresholds` flaky sur Windows** : ajout
+  `invalidate_score_cache(pkg)` entre chaque réécriture de debug.json.
+  La résolution mtime Windows était insuffisante pour invalider le cache
+  entre 3 écritures rapides.
+- **Workflow CI Windows** : 3 smoke tests désormais (`--help`, boot
+  uvicorn redirigé pour logs, mode windowed sans redirect pour reproduire
+  les conditions double-clic + HTTP /setup check).
+
+---
 
 ---
 

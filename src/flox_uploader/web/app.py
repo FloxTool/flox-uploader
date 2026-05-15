@@ -831,19 +831,6 @@ def create_app() -> FastAPI:
     from .. import __version__ as _app_version
     templates.env.globals["app_version"] = _app_version
 
-    # Sprint 4 PLAN-V1.md : detection legacy data au mount (1x au demarrage,
-    # pas a chaque request). Si un `<repo>/data/` existe avec des packages
-    # alors qu'on tourne en mode packagé sur un data_dir different, la
-    # banniere d'import apparaitra dans base.html.
-    def _legacy_data_path_for_ui():
-        """Retourne str du path legacy si migration disponible, sinon None.
-        Cache None par defaut (cas le plus frequent en prod packagé une fois
-        l'import effectue, on ne fait que des stat() qui retournent None)."""
-        legacy = config.legacy_data_dir()
-        return str(legacy) if legacy else None
-
-    templates.env.globals["legacy_data_path"] = _legacy_data_path_for_ui
-
     # Filtre fmt_date : convertit ISO "2026-05-11T19:17:00Z" en
     # "2026-05-11 19:17" (T -> space, drop Z, drop ms, drop secondes).
     # Format compact et lisible humain.
@@ -1169,74 +1156,11 @@ def create_app() -> FastAPI:
             f"kind inconnu : {kind!r}. Attendu : tmdb, omdb, tracker, announce.",
         )
 
-    # ============================================================
-    # Sprint 4 PLAN-V1.md : detection + import du data legacy
-    # ============================================================
-
-    @app.get("/api/data-dir/legacy-status")
-    def api_data_dir_legacy_status():
-        """Retourne les stats du data legacy a importer, si detection positive.
-
-        Reponse :
-          {
-            "available": bool,         # y a-t-il du legacy a importer ?
-            "legacy_path": str | "",
-            "current_path": str,       # data_dir() courant
-            "stats": {                 # contenu du legacy (vide si available=False)
-              "package_count": int,
-              "total_size_bytes": int,
-              "has_env": bool,
-              "has_jobs_db": bool,
-              "has_tmdb_cache": bool,
-            }
-          }
-        """
-        legacy = config.legacy_data_dir()
-        if legacy is None:
-            return {
-                "available": False,
-                "legacy_path": "",
-                "current_path": str(config.data_dir()),
-                "stats": {},
-            }
-        return {
-            "available": True,
-            "legacy_path": str(legacy),
-            "current_path": str(config.data_dir()),
-            "stats": config.legacy_data_stats(legacy),
-        }
-
-    @app.post("/api/data-dir/migrate")
-    def api_data_dir_migrate(payload: dict[str, Any] = None):
-        """Lance l'import du data legacy vers le data_dir courant.
-
-        Body optionnel : {"dry_run": bool}. Si dry_run=true, simule sans
-        rien copier (utile pour preview UI).
-
-        Retourne le dict de `migrate_legacy_data` :
-          {
-            "copied_packages": int,
-            "skipped_packages": int,    # deja presents dans le data_dir cible
-            "copied_files": list[str],
-            "errors": list[str],
-          }
-        """
-        legacy = config.legacy_data_dir()
-        if legacy is None:
-            raise HTTPException(
-                404,
-                "Aucun data legacy detecte. Soit l'import est deja fait, "
-                "soit tu es en mode dev (le data_dir = le repo).",
-            )
-        dry_run = bool((payload or {}).get("dry_run", False))
-        result = config.migrate_legacy_data(legacy, dry_run=dry_run)
-        return {
-            "ok": True,
-            "dry_run": dry_run,
-            "legacy_path": str(legacy),
-            "target_path": str(config.data_dir()),
-            **result,
-        }
+    # NOTES Sprint 4 cleanup : les endpoints /api/data-dir/legacy-status et
+    # /api/data-dir/migrate ont ete retires en v0.3.5. Voir config.py pour
+    # la note explicative. Pour un import manuel futur (option C), on
+    # ajoutera un nouvel endpoint qui prend un path explicite plutot que
+    # de detecter automatiquement.
 
     # --- Backward-compat (anciens endpoints, deprecated) -----------------
     @app.post("/api/setup/test-tmdb")
