@@ -1,4 +1,23 @@
-# AUDIT — flox-uploader (2026-05-06, rev 2.2)
+# AUDIT — flox-uploader (2026-05-06, rev 2.2) — 📦 ARCHIVÉ
+
+> ⚠️ **Document historique conservé pour traçabilité.**
+>
+> Cet audit date du 6 mai 2026 (rev 2.2). **~95 % des findings P0/P1 sont
+> aujourd'hui livrés** (Sprints 1 à 5 de `PLAN-V1.md` complétés, release
+> publique v0.3.5 publiée le 15 mai 2026).
+>
+> Items encore ouverts au 15 mai 2026 :
+> - **§4.6** "Banner updates" → traité par **Sprint 6** (PLAN-V1.md)
+> - **§5.3** Cache TMDB sans isolation films/séries → backlog
+> - **§5.4** Pas d'auth web UI → acceptable (local-only `127.0.0.1`)
+> - **§7.2** Factorisation TMDB resolvers → SKIP justifié, session dédiée
+>
+> 👉 **Pour la roadmap à jour, voir [`PLAN-V1.md`](PLAN-V1.md).**
+>
+> Le contenu ci-dessous est laissé tel quel pour préserver les références
+> de sections (§X.Y) utilisées dans `CLAUDE.md`, README, code et tests.
+
+---
 
 > Audit honnête du codebase. **Rev 2** : ré-évalué dans la grille **produit
 > final = web UI packagée user-friendly** (Docker + PyInstaller, cible
