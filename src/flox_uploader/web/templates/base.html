@@ -613,6 +613,11 @@
         // ====================================================
         window.tu = window.tu || {};
 
+        // Sprint 8 PLAN-V1 — diagnostic systeme inject e par le serveur.
+        // Utilise par tu.buildBugReport() et tu.openBugReport() pour pre-remplir
+        // le template GitHub Issues. Aucun secret (cf. core/diagnostic.py).
+        window.APP_DIAGNOSTIC = {{ app_diagnostic().to_dict() | tojson }};
+
         // ----- Page loader -----
         tu.showPageLoader = function() {
             const el = document.getElementById('page-loader');
@@ -659,23 +664,62 @@
             const container = document.getElementById('toast-container');
             if (!container) return;
             const t = document.createElement('div');
-            t.className = `toast pointer-events-auto flex items-start gap-3 w-80 max-w-[calc(100vw-2rem)] rounded-lg shadow-md border p-3 ${_TOAST_CLASSES[tone] || _TOAST_CLASSES.info}`;
+            t.className = `toast pointer-events-auto flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg shadow-md border p-3 ${_TOAST_CLASSES[tone] || _TOAST_CLASSES.info}`;
             t.setAttribute('role', 'status');
+            // Sprint 8 PLAN-V1 : pour les toasts danger, on ajoute une ligne
+            // "Copier rapport" qui copie un payload Markdown (version, OS,
+            // page courante, message d'erreur) dans le presse-papier. Permet
+            // a l'user de coller dans une Issue GitHub sans aller chercher
+            // ses infos systeme.
+            const isDanger = tone === 'danger';
             t.innerHTML = `
-                <div class="flex-shrink-0 ${_TOAST_ICON_CLASSES[tone] || _TOAST_ICON_CLASSES.info}">${_TOAST_ICONS[tone] || _TOAST_ICONS.info}</div>
-                <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium">${_escapeHtml(title || '')}</div>
-                    ${message ? `<div class="text-xs text-slate-600 dark:text-slate-300 mt-0.5">${_escapeHtml(message)}</div>` : ''}
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0 ${_TOAST_ICON_CLASSES[tone] || _TOAST_ICON_CLASSES.info}">${_TOAST_ICONS[tone] || _TOAST_ICONS.info}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium">${_escapeHtml(title || '')}</div>
+                        ${message ? `<div class="text-xs text-slate-600 dark:text-slate-300 mt-0.5">${_escapeHtml(message)}</div>` : ''}
+                    </div>
+                    <button type="button" class="toast-dismiss flex-shrink-0 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 -mt-0.5 -mr-0.5 p-0.5 rounded transition-colors" aria-label="Fermer">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
                 </div>
-                <button type="button" class="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 -mt-0.5 -mr-0.5 p-0.5 rounded transition-colors" aria-label="Fermer">
-                    <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
+                ${isDanger ? `
+                <div class="flex items-center gap-2 pl-8 -mt-1">
+                    <button type="button" class="toast-copy-report inline-flex items-center gap-1.5 px-2 h-6 text-xs rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        Copier rapport
+                    </button>
+                </div>` : ''}
             `;
             const dismiss = () => {
                 t.classList.add('toast-leaving');
                 setTimeout(() => t.remove(), 180);
             };
-            t.querySelector('button').addEventListener('click', dismiss);
+            t.querySelector('.toast-dismiss').addEventListener('click', dismiss);
+            if (isDanger) {
+                const copyBtn = t.querySelector('.toast-copy-report');
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', async () => {
+                        const text = tu.buildBugReport({
+                            errorTitle: title,
+                            errorMessage: message,
+                        });
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            copyBtn.innerHTML = `
+                                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+                                Copié
+                            `;
+                            copyBtn.classList.add('text-success-700', 'dark:text-success-300');
+                        } catch (e) {
+                            copyBtn.innerHTML = `
+                                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                                Erreur copie
+                            `;
+                        }
+                    });
+                }
+            }
             container.appendChild(t);
             if (duration > 0) setTimeout(dismiss, duration);
         };
@@ -683,6 +727,64 @@
             return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
+
+        // ====================================================
+        // SPRINT 8 PLAN-V1 — Crash report helper
+        //
+        // Le diagnostic systeme est inject e par le serveur dans
+        // window.APP_DIAGNOSTIC (cf. bas du <head>). Deux entry points :
+        //
+        //   tu.buildBugReport({errorTitle, errorMessage})
+        //     -> retourne le Markdown du rapport (string)
+        //
+        //   tu.openBugReport({errorTitle, errorMessage})
+        //     -> ouvre GitHub Issues avec template bug.yml pre-rempli
+        //        (version + os + logs). L'user n'a qu'a completer
+        //        "Ce qui s'est passe" et "Etapes pour reproduire".
+        //
+        // Aucun secret n'est inclus (cf. core/diagnostic.py).
+        // ====================================================
+        tu.buildBugReport = function({errorTitle = '', errorMessage = ''} = {}) {
+            const d = window.APP_DIAGNOSTIC || {};
+            const lines = ['## Diagnostic'];
+            lines.push(`- Flox Uploader : \`${d.version || '?'}\``);
+            lines.push(`- Python : \`${d.python_version || '?'}\``);
+            lines.push(`- OS : \`${d.os || '?'}\` (${d.os_release || '?'})`);
+            if (d.mediainfo_available) {
+                lines.push(`- MediaInfo : \`${d.mediainfo_version || ''}\``);
+            } else {
+                lines.push('- MediaInfo : **non detecte** (binaire mediainfo absent du PATH)');
+            }
+            lines.push(`- Setup complet : \`${d.setup_complete}\``);
+            lines.push('');
+            lines.push('## Contexte');
+            lines.push(`- Page : \`${window.location.pathname}${window.location.search}\``);
+            const combined = [errorTitle, errorMessage].filter(Boolean).join(' — ');
+            if (combined) {
+                lines.push('');
+                lines.push('## Message d\\'erreur');
+                lines.push('```');
+                const truncated = combined.length > 2000 ? combined.slice(0, 2000) + '\\n... (tronque)' : combined;
+                lines.push(truncated);
+                lines.push('```');
+            }
+            return lines.join('\\n');
+        };
+        tu.openBugReport = function({errorTitle = '', errorMessage = ''} = {}) {
+            const d = window.APP_DIAGNOSTIC || {};
+            const body = tu.buildBugReport({errorTitle, errorMessage});
+            // Limite GitHub : URL totale ~8KB. version + os encodes sont
+            // petits, logs encode peut etre gros. On cape encore une fois
+            // pour etre sur (le truncate dans buildBugReport est deja a 2000
+            // chars, devrait suffire).
+            const params = new URLSearchParams();
+            params.set('template', 'bug.yml');
+            if (d.version) params.set('version', d.version);
+            if (d.os) params.set('os', d.os);
+            params.set('logs', body);
+            const url = 'https://github.com/FloxTool/flox-uploader/issues/new?' + params.toString();
+            window.open(url, '_blank', 'noopener,noreferrer');
+        };
 
         // ====================================================
         // CONFIRM MODAL

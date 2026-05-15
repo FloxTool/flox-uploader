@@ -495,6 +495,49 @@
 
 
 {# ============================================================
+   SIGNALER UN BUG — Sprint 8 PLAN-V1
+   Lien direct vers GitHub Issues avec template bug.yml pre-rempli
+   (version + os deja cocher es). L'user n'a qu'a completer
+   "Ce qui s'est passe" et "Etapes pour reproduire".
+   ============================================================ #}
+<section class="mb-10">
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Signaler un bug</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
+        Si l'app plante ou se comporte bizarrement, le plus utile est d'ouvrir une issue GitHub.
+    </p>
+    <div class="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+        <ul class="text-sm text-slate-700 dark:text-slate-300 space-y-2 mb-4 list-disc list-inside">
+            <li>Le bouton ouvre une nouvelle issue avec ta version et ton OS deja pré-remplis.</li>
+            <li>Tu décris ce qui s'est passé et les étapes pour reproduire — c'est ce qui aide le plus à corriger vite.</li>
+            <li>Aucune donnée sensible n'est envoyée automatiquement (pas de clés API, pas de passkey).</li>
+        </ul>
+        <button type="button" id="guide-report-bug"
+                class="inline-flex items-center gap-2 px-4 h-9 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-sm font-medium transition-colors">
+            {{ icon('external-link', size='sm') }}
+            Signaler un bug sur GitHub
+        </button>
+    </div>
+    <script>
+        // Sprint 8 : bouton -> ouvre tu.openBugReport() defini dans base.html.
+        // On passe en context "report manuel via Guide" (pas d'erreur a inclure).
+        (function() {
+            const btn = document.getElementById('guide-report-bug');
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                if (window.tu && typeof window.tu.openBugReport === 'function') {
+                    window.tu.openBugReport({});
+                } else {
+                    // Fallback ultra-defensif : on ouvre la page Issues nue.
+                    window.open('https://github.com/FloxTool/flox-uploader/issues/new?template=bug.yml',
+                                '_blank', 'noopener,noreferrer');
+                }
+            });
+        })();
+    </script>
+</section>
+
+
+{# ============================================================
    FOOTER — signature Flox
    ============================================================ #}
 <footer class="mt-12 mb-4 text-center">

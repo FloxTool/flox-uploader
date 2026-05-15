@@ -848,6 +848,13 @@ def create_app() -> FastAPI:
     except Exception:
         pass
 
+    # Sprint 8 PLAN-V1 : crash report helper. On expose `app_diagnostic()`
+    # aux templates pour qu'il puisse etre injecte cote JS et utilise par
+    # les boutons "Copier rapport" (toast danger) et "Signaler un bug"
+    # (page Guide). Aucun secret n'est inclus dans le diagnostic.
+    from ..core.diagnostic import collect_diagnostic as _collect_diagnostic
+    templates.env.globals["app_diagnostic"] = lambda: _collect_diagnostic()
+
     # Filtre fmt_date : convertit ISO "2026-05-11T19:17:00Z" en
     # "2026-05-11 19:17" (T -> space, drop Z, drop ms, drop secondes).
     # Format compact et lisible humain.
@@ -1355,6 +1362,25 @@ def create_app() -> FastAPI:
                 "app_version": _tu_version,
             },
         )
+
+    @app.get("/api/diagnostic")
+    def api_diagnostic():
+        """Sprint 8 PLAN-V1 — diagnostic systeme pour rapport de bug.
+
+        Retourne le dict de `Diagnostic` :
+            - version : version Flox Uploader
+            - python_version : ex "3.12.4"
+            - os : "Windows" / "macOS" / "Linux" / "Autre"
+            - os_release : version OS (ex "11", "23.5.0")
+            - mediainfo_available : bool
+            - mediainfo_version : str (vide si non dispo)
+            - setup_complete : bool
+
+        Aucun secret, aucun path absolu, aucun identifiant user. Le payload
+        est destine a etre colle dans une GitHub Issue publique.
+        """
+        from ..core.diagnostic import collect_diagnostic
+        return collect_diagnostic().to_dict()
 
     @app.get("/api/update-info")
     def api_update_info():

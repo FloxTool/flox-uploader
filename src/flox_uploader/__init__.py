@@ -29,6 +29,14 @@
 #           /setup), dismissible per-version via localStorage. Semver
 #           strict, pre-releases ignorees. Aucune telemetry : on lit
 #           juste /releases/latest, on n'envoie rien.
+#   0.3.7 : Sprint 8 de PLAN-V1.md — Crash report helper. Bouton "Copier
+#           rapport" dans tout toast d'erreur (Markdown : version, OS,
+#           page, message). Section "Signaler un bug" dans le Guide
+#           avec ouverture directe GitHub Issues + template bug.yml
+#           pre-rempli (version, os, logs). Module core/diagnostic.py
+#           collecte version + Python + OS + MediaInfo + statut setup,
+#           expose en Jinja global et endpoint /api/diagnostic. Aucun
+#           secret dans le payload.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.6"
+__version__ = "0.3.7"
