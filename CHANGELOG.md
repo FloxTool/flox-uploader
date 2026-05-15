@@ -9,7 +9,41 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-_Rien pour l'instant — Sprint 2 démarre prochainement._
+_Rien pour l'instant — Sprint 3 (OMDb gracieux quand vide) en attente._
+
+---
+
+## [0.3.2] — 2026-05-14
+
+Sprint 2 de `PLAN-V1.md` — amélioration de la page `/setup` pour qu'un user
+puisse compléter sa config en < 5 min sans aide externe.
+
+### Ajouté
+
+- **Endpoint unifié `POST /api/config/test-key`** qui gère 4 kinds :
+  - `tmdb` : ping `https://api.themoviedb.org/3/configuration`
+  - `omdb` : ping OMDb avec un IMDb ID connu, détecte les erreurs "Invalid API key" et "Request limit reached"
+  - `tracker` : ping `{api_url}/torrents/filter?id=1` avec Bearer auth
+  - `announce` : valide le format de l'URL announce (scheme, host, /announce, passkey présente)
+- **Badges de statut inline** sur la page `/setup` : `Non testé` / `Test en cours…` / `OK` / `Erreur`, avec animation pulse pour le loading state, et reset auto au moindre changement du champ
+- **Test buttons pour OMDb et URL announce** (manquaient ; seuls TMDB et tracker en avaient un)
+- **Welcome state au premier run** : hero différencié avec emoji 👋, animation `hero-in`, message rassurant "tout reste local"
+- **Pédagogie renforcée** : 1 phrase "à quoi ça sert" par section, hints sous chaque champ (où trouver, ce qui se passe sans)
+- **Réorganisation** : 3 sections logiques (Métadonnées / Tracker / Préférences) au lieu de 4 étapes plates
+- **CI** : env var `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` pour anticiper la deprecation Node 20
+- **23 nouveaux tests** dans `test_config_test_key_endpoint.py` (couvre les 4 kinds + erreurs + backward compat + welcome state)
+
+### Modifié
+
+- Page `/setup` : refonte complète du HTML pour utiliser les nouvelles sections, badges, et endpoint unifié. La logique JS est entièrement réécrite mais le contrat avec le backend reste rétro-compatible.
+
+### Conservé (backward compat)
+
+- Endpoints legacy `/api/setup/test-tmdb` et `/api/setup/test-tracker` (marqués DEPRECATED) — délèguent au nouveau code. À retirer dans une release future après vérification qu'aucun script externe ne les utilise.
+
+### Corrigé
+
+- **CI GitHub Actions** plantait sur `test_validate_endpoint.py` (et autres tests web) avec `ModuleNotFoundError: No module named 'fastapi'` — le workflow installait `[dev]` seulement, manquait le groupe `[web]`. Maintenant `pip install -e .[web,dev]`.
 
 ---
 

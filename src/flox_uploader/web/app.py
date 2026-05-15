@@ -957,6 +957,15 @@ def create_app() -> FastAPI:
         for f in SCHEMA:
             v = values.get(f.key, "")
             display_values[f.key] = SECRET_PLACEHOLDER if (f.is_secret and v) else v
+        # Sprint 2 : detection 1er run pour afficher un welcome plus prominent.
+        # Critere : fichier .env absent OU aucune valeur critique definie.
+        # On utilise REQUIRED_ENV_KEYS (source de verite de "qu'est-ce qui est
+        # critique") plutot que d'inferer depuis SCHEMA.
+        env_file = config.env_file()
+        is_first_run = (
+            not env_file.exists()
+            or not any(values.get(k) for k in config.REQUIRED_ENV_KEYS)
+        )
         return templates.TemplateResponse(
             request,
             "setup.html",
@@ -965,18 +974,28 @@ def create_app() -> FastAPI:
                 "values": display_values,
                 "missing": config.missing_required_keys(),
                 "setup_complete": config.is_setup_complete(),
+                "is_first_run": is_first_run,
                 "data_dir_path": str(config.data_dir()),
-                "env_file_path": str(config.env_file()),
+                "env_file_path": str(env_file),
             },
         )
 
-    @app.post("/api/setup/test-tmdb")
-    def api_setup_test_tmdb(payload: dict[str, Any]):
-        """Valide une cle TMDB en appelant l'endpoint /configuration."""
+    # ============================================================
+    # Test-key endpoints (Sprint 2 — PLAN-V1.md)
+    # ============================================================
+    # Endpoint unifie `/api/config/test-key` qui prend `kind` dans le body
+    # et delegue a la bonne fonction de test.
+    #
+    # Les anciens endpoints `/api/setup/test-tmdb` et `/api/setup/test-tracker`
+    # sont conserves comme wrappers (backward compat pour tests / scripts
+    # eventuels). A supprimer dans une release future.
+    # ============================================================
+
+    def _test_tmdb_key(api_key: str) -> dict:
+        """Ping TMDB /configuration avec la cle. Retourne dict {ok, message}."""
         import requests as _requests
-        api_key = (payload.get("api_key") or "").strip()
         if not api_key:
-            raise HTTPException(400, "api_key vide")
+            raise HTTPException(400, "Clé TMDB vide.")
         try:
             resp = _requests.get(
                 "https://api.themoviedb.org/3/configuration",
@@ -984,24 +1003,52 @@ def create_app() -> FastAPI:
                 timeout=10,
             )
         except _requests.RequestException as e:
-            raise HTTPException(502, f"Erreur reseau TMDB : {e}")
+            raise HTTPException(502, f"Erreur réseau TMDB : {e}")
         if resp.status_code == 200:
-            return {"ok": True, "message": "Cle TMDB valide."}
+            return {"ok": True, "message": "Clé TMDB valide."}
         if resp.status_code == 401:
-            raise HTTPException(401, "Cle TMDB invalide (401 Unauthorized).")
+            raise HTTPException(401, "Clé TMDB invalide (401 Unauthorized).")
         raise HTTPException(
             502,
-            f"TMDB a repondu HTTP {resp.status_code} : {(resp.text or '')[:120]}",
+            f"TMDB a répondu HTTP {resp.status_code} : {(resp.text or '')[:120]}",
         )
 
-    @app.post("/api/setup/test-tracker")
-    def api_setup_test_tracker(payload: dict[str, Any]):
-        """Valide une cle tracker (Unit3D) via /api/torrents/filter?id=1."""
+    def _test_omdb_key(api_key: str) -> dict:
+        """Ping OMDb avec la cle (recherche bidon). Retourne dict {ok, message}."""
         import requests as _requests
-        api_url = (payload.get("api_url") or "").strip().rstrip("/")
-        api_key = (payload.get("api_key") or "").strip()
+        if not api_key:
+            raise HTTPException(400, "Clé OMDb vide.")
+        try:
+            # OMDb : on fait une requete legere avec un IMDb ID connu.
+            # tt0111161 = The Shawshank Redemption (toujours present).
+            resp = _requests.get(
+                "https://www.omdbapi.com/",
+                params={"apikey": api_key, "i": "tt0111161"},
+                timeout=10,
+            )
+        except _requests.RequestException as e:
+            raise HTTPException(502, f"Erreur réseau OMDb : {e}")
+        # OMDb renvoie toujours 200 mais avec Response="True" ou "False".
+        # Si la cle est invalide : 401 OU 200 + Error="Invalid API key!".
+        if resp.status_code == 401:
+            raise HTTPException(401, "Clé OMDb invalide (401).")
+        try:
+            data = resp.json()
+        except Exception:
+            raise HTTPException(502, f"OMDb a répondu HTTP {resp.status_code} (JSON invalide).")
+        if data.get("Response") == "False":
+            err = data.get("Error", "Erreur inconnue")
+            if "Invalid API key" in err or "limit reached" in err.lower():
+                raise HTTPException(401, f"OMDb : {err}")
+            raise HTTPException(502, f"OMDb : {err}")
+        return {"ok": True, "message": "Clé OMDb valide."}
+
+    def _test_tracker_creds(api_url: str, api_key: str) -> dict:
+        """Ping le tracker Unit3D avec auth Bearer. Retourne dict {ok, message}."""
+        import requests as _requests
         if not api_url or not api_key:
-            raise HTTPException(400, "api_url et api_key requis")
+            raise HTTPException(400, "URL et clé tracker requises.")
+        api_url = api_url.rstrip("/")
         try:
             resp = _requests.get(
                 f"{api_url}/torrents/filter",
@@ -1013,17 +1060,115 @@ def create_app() -> FastAPI:
                 timeout=10,
             )
         except _requests.RequestException as e:
-            raise HTTPException(502, f"Erreur reseau tracker : {e}")
+            raise HTTPException(502, f"Erreur réseau tracker : {e}")
         # 200 ou 404 = endpoint joint et auth OK (404 = pas de torrent id=1)
         if resp.status_code in (200, 404):
             return {"ok": True, "message": "API tracker joignable, auth OK."}
         if resp.status_code == 401:
-            raise HTTPException(401, "Cle API tracker invalide (401).")
+            raise HTTPException(401, "Clé API tracker invalide (401).")
         if resp.status_code == 403:
-            raise HTTPException(403, "Acces refuse (403, rang utilisateur ?).")
+            raise HTTPException(403, "Accès refusé (403, rang utilisateur ?).")
         raise HTTPException(
             502,
-            f"Tracker a repondu HTTP {resp.status_code} : {(resp.text or '')[:120]}",
+            f"Tracker a répondu HTTP {resp.status_code} : {(resp.text or '')[:120]}",
+        )
+
+    def _test_announce_url(announce_url: str) -> dict:
+        """Valide le FORMAT d'une URL announce (on ne peut pas vraiment ping un
+        tracker BitTorrent sans simuler un client). Verifie :
+        - URL bien formee (scheme http/https)
+        - Path contient '/announce' ou ressemble a un endpoint announce
+        - Path a un segment apres /announce (la passkey)
+        """
+        from urllib.parse import urlparse
+        if not announce_url:
+            raise HTTPException(400, "URL announce vide.")
+        try:
+            parsed = urlparse(announce_url)
+        except Exception as e:
+            raise HTTPException(400, f"URL malformée : {e}")
+        if parsed.scheme not in ("http", "https"):
+            raise HTTPException(400, "Le scheme doit être http ou https.")
+        if not parsed.netloc:
+            raise HTTPException(400, "URL sans host (vérifie le format).")
+        path = parsed.path or ""
+        if "/announce" not in path:
+            raise HTTPException(
+                400,
+                "L'URL ne contient pas '/announce' — vérifie que c'est bien "
+                "une URL announce de tracker (pas l'URL du site).",
+            )
+        # Le segment apres /announce devrait etre la passkey
+        # Format Unit3D : /announce/<passkey>
+        segments = [s for s in path.split("/") if s]
+        try:
+            ann_idx = segments.index("announce")
+        except ValueError:
+            ann_idx = -1
+        if ann_idx == -1 or ann_idx == len(segments) - 1:
+            # Cas particulier : announce avec query string `?passkey=...` (rare)
+            if not parsed.query and "passkey" not in announce_url.lower():
+                raise HTTPException(
+                    400,
+                    "Aucune passkey détectée après /announce. Format attendu : "
+                    "https://tracker.example/announce/<TA_PASSKEY>",
+                )
+        return {
+            "ok": True,
+            "message": f"Format URL announce valide ({parsed.netloc}). "
+                       "Note : on ne peut pas tester l'authenticité de la passkey "
+                       "sans simuler un client BitTorrent.",
+        }
+
+    @app.post("/api/config/test-key")
+    def api_config_test_key(payload: dict[str, Any]):
+        """Sprint 2 : endpoint unifie pour tester n'importe quelle cle / URL
+        de config. Le `kind` dans le body determine quel test on lance.
+
+        Body :
+          {
+            "kind": "tmdb" | "omdb" | "tracker" | "announce",
+            ... params specifiques au kind ...
+          }
+
+        Pour tmdb / omdb : {api_key: "..."}
+        Pour tracker     : {api_url: "...", api_key: "..."}
+        Pour announce    : {announce_url: "..."}
+
+        Retourne {ok: True, message: "..."} si OK, sinon HTTPException avec
+        le code adequat (401 pour invalide, 502 pour erreur reseau, 400 pour
+        payload mal forme).
+        """
+        kind = (payload.get("kind") or "").strip().lower()
+        if kind == "tmdb":
+            return _test_tmdb_key((payload.get("api_key") or "").strip())
+        if kind == "omdb":
+            return _test_omdb_key((payload.get("api_key") or "").strip())
+        if kind == "tracker":
+            return _test_tracker_creds(
+                (payload.get("api_url") or "").strip(),
+                (payload.get("api_key") or "").strip(),
+            )
+        if kind == "announce":
+            return _test_announce_url((payload.get("announce_url") or "").strip())
+        raise HTTPException(
+            400,
+            f"kind inconnu : {kind!r}. Attendu : tmdb, omdb, tracker, announce.",
+        )
+
+    # --- Backward-compat (anciens endpoints, deprecated) -----------------
+    @app.post("/api/setup/test-tmdb")
+    def api_setup_test_tmdb(payload: dict[str, Any]):
+        """DEPRECATED Sprint 2 : utiliser /api/config/test-key avec kind=tmdb.
+        Conserve pour ne pas casser les scripts/tests externes."""
+        return _test_tmdb_key((payload.get("api_key") or "").strip())
+
+    @app.post("/api/setup/test-tracker")
+    def api_setup_test_tracker(payload: dict[str, Any]):
+        """DEPRECATED Sprint 2 : utiliser /api/config/test-key avec kind=tracker."""
+        return _test_tracker_creds(
+            (payload.get("api_url") or "").strip(),
+            (payload.get("api_key") or "").strip(),
         )
 
     @app.post("/api/setup/save")

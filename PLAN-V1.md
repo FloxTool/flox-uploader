@@ -172,7 +172,12 @@ ne passe au suivant que quand le précédent est mergé et tagué.
 - ✅ `git clone + pip install -e .` marche (testé localement)
 - ✅ 622/622 tests verts après refactor
 - ✅ Repo créé sur FloxTool, identité "Flox Uploader" partout dans l'UI + docs
-- ⏳ CI verte (à confirmer au 1er push qui déclenche GitHub Actions — il faut vérifier l'onglet Actions du repo)
+- ✅ CI verte sur les 3 versions Python (3.10 / 3.11 / 3.12, après fix `pip install -e .[web,dev]`)
+- ✅ Node.js 20 deprecation gérée via `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`
+
+**Hotfix appliqué post-tag v0.3.1** (commit `6e49984`) :
+- Workflow CI installait `[dev]` seulement, manquait `[web]` (fastapi/uvicorn/jinja2)
+- Symptôme : `ModuleNotFoundError: No module named 'fastapi'` sur tous tests web
 
 ### Sprint 2 — Amélioration de la page /setup (1 semaine)
 

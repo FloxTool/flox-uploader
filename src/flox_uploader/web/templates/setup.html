@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Première configuration · Flox Uploader</title>
+    <title>Configuration · Flox Uploader</title>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <script>
       (function() {
@@ -16,6 +16,10 @@
         } catch (e) {}
       })();
     </script>
+    <style>
+      html             { background-color: rgb(241, 245, 249); }
+      html.dark        { background-color: rgb(2, 6, 23); }
+    </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -48,6 +52,12 @@
               sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'system-ui', 'sans-serif'],
               mono: ['"JetBrains Mono"', '"SF Mono"', 'Consolas', 'monospace'],
             },
+            transitionDuration: {
+              fast: '180ms',
+            },
+            transitionTimingFunction: {
+              tu: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            },
           },
         },
       };
@@ -61,10 +71,10 @@
         -webkit-font-smoothing: antialiased;
       }
       :focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.4);
-        border-radius: 4px;
+        outline: 2px solid rgba(99, 102, 241, 0.85);
+        outline-offset: 2px;
       }
+      :focus:not(:focus-visible) { outline: none; }
       svg.icon {
         width: 1em; height: 1em;
         stroke: currentColor; fill: none;
@@ -75,104 +85,250 @@
       svg.icon.icon-md { width: 16px; height: 16px; }
       svg.icon.icon-lg { width: 20px; height: 20px; }
       svg.icon.icon-xl { width: 24px; height: 24px; }
+
+      /* Sprint 2 : badges de statut de test inline (idle / ok / ko / loading).
+         Visuel : pastille ronde + label court. Hover du label pour voir le
+         message complet (titre HTML natif). */
+      .test-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.125rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 500;
+        transition: background-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+                    color 180ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .test-badge[data-status="idle"] {
+        background: rgb(241, 245, 249);
+        color: rgb(100, 116, 139);
+      }
+      html.dark .test-badge[data-status="idle"] {
+        background: rgb(30, 41, 59);
+        color: rgb(148, 163, 184);
+      }
+      .test-badge[data-status="ok"] {
+        background: rgb(209, 250, 229);
+        color: rgb(4, 120, 87);
+      }
+      html.dark .test-badge[data-status="ok"] {
+        background: rgba(16, 185, 129, 0.15);
+        color: rgb(110, 231, 183);
+      }
+      .test-badge[data-status="ko"] {
+        background: rgb(254, 226, 226);
+        color: rgb(185, 28, 28);
+      }
+      html.dark .test-badge[data-status="ko"] {
+        background: rgba(239, 68, 68, 0.15);
+        color: rgb(252, 165, 165);
+      }
+      .test-badge[data-status="loading"] {
+        background: rgb(254, 243, 199);
+        color: rgb(180, 83, 9);
+      }
+      html.dark .test-badge[data-status="loading"] {
+        background: rgba(245, 158, 11, 0.15);
+        color: rgb(252, 211, 77);
+      }
+      .test-badge .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 9999px;
+        background: currentColor;
+      }
+      .test-badge[data-status="loading"] .dot {
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 1; }
+      }
+
+      /* Welcome card animation au 1er run */
+      .welcome-hero {
+        animation: hero-in 600ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes hero-in {
+        from { opacity: 0; transform: translateY(-8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
     </style>
 </head>
 <body class="bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
 
-<main class="max-w-2xl mx-auto px-6 py-12 md:py-16">
+<main class="max-w-2xl mx-auto px-6 py-10 md:py-14">
 
-    {# Header — logomark + titre + sous-titre #}
-    <div class="mb-10 text-center">
-        <img src="/static/logo.svg" alt="Flox Uploader" class="w-16 h-16 mx-auto mb-5 drop-shadow-md">
-        <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Bienvenue</h1>
-        <p class="text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-md mx-auto">
-            Quelques minutes pour configurer tes clés API et l'announce URL de ton tracker. Tout reste local : rien ne sort de ta machine.
+    {# ============================================================
+       Header : welcome plus prominent au 1er run, plus discret sinon
+       ============================================================ #}
+    {% if is_first_run %}
+    <div class="welcome-hero mb-10 text-center">
+        <img src="/static/logo.svg" alt="Flox Uploader" class="w-20 h-20 mx-auto mb-5 drop-shadow-md">
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Bienvenue sur Flox Uploader 👋</h1>
+        <p class="text-sm text-slate-600 dark:text-slate-400 mt-3 max-w-md mx-auto leading-relaxed">
+            Quelques minutes pour configurer l'app. <strong>Tout reste local</strong> sur ta machine,
+            aucune donnée n'est envoyée nulle part sans appel API explicite (TMDB, OMDb, ton tracker).
         </p>
-
+        <div class="mt-5 inline-flex items-center gap-2 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 rounded-md px-3 py-1.5 text-xs text-primary-800 dark:text-primary-300">
+            {{ icon('info', size='sm') }}
+            <span>Tu peux <strong>tester chaque clé</strong> dès que tu la colles, pour valider qu'elle marche.</span>
+        </div>
+    </div>
+    {% else %}
+    <div class="mb-8 text-center">
+        <img src="/static/logo.svg" alt="Flox Uploader" class="w-14 h-14 mx-auto mb-3 drop-shadow-sm">
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Configuration</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+            Modifie les clés et préférences ci-dessous.
+        </p>
         {% if missing %}
-        <div class="mt-5 inline-flex items-center gap-2 bg-warning-50 dark:bg-warning-900/30 border border-warning-200 dark:border-warning-800 rounded-md px-3 py-1.5 text-xs text-warning-800 dark:text-warning-300">
+        <div class="mt-4 inline-flex items-center gap-2 bg-warning-50 dark:bg-warning-900/30 border border-warning-200 dark:border-warning-800 rounded-md px-3 py-1.5 text-xs text-warning-800 dark:text-warning-300">
             {{ icon('alert-triangle', size='sm') }}
             <span>Manquent : <code class="font-mono">{{ missing | join(', ') }}</code></span>
         </div>
         {% else %}
-        <div class="mt-5 inline-flex items-center gap-2 bg-success-50 dark:bg-success-900/30 border border-success-200 dark:border-success-800 rounded-md px-3 py-1.5 text-xs text-success-800 dark:text-success-300">
+        <div class="mt-4 inline-flex items-center gap-2 bg-success-50 dark:bg-success-900/30 border border-success-200 dark:border-success-800 rounded-md px-3 py-1.5 text-xs text-success-800 dark:text-success-300">
             {{ icon('check-circle', size='sm') }}
-            <span>Setup déjà complet. Modifie les valeurs ou <a href="/inbox" class="font-semibold underline hover:no-underline">aller sur l'inbox →</a></span>
+            <span>Setup complet — <a href="/inbox" class="font-semibold underline hover:no-underline">aller sur l'inbox →</a></span>
         </div>
         {% endif %}
     </div>
+    {% endif %}
 
     <form id="setup-form" class="space-y-5" onsubmit="return false;">
 
-        {# Step 1 — TMDB #}
-        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-5">
-            <div class="flex items-start gap-3 mb-4">
-                <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white font-semibold text-xs">1</span>
-                <div class="flex-1 min-w-0">
-                    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">TMDB</h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Métadonnées films / séries. Clé gratuite sur
-                        <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 underline hover:no-underline">themoviedb.org</a>.
-                    </p>
+        {# ============================================================
+           Section 1 — Métadonnées (TMDB + OMDb)
+           Pédagogie : "TMDB pour l'identification, OMDb pour la note IMDb"
+           ============================================================ #}
+        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <header class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40">
+                <div class="flex items-start gap-3">
+                    <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white font-semibold text-xs">1</span>
+                    <div class="flex-1 min-w-0">
+                        <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Métadonnées des films & séries</h2>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                            <strong>TMDB</strong> identifie le film/série depuis le nom de fichier. <strong>OMDb</strong> ajoute la note IMDb et les récompenses (optionnel).
+                        </p>
+                    </div>
                 </div>
-            </div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="TMDB_API_KEY">Clé API</label>
-            <div class="flex gap-2">
-                <input type="password" id="TMDB_API_KEY" name="TMDB_API_KEY"
-                       value="{{ values.get('TMDB_API_KEY', '') }}"
-                       class="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
-                       placeholder="32 caractères hexadécimaux">
-                <button type="button" data-test="tmdb"
-                        class="inline-flex items-center gap-1.5 px-3.5 h-9 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap">
-                    Tester
-                </button>
-            </div>
-            <div id="tmdb-result" class="hidden mt-2.5 text-xs px-3 py-2 rounded-md border"></div>
-        </section>
+            </header>
+            <div class="p-5 space-y-5">
 
-        {# Step 2 — OMDb (optionnel) #}
-        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-5">
-            <div class="flex items-start gap-3 mb-4">
-                <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs">2</span>
-                <div class="flex-1 min-w-0">
-                    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">
-                        OMDb
-                        <span class="text-xs font-normal text-slate-500 dark:text-slate-500 ml-1.5">optionnel</span>
-                    </h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Note IMDb + récompenses. Clé gratuite sur
-                        <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 underline hover:no-underline">omdbapi.com</a>.
-                    </p>
-                </div>
-            </div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="OMDB_API_KEY">Clé API</label>
-            <input type="password" id="OMDB_API_KEY" name="OMDB_API_KEY"
-                   value="{{ values.get('OMDB_API_KEY', '') }}"
-                   class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
-                   placeholder="8 caractères alphanumériques">
-        </section>
-
-        {# Step 3 — Tracker #}
-        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-5">
-            <div class="flex items-start gap-3 mb-4">
-                <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white font-semibold text-xs">3</span>
-                <div class="flex-1 min-w-0">
-                    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Tracker (Gemini)</h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Trois infos à récupérer sur ton profil tracker (Settings / Account).
-                    </p>
-                </div>
-            </div>
-            <div class="space-y-3.5">
+                {# TMDB — required #}
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="TRACKER_API_URL">URL de l'API</label>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-sm font-medium text-slate-700 dark:text-slate-300" for="TMDB_API_KEY">
+                            Clé API TMDB
+                            <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
+                        </label>
+                        <span id="tmdb-badge" class="test-badge" data-status="idle" title="Saisis ta clé puis clique Tester">
+                            <span class="dot"></span><span class="label">Non testé</span>
+                        </span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="password" id="TMDB_API_KEY" name="TMDB_API_KEY"
+                               value="{{ values.get('TMDB_API_KEY', '') }}"
+                               class="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
+                               placeholder="32 caractères hexadécimaux">
+                        <button type="button" data-test="tmdb"
+                                class="inline-flex items-center gap-1.5 px-3.5 h-9 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap">
+                            Tester
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 flex items-center gap-1">
+                        <span>Clé gratuite sur</span>
+                        <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer"
+                           class="text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-0.5">
+                            themoviedb.org/settings/api
+                            {{ icon('external-link', size='sm') }}
+                        </a>
+                        <span>· Demande "API Read Access Token v3"</span>
+                    </p>
+                    <div id="tmdb-detail" class="hidden mt-2 text-xs px-3 py-1.5 rounded-md border"></div>
+                </div>
+
+                {# OMDb — optional #}
+                <div class="pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-sm font-medium text-slate-700 dark:text-slate-300" for="OMDB_API_KEY">
+                            Clé API OMDb
+                            <span class="ml-1 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">optionnel</span>
+                        </label>
+                        <span id="omdb-badge" class="test-badge" data-status="idle" title="Champ optionnel — laisse vide si tu n'as pas de clé">
+                            <span class="dot"></span><span class="label">Non testé</span>
+                        </span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="password" id="OMDB_API_KEY" name="OMDB_API_KEY"
+                               value="{{ values.get('OMDB_API_KEY', '') }}"
+                               class="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
+                               placeholder="8 caractères alphanumériques (ou vide)">
+                        <button type="button" data-test="omdb"
+                                class="inline-flex items-center gap-1.5 px-3.5 h-9 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap">
+                            Tester
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 flex items-center gap-1">
+                        <span>Clé gratuite sur</span>
+                        <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer"
+                           class="text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-0.5">
+                            omdbapi.com/apikey
+                            {{ icon('external-link', size='sm') }}
+                        </a>
+                        <span>· Sans OMDb : note IMDb et récompenses absentes des BBCode</span>
+                    </p>
+                    <div id="omdb-detail" class="hidden mt-2 text-xs px-3 py-1.5 rounded-md border"></div>
+                </div>
+            </div>
+        </section>
+
+        {# ============================================================
+           Section 2 — Tracker (Gemini)
+           Pédagogie : "Comment trouver ces 3 infos chez Gemini"
+           ============================================================ #}
+        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <header class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40">
+                <div class="flex items-start gap-3">
+                    <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary-600 text-white font-semibold text-xs">2</span>
+                    <div class="flex-1 min-w-0">
+                        <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Tracker Gemini</h2>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                            Les <strong>3 infos pour uploader</strong> sur Gemini. Toutes dans ta page profil / settings du site.
+                        </p>
+                    </div>
+                </div>
+            </header>
+            <div class="p-5 space-y-5">
+
+                {# URL API #}
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="TRACKER_API_URL">
+                        URL de l'API
+                        <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
+                    </label>
                     <input type="url" id="TRACKER_API_URL" name="TRACKER_API_URL"
                            value="{{ values.get('TRACKER_API_URL', 'https://gemini-tracker.org/api') }}"
                            class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
                            placeholder="https://gemini-tracker.org/api">
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                        Base URL de l'API du tracker (généralement <code class="font-mono">…/api</code>).
+                    </p>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="TRACKER_API_KEY">Clé API tracker</label>
+
+                {# Clé API #}
+                <div class="pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-sm font-medium text-slate-700 dark:text-slate-300" for="TRACKER_API_KEY">
+                            Clé API tracker
+                            <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
+                        </label>
+                        <span id="tracker-badge" class="test-badge" data-status="idle" title="Saisis URL API + clé, puis clique Tester">
+                            <span class="dot"></span><span class="label">Non testé</span>
+                        </span>
+                    </div>
                     <div class="flex gap-2">
                         <input type="password" id="TRACKER_API_KEY" name="TRACKER_API_KEY"
                                value="{{ values.get('TRACKER_API_KEY', '') }}"
@@ -183,63 +339,101 @@
                             Tester
                         </button>
                     </div>
-                    <div id="tracker-result" class="hidden mt-2.5 text-xs px-3 py-2 rounded-md border"></div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                        Sur ton profil Gemini : <strong>Settings → Account → API token</strong>. Personnel — ne le partage jamais.
+                    </p>
+                    <div id="tracker-detail" class="hidden mt-2 text-xs px-3 py-1.5 rounded-md border"></div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="TRACKER_ANNOUNCE">URL announce (avec passkey)</label>
-                    <input type="password" id="TRACKER_ANNOUNCE" name="TRACKER_ANNOUNCE"
-                           value="{{ values.get('TRACKER_ANNOUNCE', '') }}"
-                           class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
-                           placeholder="https://gemini-tracker.org/announce/<passkey>">
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5">Personnel à ton compte ; sur la page Settings du tracker.</p>
+
+                {# URL Announce #}
+                <div class="pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-sm font-medium text-slate-700 dark:text-slate-300" for="TRACKER_ANNOUNCE">
+                            URL announce (avec passkey)
+                            <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
+                        </label>
+                        <span id="announce-badge" class="test-badge" data-status="idle" title="Le test vérifie uniquement le format (un vrai ping nécessite un client BitTorrent)">
+                            <span class="dot"></span><span class="label">Non testé</span>
+                        </span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="password" id="TRACKER_ANNOUNCE" name="TRACKER_ANNOUNCE"
+                               value="{{ values.get('TRACKER_ANNOUNCE', '') }}"
+                               class="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
+                               placeholder="https://gemini-tracker.org/announce/<passkey>">
+                        <button type="button" data-test="announce"
+                                class="inline-flex items-center gap-1.5 px-3.5 h-9 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap">
+                            Vérifier
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                        Sur ton profil Gemini : <strong>Settings → My Security → Announce URL</strong>. Embarquée dans chaque <code class="font-mono">.torrent</code> que tu génères.
+                    </p>
+                    <div id="announce-detail" class="hidden mt-2 text-xs px-3 py-1.5 rounded-md border"></div>
                 </div>
             </div>
         </section>
 
-        {# Step 4 — Preferences #}
-        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 p-5">
-            <div class="flex items-start gap-3 mb-4">
-                <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs">4</span>
-                <div class="flex-1 min-w-0">
-                    <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">
-                        Préférences
-                        <span class="text-xs font-normal text-slate-500 dark:text-slate-500 ml-1.5">modifiables ensuite</span>
-                    </h2>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Dossier de départ de l'inbox + suffixe FR optionnel.
-                    </p>
+        {# ============================================================
+           Section 3 — Préférences (BROWSE_ROOT + FR title)
+           ============================================================ #}
+        <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <header class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40">
+                <div class="flex items-start gap-3">
+                    <span class="flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs">3</span>
+                    <div class="flex-1 min-w-0">
+                        <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">
+                            Préférences
+                            <span class="text-xs font-normal text-slate-500 dark:text-slate-500 ml-1.5">modifiables ensuite via Config</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                            Dossier de départ de l'inbox + suffixe FR optionnel dans les release names.
+                        </p>
+                    </div>
                 </div>
-            </div>
-            <div class="space-y-3.5">
+            </header>
+            <div class="p-5 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="BROWSE_ROOT">Dossier racine de l'inbox</label>
                     <input type="text" id="BROWSE_ROOT" name="BROWSE_ROOT"
                            value="{{ values.get('BROWSE_ROOT', '') }}"
                            class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
-                           placeholder="Vide = ton home utilisateur">
+                           placeholder="Vide = ton dossier utilisateur (Home)">
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                        L'app n'ouvre que des fichiers <strong>dans ce dossier ou ses sous-dossiers</strong> (sécurité).
+                    </p>
                 </div>
-                <label class="flex items-center gap-2.5 cursor-pointer">
+                <label class="flex items-start gap-2.5 cursor-pointer pt-2">
                     <input type="checkbox" id="APPEND_FR_TITLE_TO_RELEASE_NAME" name="APPEND_FR_TITLE_TO_RELEASE_NAME"
                            {% if values.get('APPEND_FR_TITLE_TO_RELEASE_NAME', '0') in ('1','true','yes','on') %}checked{% endif %}
-                           class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
-                    <span class="text-sm text-slate-700 dark:text-slate-300">
+                           class="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
+                    <span class="text-sm text-slate-700 dark:text-slate-300 leading-snug">
                         Ajouter <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">(Titre français)</code> au nom de release par défaut
+                        <span class="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Utile pour les films au titre original anglais — désactivé par défaut.</span>
                     </span>
                 </label>
             </div>
         </section>
 
-        {# Save section #}
+        {# ============================================================
+           Section 4 — Sauvegarder (sticky-ish, en bas)
+           ============================================================ #}
         <section class="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 border border-slate-200 dark:border-slate-800">
             <div class="flex items-start justify-between gap-4 flex-wrap">
                 <div class="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
-                    <div>Données dans : <code class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800/60">{{ data_dir_path }}</code></div>
-                    <div>Fichier .env : <code class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800/60">{{ env_file_path }}</code></div>
+                    <div class="flex items-center gap-1.5">
+                        {{ icon('folder', size='sm') }}
+                        <span>Données : <code class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800/60">{{ data_dir_path }}</code></span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        {{ icon('file-text', size='sm') }}
+                        <span>Fichier <code class="font-mono">.env</code> : <code class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800/60">{{ env_file_path }}</code></span>
+                    </div>
                 </div>
                 <div class="flex gap-2 ml-auto">
                     <button type="button" id="skip-btn"
-                            class="interactive inline-flex items-center gap-1.5 px-3.5 h-10 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
-                            data-tu-tooltip="Accéder à l'app sans configurer maintenant. Tu pourras revenir ici plus tard via Config.">
+                            class="inline-flex items-center gap-1.5 px-3.5 h-10 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                            title="Accéder à l'app sans configurer maintenant. Tu pourras revenir ici via Config.">
                         Configurer plus tard
                     </button>
                     <button type="button" id="save-btn"
@@ -259,69 +453,136 @@
 (function() {
     const SECRET_PLACEHOLDER = '***';
 
-    // Helper : feedback box state (success / danger / pending)
-    function showResult(el, status, msg) {
-        // status : 'ok' | 'ko' | 'pending'
-        el.classList.remove('hidden');
-        const cls = {
-            ok:      'bg-success-50 dark:bg-success-900/30 border-success-200 dark:border-success-800 text-success-800 dark:text-success-300',
-            ko:      'bg-danger-50 dark:bg-danger-900/30 border-danger-200 dark:border-danger-800 text-danger-800 dark:text-danger-300',
-            pending: 'bg-warning-50 dark:bg-warning-900/30 border-warning-200 dark:border-warning-800 text-warning-800 dark:text-warning-300',
+    // ============================================================
+    // Sprint 2 : test buttons avec badges de statut inline
+    // ============================================================
+
+    // Helper : update badge state (idle / loading / ok / ko) + tooltip
+    function setBadge(kind, status, message) {
+        const badge = document.getElementById(kind + '-badge');
+        if (!badge) return;
+        badge.dataset.status = status;
+        const labels = {
+            idle: 'Non testé',
+            loading: 'Test en cours…',
+            ok: 'OK',
+            ko: 'Erreur',
         };
-        el.className = 'mt-2.5 text-xs px-3 py-2 rounded-md border ' + (cls[status] || cls.pending);
-        el.textContent = msg;
+        badge.querySelector('.label').textContent = labels[status] || status;
+        badge.title = message || labels[status];
     }
 
-    // Tests live : TMDB + tracker
+    // Helper : afficher détail sous le champ (optionnel, pour message complet)
+    function showDetail(kind, status, msg) {
+        const el = document.getElementById(kind + '-detail');
+        if (!el) return;
+        const cls = {
+            ok: 'bg-success-50 dark:bg-success-900/30 border-success-200 dark:border-success-800 text-success-800 dark:text-success-300',
+            ko: 'bg-danger-50 dark:bg-danger-900/30 border-danger-200 dark:border-danger-800 text-danger-800 dark:text-danger-300',
+        };
+        el.className = 'mt-2 text-xs px-3 py-1.5 rounded-md border ' + (cls[status] || cls.ko);
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    function hideDetail(kind) {
+        const el = document.getElementById(kind + '-detail');
+        if (el) el.classList.add('hidden');
+    }
+
+    // Réinitialise le badge quand l'user modifie le champ (sinon l'état OK
+    // affiché serait trompeur après une modif).
+    function resetBadgeOnInputChange(kind, ...inputIds) {
+        inputIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', () => {
+                setBadge(kind, 'idle');
+                hideDetail(kind);
+            });
+        });
+    }
+    resetBadgeOnInputChange('tmdb', 'TMDB_API_KEY');
+    resetBadgeOnInputChange('omdb', 'OMDB_API_KEY');
+    resetBadgeOnInputChange('tracker', 'TRACKER_API_URL', 'TRACKER_API_KEY');
+    resetBadgeOnInputChange('announce', 'TRACKER_ANNOUNCE');
+
+    // Test handler — payload selon kind
+    async function runTest(kind) {
+        const payload = { kind };
+        if (kind === 'tmdb') {
+            const key = document.getElementById('TMDB_API_KEY').value.trim();
+            if (!key || key === SECRET_PLACEHOLDER) {
+                setBadge('tmdb', 'ko', 'Saisis une clé d\'abord.');
+                showDetail('tmdb', 'ko', 'Saisis une clé TMDB d\'abord.');
+                return;
+            }
+            payload.api_key = key;
+        } else if (kind === 'omdb') {
+            const key = document.getElementById('OMDB_API_KEY').value.trim();
+            if (!key || key === SECRET_PLACEHOLDER) {
+                setBadge('omdb', 'ko', 'Saisis une clé d\'abord.');
+                showDetail('omdb', 'ko', 'Saisis une clé OMDb d\'abord (ou laisse vide si tu n\'en veux pas).');
+                return;
+            }
+            payload.api_key = key;
+        } else if (kind === 'tracker') {
+            const apiUrl = document.getElementById('TRACKER_API_URL').value.trim();
+            const apiKey = document.getElementById('TRACKER_API_KEY').value.trim();
+            if (!apiUrl || !apiKey || apiKey === SECRET_PLACEHOLDER) {
+                setBadge('tracker', 'ko', 'URL et clé requises.');
+                showDetail('tracker', 'ko', 'Saisis URL + clé tracker d\'abord.');
+                return;
+            }
+            payload.api_url = apiUrl;
+            payload.api_key = apiKey;
+        } else if (kind === 'announce') {
+            const url = document.getElementById('TRACKER_ANNOUNCE').value.trim();
+            if (!url || url === SECRET_PLACEHOLDER) {
+                setBadge('announce', 'ko', 'Saisis l\'URL d\'announce d\'abord.');
+                showDetail('announce', 'ko', 'Saisis l\'URL d\'announce d\'abord.');
+                return;
+            }
+            payload.announce_url = url;
+        }
+
+        setBadge(kind, 'loading');
+        hideDetail(kind);
+        try {
+            const resp = await fetch('/api/config/test-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json().catch(() => ({}));
+            const msg = data.message || data.detail || `HTTP ${resp.status}`;
+            if (resp.ok) {
+                setBadge(kind, 'ok', msg);
+                showDetail(kind, 'ok', msg);
+            } else {
+                setBadge(kind, 'ko', msg);
+                showDetail(kind, 'ko', msg);
+            }
+        } catch (e) {
+            const msg = 'Erreur réseau : ' + e;
+            setBadge(kind, 'ko', msg);
+            showDetail(kind, 'ko', msg);
+        }
+    }
+
     document.querySelectorAll('button[data-test]').forEach(btn => {
         btn.addEventListener('click', async () => {
             const kind = btn.dataset.test;
             btn.disabled = true;
-            const originalText = btn.textContent;
-            btn.textContent = 'Test…';
-            try {
-                if (kind === 'tmdb') {
-                    const key = document.getElementById('TMDB_API_KEY').value.trim();
-                    if (!key || key === SECRET_PLACEHOLDER) {
-                        showResult(document.getElementById('tmdb-result'), 'ko', 'Saisis une clé TMDB d’abord.');
-                        return;
-                    }
-                    const resp = await fetch('/api/setup/test-tmdb', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ api_key: key }),
-                    });
-                    const data = await resp.json().catch(() => ({}));
-                    showResult(document.getElementById('tmdb-result'),
-                               resp.ok ? 'ok' : 'ko',
-                               data.message || data.detail || `HTTP ${resp.status}`);
-                } else if (kind === 'tracker') {
-                    const apiUrl = document.getElementById('TRACKER_API_URL').value.trim();
-                    const apiKey = document.getElementById('TRACKER_API_KEY').value.trim();
-                    if (!apiUrl || !apiKey || apiKey === SECRET_PLACEHOLDER) {
-                        showResult(document.getElementById('tracker-result'), 'ko', 'Saisis URL + clé d’abord.');
-                        return;
-                    }
-                    const resp = await fetch('/api/setup/test-tracker', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ api_url: apiUrl, api_key: apiKey }),
-                    });
-                    const data = await resp.json().catch(() => ({}));
-                    showResult(document.getElementById('tracker-result'),
-                               resp.ok ? 'ok' : 'ko',
-                               data.message || data.detail || `HTTP ${resp.status}`);
-                }
-            } catch (e) {
-                showResult(document.getElementById(kind + '-result'), 'ko', 'Erreur réseau : ' + e);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = originalText;
-            }
+            const orig = btn.textContent;
+            btn.textContent = '…';
+            try { await runTest(kind); } finally { btn.disabled = false; btn.textContent = orig; }
         });
     });
 
-    // Skip button → cookie + redirect
+    // ============================================================
+    // Skip + Save (inchangé fonctionnellement)
+    // ============================================================
     const skipBtn = document.getElementById('skip-btn');
     if (skipBtn) {
         skipBtn.addEventListener('click', () => {
@@ -330,10 +591,20 @@
         });
     }
 
-    // Save button
+    function showSaveResult(status, msg) {
+        const el = document.getElementById('save-result');
+        const cls = {
+            ok:      'bg-success-50 dark:bg-success-900/30 border-success-200 dark:border-success-800 text-success-800 dark:text-success-300',
+            ko:      'bg-danger-50 dark:bg-danger-900/30 border-danger-200 dark:border-danger-800 text-danger-800 dark:text-danger-300',
+            pending: 'bg-warning-50 dark:bg-warning-900/30 border-warning-200 dark:border-warning-800 text-warning-800 dark:text-warning-300',
+        };
+        el.className = 'text-sm px-4 py-3 rounded-md border ' + (cls[status] || cls.pending);
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
     document.getElementById('save-btn').addEventListener('click', async () => {
         const btn = document.getElementById('save-btn');
-        const result = document.getElementById('save-result');
         btn.disabled = true;
         const originalLabel = btn.firstChild.textContent;
         btn.firstChild.textContent = 'Enregistrement… ';
@@ -341,9 +612,7 @@
             const form = document.getElementById('setup-form');
             const fd = new FormData(form);
             const values = {};
-            for (const [k, v] of fd.entries()) {
-                values[k] = v;
-            }
+            for (const [k, v] of fd.entries()) values[k] = v;
             values['APPEND_FR_TITLE_TO_RELEASE_NAME'] = document.getElementById('APPEND_FR_TITLE_TO_RELEASE_NAME').checked ? '1' : '0';
             const resp = await fetch('/api/setup/save', {
                 method: 'POST',
@@ -353,17 +622,17 @@
             const data = await resp.json().catch(() => ({}));
             if (resp.ok) {
                 if (data.setup_complete) {
-                    showResult(result, 'ok', 'Configuration enregistrée. Redirection…');
+                    showSaveResult('ok', 'Configuration enregistrée. Redirection vers l\'inbox…');
                     setTimeout(() => { window.location.href = '/inbox'; }, 800);
                 } else {
-                    showResult(result, 'pending',
+                    showSaveResult('pending',
                         'Enregistré, mais il manque encore : ' + (data.missing || []).join(', '));
                 }
             } else {
-                showResult(result, 'ko', data.detail || `Erreur HTTP ${resp.status}`);
+                showSaveResult('ko', data.detail || `Erreur HTTP ${resp.status}`);
             }
         } catch (e) {
-            showResult(result, 'ko', 'Erreur réseau : ' + e);
+            showSaveResult('ko', 'Erreur réseau : ' + e);
         } finally {
             btn.disabled = false;
             btn.firstChild.textContent = originalLabel;
