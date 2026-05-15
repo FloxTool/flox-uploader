@@ -184,6 +184,65 @@ def test_update_banner_absent_on_setup_page(
     assert 'id="update-banner"' not in resp.text
 
 
+# ============================================================
+# Sprint 8 — Crash report helper
+# ============================================================
+
+def test_api_diagnostic_returns_structured_payload(client: TestClient):
+    """/api/diagnostic retourne un JSON avec tous les champs attendus
+    et aucun secret."""
+    resp = client.get("/api/diagnostic")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data.keys()) == {
+        "version", "python_version", "os", "os_release",
+        "mediainfo_available", "mediainfo_version", "setup_complete",
+    }
+    assert data["version"]  # __version__ courant
+    assert data["python_version"]  # ex "3.12.4"
+    assert data["os"] in {"Windows", "macOS", "Linux", "Autre"}
+    # Pas de secrets dans le payload
+    body = resp.text
+    assert "TRACKER_API_KEY" not in body
+    assert "passkey" not in body.lower()
+
+
+def test_diagnostic_injected_in_base_html(client: TestClient):
+    """Le diagnostic est inject e en JS global window.APP_DIAGNOSTIC sur
+    toutes les pages, accessible immediatement sans round-trip API."""
+    resp = client.get("/inbox")
+    assert resp.status_code == 200
+    assert "window.APP_DIAGNOSTIC" in resp.text
+    # On verifie qu'au moins les cles clefs sont serialisees
+    assert '"version"' in resp.text
+    assert '"python_version"' in resp.text
+    assert '"os"' in resp.text
+
+
+def test_guide_page_contains_signaler_un_bug_section(client: TestClient):
+    """La page Guide affiche la section 'Signaler un bug' avec le bouton
+    qui declenche tu.openBugReport()."""
+    resp = client.get("/guide")
+    assert resp.status_code == 200
+    assert "Signaler un bug" in resp.text
+    assert 'id="guide-report-bug"' in resp.text
+    assert "tu.openBugReport" in resp.text
+
+
+def test_toast_helper_includes_bug_report_logic(client: TestClient):
+    """base.html contient les helpers tu.buildBugReport et tu.openBugReport
+    pour que les toasts danger puissent les utiliser."""
+    resp = client.get("/inbox")
+    assert resp.status_code == 200
+    assert "tu.buildBugReport" in resp.text
+    assert "tu.openBugReport" in resp.text
+    # Le bouton "Copier rapport" est rendu dans le toast danger
+    assert "toast-copy-report" in resp.text
+    # URL de pre-remplissage GitHub (assemble en JS via URLSearchParams)
+    assert "'bug.yml'" in resp.text
+    assert "issues/new" in resp.text
+
+
 def test_inbox_browses_subdirectory(client: TestClient, tmp_path: Path):
     """Naviguer dans un sous-dossier doit le lister sans erreur."""
     sub = tmp_path / "browse" / "MyMovies"

@@ -13,6 +13,50 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.7] — 2026-05-15
+
+Sprint 8 de `PLAN-V1.md` — **Crash report helper**. Quand quelque chose
+plante, l'user peut signaler le bug en 2 clics avec un contexte technique
+complet et zéro effort.
+
+### Ajouté
+
+- **Module `core/diagnostic.py`** :
+  - `collect_diagnostic()` retourne version Flox + Python + OS + release +
+    statut MediaInfo (présence + version) + statut setup.
+  - `build_markdown_report()` produit le payload Markdown utilisé pour le
+    presse-papier et l'URL pré-remplie GitHub Issues.
+  - Cap automatique des messages d'erreur > 2000 chars (limite URL GitHub).
+  - Aucun secret dans le payload (pas de clé API, pas de passkey, pas de
+    paths absolus) — sûr à coller dans une Issue publique.
+- **Endpoint `GET /api/diagnostic`** : retourne le dict structuré, sans secret.
+- **Jinja global `app_diagnostic()`** : diagnostic injecté en JS global
+  `window.APP_DIAGNOSTIC` sur toutes les pages, accessible sans round-trip API.
+- **Bouton "Copier rapport"** dans tout toast `tone='danger'` :
+  - Click → copie un rapport Markdown dans le presse-papier
+    (version, OS, page courante, message d'erreur).
+  - Feedback visuel : bouton devient "Copié" en vert.
+- **Section "Signaler un bug" dans la page Guide** :
+  - Bouton primary "Signaler un bug sur GitHub" qui ouvre directement
+    l'Issue avec template `bug.yml` pré-rempli (version + os déjà cochés).
+  - Pédagogie courte sur ce qui aide à résoudre vite.
+- **Helpers JS** : `tu.buildBugReport({errorTitle, errorMessage})` et
+  `tu.openBugReport({...})` réutilisables depuis n'importe quel script UI.
+- **14 nouveaux tests** : détection OS / MediaInfo (mock subprocess),
+  troncature longs messages, structure du Diagnostic, absence de secrets
+  dans le rapport, endpoint `/api/diagnostic`, injection JS, rendu section
+  Guide, présence des helpers JS dans base.html.
+
+### Notes
+
+- Cohérent avec la philosophie local-first (D10/D11) : aucun backend Flox
+  n'est sollicité, tout transite par GitHub Issues que tu reçois en notifs.
+- Pas de capture automatique des stack traces serveur en v1 — le scope
+  actuel couvre les erreurs visibles dans l'UI (toasts) et le bug report
+  manuel. Capture serveur globale envisageable v0.5+.
+
+---
+
 ## [0.3.6] — 2026-05-15
 
 Sprint 6 de `PLAN-V1.md` — **Auto-update v1**. L'app sait quand une nouvelle
