@@ -375,7 +375,10 @@
         </section>
 
         {# ============================================================
-           Section 3 — Préférences (BROWSE_ROOT + FR title)
+           Section 3 — Préférences (BROWSE_ROOT seulement)
+           NOTES Sprint 2 fix : retire APPEND_FR_TITLE_TO_RELEASE_NAME, supprime
+           du schema en Round 7 (cf. config_view.py). Le backend renvoyait
+           "Cle inconnue : APPEND_FR_TITLE_TO_RELEASE_NAME" sur save.
            ============================================================ #}
         <section class="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
             <header class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40">
@@ -387,31 +390,21 @@
                             <span class="text-xs font-normal text-slate-500 dark:text-slate-500 ml-1.5">modifiables ensuite via Config</span>
                         </h2>
                         <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                            Dossier de départ de l'inbox + suffixe FR optionnel dans les release names.
+                            Dossier de départ pour le browser de fichiers (Inbox).
                         </p>
                     </div>
                 </div>
             </header>
-            <div class="p-5 space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="BROWSE_ROOT">Dossier racine de l'inbox</label>
-                    <input type="text" id="BROWSE_ROOT" name="BROWSE_ROOT"
-                           value="{{ values.get('BROWSE_ROOT', '') }}"
-                           class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
-                           placeholder="Vide = ton dossier utilisateur (Home)">
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
-                        L'app n'ouvre que des fichiers <strong>dans ce dossier ou ses sous-dossiers</strong> (sécurité).
-                    </p>
-                </div>
-                <label class="flex items-start gap-2.5 cursor-pointer pt-2">
-                    <input type="checkbox" id="APPEND_FR_TITLE_TO_RELEASE_NAME" name="APPEND_FR_TITLE_TO_RELEASE_NAME"
-                           {% if values.get('APPEND_FR_TITLE_TO_RELEASE_NAME', '0') in ('1','true','yes','on') %}checked{% endif %}
-                           class="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
-                    <span class="text-sm text-slate-700 dark:text-slate-300 leading-snug">
-                        Ajouter <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">(Titre français)</code> au nom de release par défaut
-                        <span class="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Utile pour les films au titre original anglais — désactivé par défaut.</span>
-                    </span>
-                </label>
+            <div class="p-5">
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5" for="BROWSE_ROOT">Dossier racine de l'inbox</label>
+                <input type="text" id="BROWSE_ROOT" name="BROWSE_ROOT"
+                       value="{{ values.get('BROWSE_ROOT', '') }}"
+                       class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-950 text-sm font-mono"
+                       placeholder="Vide = ton dossier utilisateur (Home)">
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                    L'app n'ouvre que des fichiers <strong>dans ce dossier ou ses sous-dossiers</strong> (sécurité).
+                    Supporte les chemins UNC (<code class="font-mono">\\NAS\share\…</code>) ou locaux.
+                </p>
             </div>
         </section>
 
@@ -613,7 +606,6 @@
             const fd = new FormData(form);
             const values = {};
             for (const [k, v] of fd.entries()) values[k] = v;
-            values['APPEND_FR_TITLE_TO_RELEASE_NAME'] = document.getElementById('APPEND_FR_TITLE_TO_RELEASE_NAME').checked ? '1' : '0';
             const resp = await fetch('/api/setup/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
