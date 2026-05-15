@@ -134,31 +134,72 @@ jobs:
           Stop-Process -Id $proc.Id -Force
         shell: pwsh
 
-      - name: Zip the bundle for artifact upload
+      - name: Resolve app version (pour nommer les artefacts)
         run: |
           $version = python -c "from flox_uploader import __version__; print(__version__)"
-          $zipName = "FloxUploader-$version-Windows-x64.zip"
+          echo "APP_VERSION=$version" >> $env:GITHUB_ENV
+          echo "Version detectee : $version"
+        shell: pwsh
+
+      - name: Zip the bundle (portable, sans installeur)
+        run: |
+          $zipName = "FloxUploader-$env:APP_VERSION-Windows-x64.zip"
           Compress-Archive -Path 'dist/Flox Uploader/*' -DestinationPath "$zipName" -CompressionLevel Optimal
           echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
           $zipSize = [math]::Round((Get-Item $zipName).Length / 1MB, 1)
-          echo "ZIP genere : $zipName ($zipSize MB)"
+          echo "ZIP : $zipName ($zipSize MB)"
         shell: pwsh
 
-      - name: Upload artifact
+      - name: Build setup.exe (Inno Setup)
+        # ISCC est pre-installe sur les runners windows-latest dans
+        # "C:\Program Files (x86)\Inno Setup 6\ISCC.exe".
+        # /DMyAppVersion injecte la version dans le .iss (cf. #define).
+        # /Q : quiet sauf erreurs. /O. : output dans le repertoire courant.
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            echo "::error::ISCC introuvable a $iscc (Inno Setup 6 attendu sur windows-latest)"
+            exit 1
+          }
+          & "$iscc" "packaging\flox_uploader.iss" "/DMyAppVersion=$env:APP_VERSION" "/Q" "/O." 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            echo "::error::Inno Setup compilation failed (exit $LASTEXITCODE)"
+            exit $LASTEXITCODE
+          }
+          $setupName = "FloxUploader-Setup-$env:APP_VERSION.exe"
+          if (-not (Test-Path $setupName)) {
+            echo "::error::setup.exe attendu ($setupName) absent"
+            Get-ChildItem -Filter "*.exe" | Select-Object Name
+            exit 1
+          }
+          echo "SETUP_NAME=$setupName" >> $env:GITHUB_ENV
+          $setupSize = [math]::Round((Get-Item $setupName).Length / 1MB, 1)
+          echo "Setup : $setupName ($setupSize MB)"
+        shell: pwsh
+
+      - name: Upload artifact (ZIP portable)
         uses: actions/upload-artifact@v4
         with:
-          name: flox-uploader-windows
+          name: flox-uploader-windows-zip
           path: ${{ env.ZIP_NAME }}
           retention-days: 30
 
-      # Pour les pushes de tag : on attache le ZIP a la GitHub Release
-      # automatiquement. Si la release n'existe pas encore (premier push tag),
-      # softprops/action-gh-release la cree.
+      - name: Upload artifact (setup.exe installeur)
+        uses: actions/upload-artifact@v4
+        with:
+          name: flox-uploader-windows-setup
+          path: ${{ env.SETUP_NAME }}
+          retention-days: 30
+
+      # Pour les pushes de tag : on attache LES DEUX artefacts a la
+      # GitHub Release. setup.exe = canal user lambda, ZIP = canal portable.
       - name: Attach to GitHub Release (sur tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ZIP_NAME }}
+          files: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.SETUP_NAME }}
           draft: true                       # on revoit le contenu avant publication
           generate_release_notes: true      # auto-generate from commits since prev tag
         env:
