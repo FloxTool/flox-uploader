@@ -18,6 +18,15 @@ _Rien pour l'instant — Sprint 5 (bundling Windows PyInstaller) en attente._
 Sprint 4 de `PLAN-V1.md` — **préparation distribution**. Pose les fondations
 nécessaires au passage en mode packagé (Sprint 5).
 
+### Corrigé
+
+- **Migration SQLite défensive** (`jobs_db._add_column_idempotent`) : la CI
+  Python 3.12 plantait avec `sqlite3.OperationalError: duplicate column name`
+  malgré le check `if col not in cols` qui précédait l'ALTER. Cause probable :
+  changement de comportement `executescript()` en Python 3.12. Fix : helper
+  qui swallow l'erreur "duplicate column" (idempotent), re-raise tout le reste.
+  Pré-existait depuis Lot F2, juste révélé par les nouveaux tests Sprint 4.
+
 ### Ajouté
 
 - **Détection automatique du data legacy** (`config.legacy_data_dir()`) :
