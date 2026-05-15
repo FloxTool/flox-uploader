@@ -9,11 +9,42 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-### Modifié (Sprint 5 en cours)
+_Aucun changement non publié pour le moment._
 
-- **Bundling Windows fonctionnel** : `.exe` PyInstaller + MediaInfo CLI
-  embarqué + workflow GitHub Actions `Build Windows .exe`. Premier `.exe`
-  testable via `gh run download` + double-clic.
+---
+
+## [0.3.5] — 2026-05-15
+
+Sprint 5 de `PLAN-V1.md` — **bundling Windows**. Premier release publiable à
+partir d'un installeur double-clic, sans Python ni venv côté user.
+
+### Ajouté
+
+- **Installeur Windows `FloxUploader-Setup-X.Y.Z.exe`** (Inno Setup 6) :
+  - Install per-user (`%LOCALAPPDATA%\Programs\Flox Uploader\`), pas d'UAC.
+  - Raccourci Menu Démarrer (toujours) + Bureau (option décochable).
+  - Case "Lancer Flox Uploader" en fin d'install.
+  - Désinstallation propre via "Ajout/Suppression de programmes" ; les
+    data user (`%LOCALAPPDATA%\fremontlouis\flox-uploader\`) sont
+    préservées car en dehors de `{app}`.
+  - `CloseApplications=force` : reinstall silencieuse même si l'app
+    tourne encore (skip le prompt "L'application est en cours d'utilisation").
+- **`.exe` PyInstaller portable** (`FloxUploader-X.Y.Z-Windows-x64.zip`)
+  publié en parallèle de l'installeur, pour les users qui préfèrent
+  `unzip + double-clic`.
+- **MediaInfo CLI Windows embarqué** dans le bundle
+  (`packaging/vendor/mediainfo/`, pinned 24.06, téléchargé depuis
+  mediaarea.net via `packaging/fetch_mediainfo_windows.py`). Plus besoin
+  d'installer MediaInfo séparément.
+- **Icône Flox** (`packaging/icon.ico`) générée depuis `logo.svg` via
+  `resvg-py` + Pillow, multi-tailles (16/24/32/48/64/128/256). Visible
+  sur le `.exe`, le `setup.exe`, et les raccourcis Menu Démarrer + Bureau.
+- **Workflow GitHub Actions `Build Windows .exe`** :
+  - Trigger : `workflow_dispatch` (manuel) + `push` sur tag `v*`.
+  - 3 smoke tests : `--help` (argparse), boot uvicorn avec stdout
+    redirigé (lisibilité des stack traces), mode windowed sans redirect
+    (reproduit les conditions double-clic) + HTTP `/setup` 200.
+  - Sur tag `v*` : draft GitHub Release auto avec setup.exe + ZIP.
 
 ### Retiré
 
@@ -44,11 +75,6 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
   `invalidate_score_cache(pkg)` entre chaque réécriture de debug.json.
   La résolution mtime Windows était insuffisante pour invalider le cache
   entre 3 écritures rapides.
-- **Workflow CI Windows** : 3 smoke tests désormais (`--help`, boot
-  uvicorn redirigé pour logs, mode windowed sans redirect pour reproduire
-  les conditions double-clic + HTTP /setup check).
-
----
 
 ---
 

@@ -11,12 +11,11 @@ Le tracker [Gemini](https://gemini-tracker.org) est supporté en standard.
 L'architecture est modulaire (un tracker = un sous-dossier de
 `src/flox_uploader/trackers/`).
 
-> **Statut** : produit en cours de packaging. Aujourd'hui le projet
-> s'utilise via `pip install -e .` puis `flox-uploader serve`. La cible
-> v1 publique est un installeur (PyInstaller `.exe` Windows / `docker
-> compose` ailleurs) avec wizard first-run, pour que le user n'ait jamais
-> besoin d'un terminal. Cf. [`AUDIT.md`](AUDIT.md) section "📦 Distribution
-> & first-run UX" pour la roadmap.
+> **Statut** : v0.3.5 — premier release Windows publiable. L'installeur
+> `FloxUploader-Setup-X.Y.Z.exe` ne nécessite ni Python, ni MediaInfo, ni
+> terminal. Linux/macOS suivent (`.deb`/AppImage/`docker compose`).
+> Cf. [`AUDIT.md`](AUDIT.md) section "📦 Distribution & first-run UX"
+> pour la roadmap.
 
 ## Ce qu'il fait
 
@@ -41,13 +40,52 @@ titre/casting/genres/synopsis, OMDb pour note IMDb + récompenses + plot
 fallback, `torf` pour le torrent, FastAPI + Jinja2 + Tailwind (CDN) pour la
 web UI, SQLite pour la queue de jobs.
 
-## Installation (mode dev, en attendant l'installeur)
+## Installation Windows (recommandé)
+
+Depuis la v0.3.5, Flox Uploader est packagé en **installeur Windows
+autonome** : pas besoin d'installer Python, ni MediaInfo, ni de toucher à
+un terminal.
+
+1. Va sur la page [Releases](https://github.com/FloxTool/flox-uploader/releases)
+   et télécharge `FloxUploader-Setup-X.Y.Z.exe` (la dernière version).
+2. Double-clique pour lancer l'installeur. L'install se fait **sans droits
+   admin** : tout est installé dans ton profil utilisateur
+   (`%LOCALAPPDATA%\Programs\Flox Uploader\`).
+3. À la fin, coche "Lancer Flox Uploader" : ton navigateur s'ouvre sur
+   `http://127.0.0.1:8765/setup` pour renseigner tes clés (TMDB, OMDb
+   optionnel, announce tracker, API tracker).
+
+> **SmartScreen** : l'installeur n'est pas signé en v1 (pas de certificat
+> EV à 300€/an pour un side-project). Windows affichera "Windows a protégé
+> votre ordinateur" au premier lancement → clique **"Informations
+> complémentaires"** puis **"Exécuter quand même"**. Cf.
+> [`AUDIT.md`](AUDIT.md) sur le sujet signature.
+
+**Désinstallation** : Panneau de configuration → "Ajout/Suppression de
+programmes" → Flox Uploader → Désinstaller. Tes data
+(`%LOCALAPPDATA%\fremontlouis\flox-uploader\`) sont conservées pour ne
+pas perdre la queue et le cache TMDB.
+
+**Variante portable** : si tu préfères, télécharge
+`FloxUploader-X.Y.Z-Windows-x64.zip` depuis la même page Releases. Dézippe
+où tu veux, lance `Flox Uploader.exe`. Aucune installation, aucun
+raccourci créé.
+
+## Installation Linux / macOS
+
+Pas encore d'installeur natif (cf. `AUDIT.md` § Distribution pour la
+roadmap : `.deb`/`.AppImage`/Flatpak Linux + `docker compose`). En
+attendant, utilise le mode dev ci-dessous (l'app marche très bien sur
+Linux/macOS via `pip install -e .`).
+
+## Installation (mode dev)
 
 ### Pré-requis
 
 - Python 3.10 ou plus
 - [MediaInfo CLI](https://mediaarea.net/en/MediaInfo/Download) accessible
-  dans le `PATH` (sera embarqué dans l'installeur final)
+  dans le `PATH` (sur Windows, l'installeur l'embarque ; en dev il faut
+  l'installer séparément)
 - Une clé TMDB (gratuite), une clé OMDb (gratuite), et l'announce URL de
   ton tracker (avec ta passkey personnelle)
 

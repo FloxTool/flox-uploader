@@ -16,6 +16,12 @@
 #   0.3.4 : Sprint 4 de PLAN-V1.md — preparation distribution. Migration douce
 #           data legacy (banniere UI + endpoint /api/data-dir/migrate),
 #           anticipation multi-tracker via Protocol TrackerClient.
+#   0.3.5 : Sprint 5 de PLAN-V1.md — bundling Windows. PyInstaller .exe +
+#           Inno Setup installeur (FloxUploader-Setup-X.Y.Z.exe) + icone
+#           Flox (multi-tailles ICO depuis SVG). CI GitHub Actions
+#           Build Windows .exe avec 3 smoke tests (--help, uvicorn boot,
+#           windowed mode + HTTP /setup). MediaInfo CLI bundle. Premier
+#           release publiable a partir d'un installeur double-clic.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.4"
+__version__ = "0.3.5"
