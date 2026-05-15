@@ -19,6 +19,13 @@ jobs:
     name: PyInstaller · Windows .exe
     runs-on: windows-latest
 
+    # contents:write necessaire pour que softprops/action-gh-release puisse
+    # creer la draft Release sur tag v*. Par defaut GITHUB_TOKEN est read-only
+    # depuis 2023, d'ou le 403 "Resource not accessible by integration" sans
+    # cette declaration.
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
