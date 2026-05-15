@@ -13,6 +13,46 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.6] — 2026-05-15
+
+Sprint 6 de `PLAN-V1.md` — **Auto-update v1**. L'app sait quand une nouvelle
+version sort, sans aucune télémétrie en sortie.
+
+### Ajouté
+
+- **Module `core/update_check.py`** :
+  - Fetch GitHub `/releases/latest` (exclut auto les pre-releases côté API).
+  - Cache disque `data/.update_cache.json`, TTL 6h sur succès, conservé
+    indéfiniment sur échec (silent fail offline / rate-limit / 5xx).
+  - Comparateur semver strict : accepte `X.Y.Z` uniquement, rejette tout
+    suffixe (`-rc1`, `-beta`, `+build`). Garde-fou défensif si une
+    pre-release sneak quand même.
+  - Refresh asynchrone via thread daemon (lock + idempotent). Non bloquant
+    pour le boot serveur et le rendu des pages.
+- **Endpoint `GET /api/update-info`** :
+  - Lit le cache (instantané), déclenche un refresh background si stale.
+  - Retourne `{available, current, latest, release_url, release_notes, fetched_at}`.
+- **Banner UI "Nouvelle version disponible"** dans `base.html` :
+  - Affiché en haut de toutes les pages, **masqué sur `/setup`** (décision
+    figée PLAN-V1 §1.6 : ne pas perturber l'onboarding).
+  - Couleurs primary (indigo, charte). Icône `sparkles`.
+  - Bouton "Voir le détail" → ouvre GitHub Releases dans un nouvel onglet.
+  - Bouton "×" dismiss per-version (localStorage `tu_dismissed_update_<latest>`).
+    Quand une nouvelle release sort, la clé change → le banner revient.
+- **57 nouveaux tests** : parsing semver, cache disque atomique, JSON corrompu,
+  silent fail (404/403/503/network), refresh stale logic, endpoint smoke tests,
+  banner rendering conditionnel.
+
+### Notes
+
+- Aucune télémétrie en sortie : on lit `/releases/latest`, on n'envoie aucune
+  donnée user. Cohérent avec la philosophie local-first (D10).
+- Pas d'auto-download / restart en v1 (cf. D16). Trop de cas d'erreurs
+  (droits admin, rollback) pour 20 users. L'user clique le banner → page
+  GitHub Releases → télécharge l'installeur lui-même.
+
+---
+
 ## [0.3.5] — 2026-05-15
 
 Sprint 5 de `PLAN-V1.md` — **bundling Windows**. Premier release publiable à

@@ -92,6 +92,98 @@ def test_queue_renders_html_empty(client: TestClient):
     assert "Aucun package" in resp.text
 
 
+# ============================================================
+# Sprint 6 — /api/update-info
+# ============================================================
+
+def test_api_update_info_no_cache_returns_unavailable(client: TestClient):
+    """Sans cache disque (premier run), l'endpoint renvoie une UpdateInfo
+    vide avec available=False — jamais d'erreur, jamais de blocage."""
+    resp = client.get("/api/update-info")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["available"] is False
+    assert data["current"]  # __version__ courant
+    assert data["latest"] == ""
+    assert data["release_url"] == ""
+
+
+def test_api_update_info_with_cached_newer_version(
+    client: TestClient, tmp_path: Path, monkeypatch
+):
+    """Si le cache disque contient une version > current, l'endpoint
+    retourne available=True avec release_url."""
+    import time as _t
+    from flox_uploader.core import update_check as uc
+
+    monkeypatch.setattr(uc, "__version__", "0.3.5")
+    # Le data_dir de la fixture client pointe deja vers tmp_path/data,
+    # donc _save_cache va ecrire au bon endroit.
+    uc._save_cache({
+        "checked_at_epoch": _t.time(),
+        "checked_at_iso": "2026-05-15T10:00:00+00:00",
+        "latest": "v0.4.0",
+        "release_url": "https://github.com/FloxTool/flox-uploader/releases/tag/v0.4.0",
+        "release_notes": "notes",
+    })
+    resp = client.get("/api/update-info")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["available"] is True
+    assert data["latest"] == "v0.4.0"
+    assert "github.com/FloxTool" in data["release_url"]
+
+
+def test_update_banner_rendered_when_update_available(
+    client: TestClient, monkeypatch
+):
+    """Si l'update est dispo, le banner est present dans le HTML rendu sur
+    une page non-setup. data-latest attribute permet au JS de gerer le
+    dismiss per-version via localStorage."""
+    import time as _t
+    from flox_uploader.core import update_check as uc
+
+    monkeypatch.setattr(uc, "__version__", "0.3.5")
+    uc._save_cache({
+        "checked_at_epoch": _t.time(),
+        "latest": "v0.4.0",
+        "release_url": "https://github.com/FloxTool/flox-uploader/releases/tag/v0.4.0",
+        "release_notes": "",
+    })
+    resp = client.get("/inbox")
+    assert resp.status_code == 200
+    assert 'id="update-banner"' in resp.text
+    assert 'data-latest="v0.4.0"' in resp.text
+    assert "Nouvelle version disponible" in resp.text
+
+
+def test_update_banner_absent_when_no_update(client: TestClient):
+    """Sans cache (ou cache avec version egale), pas de banner dans le HTML."""
+    resp = client.get("/inbox")
+    assert resp.status_code == 200
+    assert 'id="update-banner"' not in resp.text
+
+
+def test_update_banner_absent_on_setup_page(
+    client_unconfigured: TestClient, monkeypatch
+):
+    """Sur /setup, le banner update est masque meme si une update est dispo
+    (decision PLAN-V1 §1.6 : ne pas perturber l'onboarding)."""
+    import time as _t
+    from flox_uploader.core import update_check as uc
+
+    monkeypatch.setattr(uc, "__version__", "0.3.5")
+    uc._save_cache({
+        "checked_at_epoch": _t.time(),
+        "latest": "v0.4.0",
+        "release_url": "https://example.com",
+        "release_notes": "",
+    })
+    resp = client_unconfigured.get("/setup")
+    assert resp.status_code == 200
+    assert 'id="update-banner"' not in resp.text
+
+
 def test_inbox_browses_subdirectory(client: TestClient, tmp_path: Path):
     """Naviguer dans un sous-dossier doit le lister sans erreur."""
     sub = tmp_path / "browse" / "MyMovies"
