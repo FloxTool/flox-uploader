@@ -80,35 +80,51 @@ CREATE INDEX IF NOT EXISTS idx_created ON pending_jobs(created_at DESC);
 """
 
 
+def _add_column_idempotent(conn: sqlite3.Connection, table: str, col: str, col_def: str) -> None:
+    """ALTER TABLE ADD COLUMN avec garde anti-duplicate.
+
+    Sprint 4 PLAN-V1.md fix : sur Python 3.12 specifiquement, on a observe
+    en CI des `OperationalError: duplicate column name` malgre la verif
+    `if col not in cols` qui PRECEDAIT l'ALTER. Vraisemblablement lie aux
+    changements sqlite3 dans 3.12 (executescript commit explicite, etc.).
+
+    On enveloppe l'ALTER dans try/except specifique : si SQLite nous dit
+    'duplicate column', on swallow. Pour tout autre OperationalError on
+    re-raise (ne pas masquer un vrai bug schema).
+    """
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(str(db_path()))
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(_SCHEMA)
-        # Migrations idempotentes : ajout de colonnes si absentes
+        # Migrations idempotentes : ajout de colonnes si absentes.
+        # On lit d'abord les colonnes existantes pour eviter l'ALTER inutile.
+        # `_add_column_idempotent` est defensif au cas ou (Python 3.12 / race).
         cols = {row[1] for row in conn.execute("PRAGMA table_info(pending_jobs)")}
         if "append_fr_title" not in cols:
-            conn.execute(
-                "ALTER TABLE pending_jobs ADD COLUMN append_fr_title INTEGER NOT NULL DEFAULT 0"
-            )
+            _add_column_idempotent(conn, "pending_jobs", "append_fr_title",
+                                   "INTEGER NOT NULL DEFAULT 0")
         if "tmdb_id_override" not in cols:
-            conn.execute(
-                "ALTER TABLE pending_jobs ADD COLUMN tmdb_id_override INTEGER NOT NULL DEFAULT 0"
-            )
+            _add_column_idempotent(conn, "pending_jobs", "tmdb_id_override",
+                                   "INTEGER NOT NULL DEFAULT 0")
         if "manual_release_name" not in cols:
-            conn.execute(
-                "ALTER TABLE pending_jobs ADD COLUMN manual_release_name TEXT NOT NULL DEFAULT ''"
-            )
+            _add_column_idempotent(conn, "pending_jobs", "manual_release_name",
+                                   "TEXT NOT NULL DEFAULT ''")
         # Lot F.2 : pause/reordonner
         if "is_paused" not in cols:
-            conn.execute(
-                "ALTER TABLE pending_jobs ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 0"
-            )
+            _add_column_idempotent(conn, "pending_jobs", "is_paused",
+                                   "INTEGER NOT NULL DEFAULT 0")
         if "priority_order" not in cols:
-            conn.execute(
-                "ALTER TABLE pending_jobs ADD COLUMN priority_order INTEGER NOT NULL DEFAULT 0"
-            )
+            _add_column_idempotent(conn, "pending_jobs", "priority_order",
+                                   "INTEGER NOT NULL DEFAULT 0")
         # Migration one-shot via PRAGMA user_version pour s'executer
         # une seule fois. Sinon (round 4 bug) on ecraserait les valeurs
         # priority_order=0 valides posees par move_job('top').
