@@ -9,7 +9,52 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-_Rien pour l'instant — Sprint 4 (préparation distribution) en attente._
+_Rien pour l'instant — Sprint 5 (bundling Windows PyInstaller) en attente._
+
+---
+
+## [0.3.4] — 2026-05-14
+
+Sprint 4 de `PLAN-V1.md` — **préparation distribution**. Pose les fondations
+nécessaires au passage en mode packagé (Sprint 5).
+
+### Ajouté
+
+- **Détection automatique du data legacy** (`config.legacy_data_dir()`) :
+  quand l'app tourne en mode packagé et qu'il y a un `<repo>/data/` avec
+  des packages, on le signale comme migration possible. En mode dev, retourne
+  toujours `None` (le `<repo>/data/` EST le data_dir actuel).
+- **Stats descriptives** (`config.legacy_data_stats()`) : nombre de packages,
+  taille totale, présence de .env / jobs.db / .tmdb_cache.json. Pour le
+  preview UI avant import.
+- **Migration douce** (`config.migrate_legacy_data()`) :
+  - **Non-destructive** : on COPIE (jamais move). Le legacy reste intact.
+  - **Skip overwrite** : si un package existe déjà dans target, on ne touche
+    pas. Idem pour .env / jobs.db / .tmdb_cache.json.
+  - **Dry-run** : `dry_run=True` simule sans rien copier (preview UI).
+  - **Couvre** : `upload_packages/`, `.env` (data + racine repo legacy),
+    `jobs.db`, `.tmdb_cache.json`.
+- **Endpoint `GET /api/data-dir/legacy-status`** : retourne
+  `{available, legacy_path, current_path, stats}` pour piloter la bannière UI.
+- **Endpoint `POST /api/data-dir/migrate`** : lance la migration (avec
+  `?dry_run=true` optionnel pour preview).
+- **Bannière UI dans `base.html`** : visible sur toutes les pages quand un
+  legacy est détecté. Non-bloquante (l'user peut dismisser via localStorage).
+  Click "Importer" → preview via dry-run + confirm modal + migration réelle
+  + toast de succès + reload de la queue.
+- **Protocol `TrackerClient`** dans `trackers/base.py` : interface
+  structurelle (duck typing) pour les futurs clients tracker. `GeminiClient`
+  satisfait le protocole sans modification. Permettra d'ajouter des trackers
+  en v0.5+ sans refactor du code applicatif.
+- **16 nouveaux tests** dans `test_distribution_prep.py` couvrant détection,
+  stats, migration (dry-run + réel + skip overwrite), endpoints HTTP,
+  Protocol TrackerClient.
+
+### Notes
+
+- `platformdirs` était déjà actif dans `_default_data_dir()` (mode dev →
+  `<repo>/data/`, mode packagé → `%APPDATA%\fremontlouis\flox-uploader\`).
+- `webbrowser.open()` + port dynamique déjà actifs dans `cmd_serve`.
 
 ---
 

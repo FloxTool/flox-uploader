@@ -1280,6 +1280,119 @@
             </a>
         </div>
         {% endif %}
+        {# Sprint 4 PLAN-V1.md : banniere migration data legacy.
+           Visible quand l'app tourne en mode packagé sur un data_dir vierge
+           et qu'on detecte un `<repo>/data/` avec packages. Non-bloquante :
+           l'user peut dismisser via localStorage (`tu_dismissed_legacy_data`).
+           En mode dev, `legacy_data_path()` renvoie toujours None -> banniere
+           jamais affichee. #}
+        {% set _legacy_data = legacy_data_path() %}
+        {% if _legacy_data %}
+        <div id="legacy-data-banner"
+             class="hidden bg-primary-50 dark:bg-primary-900/20 border-b border-primary-200 dark:border-primary-800 px-4 md:px-8 py-2.5 text-sm text-primary-900 dark:text-primary-200 flex items-center justify-between gap-3 flex-wrap">
+            <span class="inline-flex items-center gap-2 min-w-0 flex-1">
+                {{ icon('inbox', size='sm') }}
+                <span>Données legacy détectées dans <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-900/40 truncate inline-block max-w-md align-bottom">{{ _legacy_data }}</code> — tu peux les importer dans cette install.</span>
+            </span>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <button type="button" id="legacy-data-import-btn"
+                        class="interactive inline-flex items-center gap-1.5 px-3 h-7 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium whitespace-nowrap">
+                    Importer
+                    {{ icon('arrow-right', size='sm') }}
+                </button>
+                <button type="button" id="legacy-data-dismiss-btn"
+                        class="interactive inline-flex items-center px-3 h-7 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/40 rounded-md text-xs font-medium whitespace-nowrap">
+                    Plus tard
+                </button>
+            </div>
+        </div>
+        <script>
+        (function() {
+            const banner = document.getElementById('legacy-data-banner');
+            if (!banner) return;
+            const DISMISS_KEY = 'tu_dismissed_legacy_data';
+            // Affichage : seulement si pas deja dismisse
+            try {
+                if (localStorage.getItem(DISMISS_KEY) !== '1') {
+                    banner.classList.remove('hidden');
+                }
+            } catch (e) {
+                banner.classList.remove('hidden');
+            }
+            const dismissBtn = document.getElementById('legacy-data-dismiss-btn');
+            if (dismissBtn) {
+                dismissBtn.addEventListener('click', () => {
+                    try { localStorage.setItem(DISMISS_KEY, '1'); } catch (e) {}
+                    banner.classList.add('hidden');
+                });
+            }
+            const importBtn = document.getElementById('legacy-data-import-btn');
+            if (importBtn && window.tu && window.tu.button) {
+                importBtn.addEventListener('click', () => {
+                    tu.button(importBtn, async () => {
+                        // 1. Preview via dry-run pour confirmation
+                        const previewResp = await fetch('/api/data-dir/migrate', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({dry_run: true}),
+                        });
+                        const preview = await previewResp.json();
+                        if (!previewResp.ok) {
+                            throw new Error(preview.detail || 'Erreur preview');
+                        }
+                        const wouldCopy = preview.copied_packages;
+                        const wouldSkip = preview.skipped_packages;
+                        const wouldFiles = (preview.copied_files || []).join(', ') || 'aucun';
+                        const ok = await tu.confirm({
+                            title: 'Importer les données legacy ?',
+                            message:
+                                'Ça va copier (sans supprimer la source) :\n' +
+                                '• ' + wouldCopy + ' package(s) à importer\n' +
+                                '• ' + wouldSkip + ' package(s) déjà présents (skippés)\n' +
+                                '• Fichiers : ' + wouldFiles + '\n\n' +
+                                'Source : ' + preview.legacy_path + '\n' +
+                                'Cible  : ' + preview.target_path,
+                            confirmLabel: 'Importer',
+                            tone: 'primary',
+                        });
+                        if (!ok) return;
+                        // 2. Vraie migration
+                        const resp = await fetch('/api/data-dir/migrate', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({dry_run: false}),
+                        });
+                        const data = await resp.json();
+                        if (!resp.ok) {
+                            throw new Error(data.detail || 'Erreur import');
+                        }
+                        const errs = (data.errors || []);
+                        if (errs.length > 0) {
+                            tu.toast({
+                                title: 'Import partiellement réussi',
+                                message: errs.length + ' erreur(s) — voir log serveur.',
+                                tone: 'warning',
+                                duration: 8000,
+                            });
+                        } else {
+                            tu.toast({
+                                title: 'Import terminé',
+                                message: data.copied_packages + ' package(s) + ' +
+                                         (data.copied_files || []).length + ' fichier(s) copié(s).',
+                                tone: 'success',
+                            });
+                        }
+                        // Cache la banniere apres succes + flag dismiss permanent
+                        try { localStorage.setItem(DISMISS_KEY, '1'); } catch (e) {}
+                        banner.classList.add('hidden');
+                        // Reload pour que la queue voie les nouveaux packages
+                        setTimeout(() => window.location.reload(), 1500);
+                    }, { errorTitle: 'Échec de l\'import' });
+                });
+            }
+        })();
+        </script>
+        {% endif %}
         <div class="px-4 md:px-8 py-6 max-w-7xl mx-auto">
             {% block content %}{% endblock %}
         </div>

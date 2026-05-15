@@ -13,6 +13,9 @@
 #   0.3.3 : Sprint 3 de PLAN-V1.md — OMDb pleinement optionnel. Pas de
 #           penalite de score quand la cle n'est pas configuree (user choisit
 #           explicitement de skip). Bbcode awards plus robust (whitespace).
+#   0.3.4 : Sprint 4 de PLAN-V1.md — preparation distribution. Migration douce
+#           data legacy (banniere UI + endpoint /api/data-dir/migrate),
+#           anticipation multi-tracker via Protocol TrackerClient.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.3"
+__version__ = "0.3.4"
