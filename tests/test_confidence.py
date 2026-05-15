@@ -195,22 +195,33 @@ def test_score_clamped_to_zero():
 def test_bucket_thresholds():
     """Lot R-C : 6 buckets parfait (=100) / perfect (95-99) / ready (90-94) /
     good (80-89) / review (60-79) / blocked (<60).
-    Round 5 : TMDB missing = -35, IMDB missing = -15."""
+    Round 5 : TMDB missing = -35, IMDB missing = -15.
+
+    Sprint 5 fix : on invalide explicitement le score cache entre chaque
+    re-ecriture de debug.json. Sur Windows (CI), la resolution mtime peut
+    etre trop grossiere pour distinguer 3 ecritures rapides — sans
+    invalidation explicite, le cache retournait le score precedent et le
+    test echouait flaky-ment.
+    """
     import tempfile
+    from flox_uploader.core.confidence import invalidate_score_cache
     with tempfile.TemporaryDirectory() as tmp:
         pkg = Path(tmp) / "p"
         pkg.mkdir()
         init_state(pkg, "Foo", "gemini")
         # Score 100 -> parfait (bucket distinct du "perfect" 95-99)
         _write_debug(pkg, {"tmdb_context": {"movie_id": 1, "imdb_id": "tt1"}, "lang": ["VFF"]})
+        invalidate_score_cache(pkg)
         assert compute_confidence_score(pkg).bucket == "parfait"
         # Score 50 (TMDB -35 + IMDB -15) -> blocked (round 5)
         _write_debug(pkg, {"tmdb_context": {}, "lang": ["VFF"]})
+        invalidate_score_cache(pkg)
         s = compute_confidence_score(pkg)
         assert s.score == 50
         assert s.bucket == "blocked"
         # Score 30 (gros cumul : -35 -15 -20) -> blocked
         _write_debug(pkg, {"tmdb_context": {}, "lang": ["MULTi"]})
+        invalidate_score_cache(pkg)
         s = compute_confidence_score(pkg)
         assert s.score == 30
         assert s.bucket == "blocked"
