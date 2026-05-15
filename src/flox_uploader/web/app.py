@@ -831,6 +831,23 @@ def create_app() -> FastAPI:
     from .. import __version__ as _app_version
     templates.env.globals["app_version"] = _app_version
 
+    # Sprint 6 PLAN-V1 : auto-update v1. On expose `update_info()` aux
+    # templates (cache disque, jamais de fetch synchrone — instantane) et
+    # on lance un refresh background au boot pour que le banner soit a
+    # jour des le premier hit utilisateur.
+    from ..core.update_check import (
+        read_cached_update_info as _read_update_info,
+        refresh_cache_if_stale_async as _refresh_update_async,
+    )
+    templates.env.globals["update_info"] = lambda: _read_update_info()
+    # Best-effort : spawn thread daemon au boot. Si stale (ou cache vide),
+    # un refresh tourne en background — la premiere page UI peut afficher
+    # un banner update sous 1-2s sans bloquer le startup serveur.
+    try:
+        _refresh_update_async()
+    except Exception:
+        pass
+
     # Filtre fmt_date : convertit ISO "2026-05-11T19:17:00Z" en
     # "2026-05-11 19:17" (T -> space, drop Z, drop ms, drop secondes).
     # Format compact et lisible humain.
@@ -1338,6 +1355,32 @@ def create_app() -> FastAPI:
                 "app_version": _tu_version,
             },
         )
+
+    @app.get("/api/update-info")
+    def api_update_info():
+        """Sprint 6 PLAN-V1 — statut de la mise a jour.
+
+        Lit le cache disque (rapide), declenche un refresh background si
+        stale (>6h ou absent). L'user voit toujours le cache : c'est
+        l'appel HTTP /releases/latest qui se rafraichit en arriere-plan.
+
+        Retourne le dict de `UpdateInfo` :
+            - available : bool (True ssi latest > current en semver strict)
+            - current : str (ex: "0.3.5")
+            - latest : str (ex: "0.4.0", "" si jamais fetched)
+            - release_url : str (page GitHub Releases pour cette version)
+            - release_notes : str (body markdown de la release, peut etre long)
+            - fetched_at : str (ISO UTC du dernier fetch reussi, "" si jamais)
+        """
+        from ..core.update_check import (
+            read_cached_update_info,
+            refresh_cache_if_stale_async,
+        )
+        try:
+            refresh_cache_if_stale_async()
+        except Exception:
+            pass
+        return read_cached_update_info().to_dict()
 
     @app.get("/api/config")
     def api_config_get():

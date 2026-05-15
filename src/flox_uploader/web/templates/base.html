@@ -1266,6 +1266,57 @@
          - mobile  : pt-14 (compense la topbar mobile), pas de ml
          - desktop : ml-60 (compense la sidebar fixed) -->
     <main id="main-content" class="pt-14 md:pt-0 md:ml-60 min-h-screen" tabindex="-1">
+        {# Sprint 6 PLAN-V1 — Auto-update v1.
+           Banner discret quand une nouvelle version est disponible. Masque sur
+           /setup (un user qui decouvre l'app n'a pas besoin d'etre alerte
+           d'une update pendant l'onboarding) et dismissible per-version via
+           localStorage (`tu_dismissed_update_<latest>`). #}
+        {% set _u = update_info() %}
+        {% if _u.available and page != 'setup' %}
+        <div id="update-banner"
+             data-latest="{{ _u.latest }}"
+             data-current="{{ _u.current }}"
+             data-release-url="{{ _u.release_url }}"
+             class="hidden bg-primary-50 dark:bg-primary-900/20 border-b border-primary-200 dark:border-primary-800 px-4 md:px-8 py-2.5 text-sm text-primary-800 dark:text-primary-200 flex items-center justify-between gap-3 flex-wrap">
+            <span class="inline-flex items-center gap-2">
+                {{ icon('sparkles', size='sm') }}
+                Nouvelle version disponible : <strong class="font-semibold">{{ _u.latest }}</strong>
+                <span class="text-primary-600/70 dark:text-primary-400/70">(actuelle : {{ _u.current }})</span>
+            </span>
+            <span class="inline-flex items-center gap-2">
+                <a href="{{ _u.release_url }}" target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center gap-1.5 px-3 h-7 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium whitespace-nowrap transition-colors duration-fast">
+                    Voir le détail
+                    {{ icon('external-link', size='sm') }}
+                </a>
+                <button type="button" id="update-banner-dismiss"
+                        class="inline-flex items-center justify-center w-7 h-7 rounded-md text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors duration-fast"
+                        title="Masquer pour cette version">
+                    {{ icon('x', size='sm') }}
+                </button>
+            </span>
+        </div>
+        <script>
+            // Gestion dismiss per-version. Cle localStorage : `tu_dismissed_update_<latest>`.
+            // Quand une nouvelle release sort, la cle change → le banner reapparait.
+            (function() {
+                const banner = document.getElementById('update-banner');
+                if (!banner) return;
+                const latest = banner.dataset.latest || '';
+                const dismissKey = 'tu_dismissed_update_' + latest;
+                if (latest && localStorage.getItem(dismissKey) !== '1') {
+                    banner.classList.remove('hidden');
+                }
+                const btn = document.getElementById('update-banner-dismiss');
+                if (btn) {
+                    btn.addEventListener('click', () => {
+                        try { localStorage.setItem(dismissKey, '1'); } catch (e) {}
+                        banner.classList.add('hidden');
+                    });
+                }
+            })();
+        </script>
+        {% endif %}
         {# Banner persistant si setup incomplet. #}
         {% set _missing = setup_missing() %}
         {% if setup_incomplete() and page != 'setup' %}

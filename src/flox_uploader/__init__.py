@@ -22,6 +22,13 @@
 #           Build Windows .exe avec 3 smoke tests (--help, uvicorn boot,
 #           windowed mode + HTTP /setup). MediaInfo CLI bundle. Premier
 #           release publiable a partir d'un installeur double-clic.
+#   0.3.6 : Sprint 6 de PLAN-V1.md — Auto-update v1. Endpoint
+#           /api/update-info qui fetch GitHub Releases en background
+#           (cache disque 6h, silent fail offline). Banner UI discret
+#           "Nouvelle version disponible" en haut de chaque page (sauf
+#           /setup), dismissible per-version via localStorage. Semver
+#           strict, pre-releases ignorees. Aucune telemetry : on lit
+#           juste /releases/latest, on n'envoie rien.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.5"
+__version__ = "0.3.6"
