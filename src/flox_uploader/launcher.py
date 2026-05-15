@@ -56,7 +56,12 @@ def main() -> int:
 
     # On delegue a cmd_serve qui contient deja toute la logique (find_free_port,
     # safety check du host, etc.). On simule un argparse.Namespace compatible.
-    from .cli import cmd_serve
+    #
+    # Sprint 5 fix : ABSOLUTE import obligatoire. PyInstaller execute launcher.py
+    # comme script top-level (pas comme module flox_uploader.launcher), donc
+    # `from .cli import cmd_serve` echoue avec
+    # "ImportError: attempted relative import with no known parent package".
+    from flox_uploader.cli import cmd_serve
 
     class _Args:
         pass

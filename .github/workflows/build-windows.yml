@@ -55,9 +55,7 @@ jobs:
           echo "Bundle = $mb MB"
         shell: pwsh
 
-      - name: Smoke test — l'exe demarre puis exit propre
-        # On lance l'exe avec --help ou on le tue rapidement. Si l'import du module
-        # rate au boot, --help renvoie un code != 0.
+      - name: Smoke test 1 — --help fonctionne (argparse OK)
         run: |
           $proc = Start-Process -FilePath 'dist/Flox Uploader/Flox Uploader.exe' -ArgumentList '--help' -PassThru -NoNewWindow -Wait -RedirectStandardOutput stdout.txt -RedirectStandardError stderr.txt
           echo "--- stdout ---"
@@ -65,10 +63,46 @@ jobs:
           echo "--- stderr ---"
           Get-Content stderr.txt -ErrorAction SilentlyContinue
           if ($proc.ExitCode -ne 0) {
-            echo "::error::Smoke test failed avec exit code $($proc.ExitCode)"
+            echo "::error::--help failed avec exit code $($proc.ExitCode)"
             exit 1
           }
-          echo "OK : l'exe demarre proprement (exit code $($proc.ExitCode))"
+          echo "OK : --help fonctionne (exit $($proc.ExitCode))"
+        shell: pwsh
+
+      - name: Smoke test 2 — boot complet uvicorn (detecte les ImportError)
+        # On lance le serveur 5s puis on le tue. Ca exerce le code path qui
+        # importe le module flox_uploader, FastAPI, uvicorn, jinja2, etc.
+        # Si un hidden import manque, on plante ici (vs --help qui n'a pas
+        # encore importe le serveur).
+        run: |
+          $proc = Start-Process -FilePath 'dist/Flox Uploader/Flox Uploader.exe' -ArgumentList '--no-browser','--port','18765' -PassThru -NoNewWindow -RedirectStandardOutput boot_stdout.txt -RedirectStandardError boot_stderr.txt
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            echo "::error::Le serveur s'est arrete avant la fin du sleep (crash boot)"
+            echo "--- stdout ---"
+            Get-Content boot_stdout.txt -ErrorAction SilentlyContinue
+            echo "--- stderr ---"
+            Get-Content boot_stderr.txt -ErrorAction SilentlyContinue
+            exit 1
+          }
+          # Verifier que uvicorn a bien demarre (cherche la signature dans stdout)
+          $bootLog = Get-Content boot_stdout.txt -Raw -ErrorAction SilentlyContinue
+          $stderrLog = Get-Content boot_stderr.txt -Raw -ErrorAction SilentlyContinue
+          echo "--- stdout ---"
+          Write-Output $bootLog
+          echo "--- stderr ---"
+          Write-Output $stderrLog
+          Stop-Process -Id $proc.Id -Force
+          # Verification du contenu : si stderr contient ImportError / Traceback / unhandled
+          if ($stderrLog -match "ImportError|attempted relative import|ModuleNotFoundError|unhandled exception") {
+            echo "::error::Boot a detecte une erreur d'import"
+            exit 1
+          }
+          if ($bootLog -notmatch "Uvicorn running") {
+            echo "::error::Uvicorn n'a pas demarre (signature 'Uvicorn running' absente du stdout)"
+            exit 1
+          }
+          echo "OK : serveur a demarre proprement et a ete arrete"
         shell: pwsh
 
       - name: Zip the bundle for artifact upload
