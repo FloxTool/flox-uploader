@@ -59,6 +59,13 @@ MinVersion=10.0
 SetupIconFile=icon.ico
 ; Privacy : on ne reste pas en haut, pas plein ecran
 WindowVisible=yes
+; Si Flox Uploader.exe tourne encore (auto-launch post-install + reinstall
+; rapide), on le ferme silencieusement au lieu d'afficher le prompt
+; "Les applications suivantes utilisent des fichiers...". On ne le relance
+; PAS apres install (l'user a deja la case "Lancer Flox Uploader" en fin
+; d'install s'il veut, cf. [Run] postinstall).
+CloseApplications=force
+RestartApplications=no
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
