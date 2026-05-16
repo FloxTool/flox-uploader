@@ -296,65 +296,20 @@ def test_inbox_shows_everything_with_show_all(client: TestClient, tmp_path: Path
     assert "script.exe" in resp.text
 
 
-def test_inbox_pagination_server_side(client: TestClient, tmp_path: Path):
-    """Sprint 8 hotfix v3 : la pagination est server-side. ?page=N&size=K
-    retourne seulement les K entries de la page N."""
+def test_inbox_returns_all_entries(client: TestClient, tmp_path: Path):
+    """Sprint 8 hotfix v5 : retour a la pagination client-side. Le serveur
+    retourne TOUTES les entries en HTML, le JS cache les rows hors page
+    via display:none. Cela permet au search d'etre instantane sur tout
+    le dossier (zero latence)."""
     sub = tmp_path / "browse" / "BigFolder"
     sub.mkdir()
-    # 60 fichiers numerotes
     for i in range(60):
         (sub / f"movie_{i:03d}.mkv").write_bytes(b"x")
-
-    # Page 1, size 25 -> 25 premiers fichiers (000 a 024)
-    resp = client.get(f"/inbox?path={sub}&page=1&size=25")
+    resp = client.get(f"/inbox?path={sub}")
     assert resp.status_code == 200
-    assert "movie_000.mkv" in resp.text
-    assert "movie_024.mkv" in resp.text
-    assert "movie_025.mkv" not in resp.text
-    assert "movie_059.mkv" not in resp.text
-
-    # Page 2, size 25 -> fichiers 025 a 049
-    resp = client.get(f"/inbox?path={sub}&page=2&size=25")
-    assert resp.status_code == 200
-    assert "movie_025.mkv" in resp.text
-    assert "movie_049.mkv" in resp.text
-    assert "movie_024.mkv" not in resp.text
-    assert "movie_050.mkv" not in resp.text
-
-    # size=all -> tous les 60
-    resp = client.get(f"/inbox?path={sub}&size=all")
-    assert resp.status_code == 200
+    # Toutes les 60 entries sont rendues en HTML (le JS s'occupe de la pagination)
     assert "movie_000.mkv" in resp.text
     assert "movie_059.mkv" in resp.text
-
-
-def test_inbox_search_server_side(client: TestClient, tmp_path: Path):
-    """Sprint 8 hotfix v3 : la recherche est server-side via ?q=.
-    Multi-token + accent-insensitive."""
-    sub = tmp_path / "browse" / "SearchTest"
-    sub.mkdir()
-    (sub / "Matrix.1999.1080p.mkv").write_bytes(b"x")
-    (sub / "Matrix.Reloaded.2003.mkv").write_bytes(b"x")
-    (sub / "Inception.2010.mkv").write_bytes(b"x")
-    (sub / "Amelie.Poulain.2001.mkv").write_bytes(b"x")  # test accent
-
-    # Search "matrix" -> 2 matches
-    resp = client.get(f"/inbox?path={sub}&q=matrix")
-    assert resp.status_code == 200
-    assert "Matrix.1999.1080p.mkv" in resp.text
-    assert "Matrix.Reloaded.2003.mkv" in resp.text
-    assert "Inception.2010.mkv" not in resp.text
-
-    # Search multi-token "matrix 2003" -> 1 match (multi-token AND)
-    resp = client.get(f"/inbox?path={sub}&q=matrix+2003")
-    assert resp.status_code == 200
-    assert "Matrix.Reloaded.2003.mkv" in resp.text
-    assert "Matrix.1999.1080p.mkv" not in resp.text
-
-    # Accent-insensitive : "amelie" matche "Amelie"
-    resp = client.get(f"/inbox?path={sub}&q=amelie")
-    assert resp.status_code == 200
-    assert "Amelie.Poulain.2001.mkv" in resp.text
 
 
 # ============================================================

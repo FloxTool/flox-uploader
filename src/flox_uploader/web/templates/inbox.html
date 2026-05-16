@@ -85,7 +85,6 @@
                     {{ icon('search', size='sm') }}
                 </div>
                 <input id="search-input" type="text" placeholder="Filtrer ce dossier…"
-                       value="{{ search_query }}"
                        class="tu-search-input pl-8 pr-8 h-8 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-md border border-slate-300 dark:border-slate-600 w-56">
                 <button type="button" class="tu-search-clear hidden absolute inset-y-0 right-0 pr-2 items-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 interactive"
                         aria-label="Effacer la recherche" data-tu-tooltip="Effacer">
@@ -203,48 +202,12 @@
             action_href=('/inbox?path=' ~ parent_path) if parent_path else None
         ) }}
     {% else %}
-        {# Sprint 8 hotfix v3 : barre de pagination server-side.
-           Le serveur a deja decide ce qui s'affiche (page N de taille K).
-           Les liens sont des <a href="?page=...&..."> classiques — pas de
-           JS necessaire pour la navigation. On affiche en haut + en bas. #}
-        {% macro pagination_bar() %}
-        <div class="flex items-center justify-between gap-3 flex-wrap text-xs text-slate-600 dark:text-slate-400 py-1">
-            <div class="inline-flex items-center gap-2">
-                <label class="inline-flex items-center gap-1.5">
-                    <span>Afficher</span>
-                    <select class="pagination-size-select bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded h-7 text-xs px-1.5">
-                        {% for opt in size_options %}
-                        <option value="{{ opt.url }}" {% if opt.is_active %}selected{% endif %}>{{ opt.label }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <span class="text-slate-500 dark:text-slate-500">·</span>
-                <span class="tabular-nums">
-                    {% if total_entries == 0 %}
-                        Aucun élément
-                    {% else %}
-                        {{ range_start }}–{{ range_end }} sur {{ total_entries }}
-                    {% endif %}
-                </span>
-            </div>
-            {% if pagination_links %}
-            <div class="inline-flex items-center gap-1">
-                {% for link in pagination_links %}
-                    {% if link.is_ellipsis %}
-                        <span class="text-slate-400 dark:text-slate-500 px-1">…</span>
-                    {% elif link.is_disabled %}
-                        <span class="inline-flex items-center justify-center h-7 min-w-7 px-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-medium opacity-40 cursor-not-allowed">{{ link.label }}</span>
-                    {% else %}
-                        <a href="{{ link.url }}"
-                           class="inline-flex items-center justify-center h-7 min-w-7 px-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors {{ 'bg-primary-600 text-white border-primary-600' if link.is_active else 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' }}"
-                           {% if link.title %}title="{{ link.title }}"{% endif %}>{{ link.label }}</a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            {% endif %}
-        </div>
-        {% endmacro %}
-        <div class="mb-3">{{ pagination_bar() }}</div>
+        {# Sprint 8 hotfix v5 : pagination + search 100% client-side.
+           Le serveur a rendu TOUT (toutes les rows en HTML). Le JS cache les
+           rows hors page via display:none (perf DOM minimale, pas de roundtrip).
+           Search filtre instant sur l'ensemble. Top + bottom bars remplies
+           dynamiquement par _renderPaginationBars(). #}
+        <div class="inbox-pagination-bar hidden mb-3" data-position="top"></div>
         <table class="w-full text-sm">
             <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
                 <tr>
@@ -301,7 +264,7 @@
                 {% endfor %}
             </tbody>
         </table>
-        <div class="mt-3">{{ pagination_bar() }}</div>
+        <div class="inbox-pagination-bar hidden mt-3" data-position="bottom"></div>
     {% endif %}
 </div>
 
@@ -661,79 +624,22 @@
         });
     }
 
-    // === Sprint 8 hotfix v3 : pagination SERVER-SIDE ===
-    // Le serveur a deja decide ce qu'on affiche (paginate + filter). Le JS
-    // ne fait plus que :
-    //   1. Search : redirige avec ?q=... (debounced 300ms) — reset page=1
-    //   2. Size selector : redirige avec l'URL pre-calculee par le serveur
-    //   3. Selection : persistee en sessionStorage pour survivre aux nav
-    //      cross-pages. Restauree au mount.
+    // === Sprint 8 hotfix v5 : pagination + search 100% CLIENT-SIDE ===
+    // Le serveur a rendu TOUT le listing (toutes les rows en HTML). On a
+    // donc tout en DOM. Le JS combine 2 filtres :
+    //   1. Search : marque les rows non-matching comme data-search-hidden=1
+    //   2. Pagination : parmi les rows non-hidden, affiche seulement la slice
+    //      de la page courante (display:none les autres)
     //
-    // Avantage perf : le browser ne rend que `size` rows (50 par defaut)
-    // meme si le dossier en contient 5000. Avant on rendait tout en HTML,
-    // ce qui faisait ramer le browser sur les gros dossiers.
+    // Avantage : zero latence pour les 2 (tout est en JS, pas de roundtrip).
+    // La selection est implicite : les checkboxes restent en DOM meme cachees,
+    // donc pas besoin de sessionStorage pour persister cross-pages.
 
     const searchInput = document.getElementById('search-input');
     const searchClear = document.querySelector('.tu-search-clear');
-
-    // -- Selection cross-pages (sessionStorage) --
-    // On stocke les paths coches dans un Set persiste. Au mount, on coche
-    // les checkboxes correspondantes. A chaque change, on met a jour le Set.
-    // Le Set est scope au dossier courant pour eviter la pollution
-    // cross-folder (cle = path du dossier).
-    const SELECTION_KEY = 'tu_inbox_selection_v2_' + ({{ current_path | tojson }});
-    function _getStoredSelection() {
-        try {
-            const raw = sessionStorage.getItem(SELECTION_KEY);
-            if (!raw) return new Set();
-            return new Set(JSON.parse(raw));
-        } catch (e) {
-            return new Set();
-        }
-    }
-    function _persistSelection() {
-        // Le Set stocke contient les paths coches PARMI les rows actuellement
-        // visibles + ceux deja coches sur d'autres pages (qu'on ne voit pas
-        // ici). On lit l'etat actuel et on merge avec ce qui est deja stocke.
-        const stored = _getStoredSelection();
-        const visibleCheckboxes = Array.from(checkboxes());
-        const visiblePaths = new Set(visibleCheckboxes.map(cb => cb.dataset.path));
-        // Etape 1 : retirer du Set tous les paths visibles (on va les
-        // re-ajouter selectivement)
-        const newStored = new Set([...stored].filter(p => !visiblePaths.has(p)));
-        // Etape 2 : ajouter ceux qui sont coches sur cette page
-        visibleCheckboxes.forEach(cb => {
-            if (cb.checked) newStored.add(cb.dataset.path);
-        });
-        try {
-            sessionStorage.setItem(SELECTION_KEY, JSON.stringify([...newStored]));
-        } catch (e) {}
-    }
-    function _restoreSelectionToVisibleRows() {
-        const stored = _getStoredSelection();
-        Array.from(checkboxes()).forEach(cb => {
-            cb.checked = stored.has(cb.dataset.path);
-        });
-        refreshSelection();
-    }
-
-    // Au change sur n'importe quelle checkbox visible, on persiste
-    document.querySelectorAll('.file-checkbox').forEach(cb => {
-        cb.addEventListener('change', _persistSelection);
-    });
-
-    // -- Search INSTANT cote client + Enter pour search server-side global --
-    // Sprint 8 hotfix v4 : on revient au filtrage client-side instantane
-    // (zero latence) pour les rows actuellement visibles dans la page.
-    // L'user qui veut chercher dans TOUT le dossier (pas juste la page
-    // actuelle) appuie Entree → submit server-side avec ?q=...
-    //
-    // Compromis : si le user a 1000 fichiers et size=50, le search instant
-    // ne voit que 50 rows. Mais Enter ou size=Tout permet de chercher
-    // partout. Le compteur "X / Y sur cette page" signale clairement le
-    // scope du filtre.
-
     const searchCount = document.getElementById('search-count');
+    const allRows = () => document.querySelectorAll('tr.entry-row');
+
     function _foldAccents(s) {
         return (s || '')
             .normalize('NFD')
@@ -742,93 +648,189 @@
             .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
             .toLowerCase();
     }
-    function _filterRowsInstant(q) {
-        const tokens = _foldAccents(q.trim()).split(/\s+/).filter(t => t.length > 0);
-        const rows = document.querySelectorAll('tr.entry-row');
-        let visible = 0;
-        const total = rows.length;
-        rows.forEach(row => {
+
+    // --- Pagination state (localStorage + en memoire) ---
+    const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 400, 'all'];
+    const STORAGE_KEY_PAGE_SIZE = 'tu_inbox_page_size';
+    const DEFAULT_PAGE_SIZE = 50;
+    let _currentPage = 1;
+    let _pageSize = DEFAULT_PAGE_SIZE;
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY_PAGE_SIZE);
+        if (stored === 'all') _pageSize = 'all';
+        else {
+            const n = parseInt(stored, 10);
+            if (PAGE_SIZE_OPTIONS.includes(n)) _pageSize = n;
+        }
+    } catch (e) {}
+
+    function _rowsAfterSearchFilter() {
+        return Array.from(allRows()).filter(r => r.dataset.searchHidden !== '1');
+    }
+
+    function _pageNumbersToShow(current, totalPages) {
+        if (totalPages <= 7) {
+            return Array.from({length: totalPages}, (_, i) => i + 1);
+        }
+        const pages = new Set([1, totalPages, current]);
+        for (let d = 1; d <= 2; d++) {
+            if (current - d >= 1) pages.add(current - d);
+            if (current + d <= totalPages) pages.add(current + d);
+        }
+        const sorted = Array.from(pages).sort((a, b) => a - b);
+        const result = [];
+        for (let i = 0; i < sorted.length; i++) {
+            if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+            result.push(sorted[i]);
+        }
+        return result;
+    }
+
+    function _buildPaginationHTML(total, current, totalPages) {
+        let rangeText;
+        if (_pageSize === 'all' || total === 0) {
+            rangeText = `${total} élément${total > 1 ? 's' : ''}`;
+        } else {
+            const start = (current - 1) * _pageSize + 1;
+            const end = Math.min(current * _pageSize, total);
+            rangeText = `${start}–${end} sur ${total}`;
+        }
+        const sizeOptionsHTML = PAGE_SIZE_OPTIONS.map(opt => {
+            const sel = (opt === _pageSize) ? 'selected' : '';
+            const label = (opt === 'all') ? 'Tout' : String(opt);
+            return `<option value="${opt}" ${sel}>${label}</option>`;
+        }).join('');
+        let navHTML = '';
+        if (_pageSize !== 'all' && totalPages > 1) {
+            const disPrev = current === 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
+            const disNext = current === totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
+            const btnBase = 'inline-flex items-center justify-center h-7 min-w-7 px-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors';
+            navHTML = `
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="1" ${current === 1 ? 'disabled' : ''} title="Première page">«</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="${current - 1}" ${current === 1 ? 'disabled' : ''} title="Page précédente">‹</button>
+            `;
+            for (const p of _pageNumbersToShow(current, totalPages)) {
+                if (p === '...') {
+                    navHTML += `<span class="text-slate-400 dark:text-slate-500 px-1">…</span>`;
+                } else {
+                    const active = p === current
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700';
+                    navHTML += `<button type="button" class="pagination-btn ${btnBase} ${active}" data-page="${p}">${p}</button>`;
+                }
+            }
+            navHTML += `
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${current + 1}" ${current === totalPages ? 'disabled' : ''} title="Page suivante">›</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${totalPages}" ${current === totalPages ? 'disabled' : ''} title="Dernière page">»</button>
+            `;
+        }
+        return `
+            <div class="flex items-center justify-between gap-3 flex-wrap text-xs text-slate-600 dark:text-slate-400">
+                <div class="inline-flex items-center gap-2">
+                    <label class="inline-flex items-center gap-1.5">
+                        <span>Afficher</span>
+                        <select class="pagination-size bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded h-7 text-xs px-1.5">
+                            ${sizeOptionsHTML}
+                        </select>
+                    </label>
+                    <span class="text-slate-500 dark:text-slate-500">·</span>
+                    <span class="tabular-nums">${rangeText}</span>
+                </div>
+                ${navHTML ? `<div class="inline-flex items-center gap-1">${navHTML}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function _renderPaginationBars(total, current, totalPages) {
+        const html = _buildPaginationHTML(total, current, totalPages);
+        document.querySelectorAll('.inbox-pagination-bar').forEach(bar => {
+            bar.innerHTML = html;
+            bar.classList.toggle('hidden', total === 0);
+            const sizeSelect = bar.querySelector('.pagination-size');
+            if (sizeSelect) {
+                sizeSelect.addEventListener('change', () => {
+                    const v = sizeSelect.value;
+                    _pageSize = (v === 'all') ? 'all' : parseInt(v, 10);
+                    try { localStorage.setItem(STORAGE_KEY_PAGE_SIZE, String(_pageSize)); } catch (e) {}
+                    _currentPage = 1;
+                    _refreshDisplay();
+                });
+            }
+            bar.querySelectorAll('.pagination-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const p = parseInt(btn.dataset.page, 10);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                        _currentPage = p;
+                        _refreshDisplay();
+                        const main = document.getElementById('main-content');
+                        if (main) main.scrollTo({top: 0, behavior: 'smooth'});
+                    }
+                });
+            });
+        });
+    }
+
+    function _refreshDisplay() {
+        // 1. Filtre recherche : marque les rows non-matching
+        const q = searchInput ? searchInput.value.trim() : '';
+        const tokens = _foldAccents(q).split(/\s+/).filter(t => t.length > 0);
+        let totalAll = 0;
+        allRows().forEach(row => {
+            totalAll++;
             const name = _foldAccents(row.dataset.name || '');
             const ok = tokens.length === 0 || tokens.every(t => name.includes(t));
-            row.style.display = ok ? '' : 'none';
-            if (ok) visible++;
+            if (ok) delete row.dataset.searchHidden;
+            else row.dataset.searchHidden = '1';
         });
+        // 2. Pagination sur les rows non-hidden
+        const candidates = _rowsAfterSearchFilter();
+        const totalVisible = candidates.length;
+        if (_pageSize === 'all') {
+            allRows().forEach(r => {
+                r.style.display = r.dataset.searchHidden === '1' ? 'none' : '';
+            });
+            _renderPaginationBars(totalVisible, 1, 1);
+        } else {
+            const totalPages = Math.max(1, Math.ceil(totalVisible / _pageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+            const start = (_currentPage - 1) * _pageSize;
+            const end = start + _pageSize;
+            allRows().forEach(r => { r.style.display = 'none'; });
+            candidates.slice(start, end).forEach(r => { r.style.display = ''; });
+            _renderPaginationBars(totalVisible, _currentPage, totalPages);
+        }
         if (searchCount) {
-            if (!q.trim()) {
-                searchCount.textContent = '';
-            } else if (visible === total) {
-                searchCount.textContent = `${visible} sur cette page`;
-            } else {
-                searchCount.textContent = `${visible} / ${total} sur cette page · Entrée pour chercher tout`;
-            }
+            searchCount.textContent = q ? `${totalVisible} / ${totalAll} visible(s)` : '';
         }
     }
-    function _navigateWithSearchServerSide(q) {
-        const url = new URL(window.location);
-        if (q) url.searchParams.set('q', q);
-        else url.searchParams.delete('q');
-        url.searchParams.delete('page');  // reset a la page 1
-        if (typeof window.showPageLoader === 'function') window.showPageLoader();
-        window.location.href = url.toString();
-    }
+
     if (searchInput) {
-        // Filtrage INSTANT a chaque touche (client-side, zero latence)
         searchInput.addEventListener('input', () => {
-            _filterRowsInstant(searchInput.value);
+            _currentPage = 1;  // reset a la page 1 a chaque nouvelle recherche
             if (searchClear) searchClear.classList.toggle('hidden', !searchInput.value);
+            _refreshDisplay();
         });
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                if (searchInput.value) {
-                    searchInput.value = '';
-                    _filterRowsInstant('');
-                    if (searchClear) searchClear.classList.add('hidden');
-                    // Si on est sur une page avec ?q=... server-side, on retire le filtre
-                    if (({{ search_query | tojson }})) {
-                        _navigateWithSearchServerSide('');
-                    }
-                }
-            } else if (e.key === 'Enter') {
-                // Recherche globale sur tout le dossier (server-side, reload page)
-                _navigateWithSearchServerSide(searchInput.value.trim());
+                searchInput.value = '';
+                if (searchClear) searchClear.classList.add('hidden');
+                _currentPage = 1;
+                _refreshDisplay();
             }
         });
     }
-    // Bouton "x" pour clear le filtre
     if (searchClear && searchInput) {
         if (searchInput.value) searchClear.classList.remove('hidden');
         searchClear.addEventListener('click', () => {
             searchInput.value = '';
-            _filterRowsInstant('');
             searchClear.classList.add('hidden');
-            // Si on est sur une page avec ?q=... server-side, on retire le filtre
-            if (({{ search_query | tojson }})) {
-                _navigateWithSearchServerSide('');
-            }
+            _currentPage = 1;
+            _refreshDisplay();
         });
     }
 
-    // -- Size selector : redirige vers l'URL calculee par le serveur --
-    // Le serveur a deja construit les URLs avec ?size=K&page=1. Le selecteur
-    // utilise ces URLs comme `value`, donc on n'a qu'a faire un window.location
-    // au change.
-    document.querySelectorAll('.pagination-size-select').forEach(sel => {
-        sel.addEventListener('change', () => {
-            const url = sel.value;  // URL pre-calculee par le serveur
-            if (typeof window.showPageLoader === 'function') window.showPageLoader();
-            window.location.href = url;
-        });
-    });
-
-    // -- Loader sur les liens de pagination (clean UX) --
-    document.querySelectorAll('.flex.items-center a[href^="/inbox"]').forEach(a => {
-        a.addEventListener('click', () => {
-            if (typeof window.showPageLoader === 'function') window.showPageLoader();
-        });
-    });
-
-    // Restore au mount
-    _restoreSelectionToVisibleRows();
+    // First render
+    _refreshDisplay();
 })();
 </script>
 {% endblock %}
