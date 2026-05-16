@@ -188,30 +188,55 @@ def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
     if not target.is_dir():
         raise HTTPException(404, f"Dossier introuvable : {target}")
 
+    # Sprint 8 hotfix v4 : scandir() est ~10-100x plus rapide que iterdir() sur
+    # Windows car il cache les infos is_dir() + stat() en mémoire à partir
+    # d'UN SEUL syscall par entrée. Avant on faisait 3+ syscalls par fichier
+    # (iterdir + is_dir + stat + resolve). Pour 714 fichiers, on passe de
+    # ~2000 syscalls a ~1 (le scandir initial). Gain perceptible immediat.
     entries: list[FileEntry] = []
+    target_str = str(target)
     try:
-        children = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        with os.scandir(target) as it:
+            raw_entries = list(it)
     except PermissionError:
         raise HTTPException(403, f"Acces refuse : {target}")
 
-    for child in children:
+    # Tri : dossiers d'abord, alpha (insensitif a la casse).
+    # is_dir() sur un DirEntry utilise le cache scandir → pas de syscall.
+    raw_entries.sort(key=lambda e: (not e.is_dir(), e.name.lower()))
+
+    for child in raw_entries:
         # Dossiers caches : on ignore (.git, __pycache__, etc.)
         if child.name.startswith("."):
             continue
-        is_dir = child.is_dir()
-        ext = child.suffix.lower() if not is_dir else ""
+        try:
+            is_dir = child.is_dir()
+        except OSError:
+            continue
+        name = child.name
+        # Extension : substr du nom, pas de syscall.
+        if is_dir or "." not in name:
+            ext = ""
+        else:
+            ext = "." + name.rsplit(".", 1)[-1].lower()
         is_video = (not is_dir) and (ext in VIDEO_EXTS)
         # Filter : dossier OU video (sauf si show_all coche -> on affiche tout).
         if not show_all and not is_dir and not is_video:
             continue
-        try:
-            size = child.stat().st_size if not is_dir else 0
-        except OSError:
-            size = 0
+        # Size : stat() sur DirEntry est cached → 0 syscall supplementaire.
+        size = 0
+        if not is_dir:
+            try:
+                size = child.stat(follow_symlinks=False).st_size
+            except OSError:
+                size = 0
         kind = "dir" if is_dir else _KIND_BY_EXT.get(ext, "other")
+        # Path absolu : on joint juste target + name (target deja resolved).
+        # Evite child.resolve() qui ferait un syscall (readlink, etc.).
+        path_str = os.path.join(target_str, name)
         entries.append(FileEntry(
-            name=child.name,
-            path=str(child.resolve()),
+            name=name,
+            path=path_str,
             is_dir=is_dir,
             size_pretty=_format_size(size) if not is_dir else "",
             is_video=is_video,

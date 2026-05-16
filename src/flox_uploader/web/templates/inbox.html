@@ -722,51 +722,89 @@
         cb.addEventListener('change', _persistSelection);
     });
 
-    // -- Search : redirect server-side avec debounce --
-    const SEARCH_DEBOUNCE_MS = 300;
-    let _searchTimeout = null;
-    function _navigateWithSearch(q) {
+    // -- Search INSTANT cote client + Enter pour search server-side global --
+    // Sprint 8 hotfix v4 : on revient au filtrage client-side instantane
+    // (zero latence) pour les rows actuellement visibles dans la page.
+    // L'user qui veut chercher dans TOUT le dossier (pas juste la page
+    // actuelle) appuie Entree → submit server-side avec ?q=...
+    //
+    // Compromis : si le user a 1000 fichiers et size=50, le search instant
+    // ne voit que 50 rows. Mais Enter ou size=Tout permet de chercher
+    // partout. Le compteur "X / Y sur cette page" signale clairement le
+    // scope du filtre.
+
+    const searchCount = document.getElementById('search-count');
+    function _foldAccents(s) {
+        return (s || '')
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .replace(/œ/g, 'oe').replace(/Œ/g, 'OE')
+            .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
+            .toLowerCase();
+    }
+    function _filterRowsInstant(q) {
+        const tokens = _foldAccents(q.trim()).split(/\s+/).filter(t => t.length > 0);
+        const rows = document.querySelectorAll('tr.entry-row');
+        let visible = 0;
+        const total = rows.length;
+        rows.forEach(row => {
+            const name = _foldAccents(row.dataset.name || '');
+            const ok = tokens.length === 0 || tokens.every(t => name.includes(t));
+            row.style.display = ok ? '' : 'none';
+            if (ok) visible++;
+        });
+        if (searchCount) {
+            if (!q.trim()) {
+                searchCount.textContent = '';
+            } else if (visible === total) {
+                searchCount.textContent = `${visible} sur cette page`;
+            } else {
+                searchCount.textContent = `${visible} / ${total} sur cette page · Entrée pour chercher tout`;
+            }
+        }
+    }
+    function _navigateWithSearchServerSide(q) {
         const url = new URL(window.location);
         if (q) url.searchParams.set('q', q);
         else url.searchParams.delete('q');
-        url.searchParams.delete('page');  // reset a la page 1 sur nouvelle recherche
+        url.searchParams.delete('page');  // reset a la page 1
         if (typeof window.showPageLoader === 'function') window.showPageLoader();
         window.location.href = url.toString();
     }
     if (searchInput) {
+        // Filtrage INSTANT a chaque touche (client-side, zero latence)
         searchInput.addEventListener('input', () => {
-            if (_searchTimeout) clearTimeout(_searchTimeout);
-            const v = searchInput.value.trim();
-            // Si le user a tape quelque chose, on attend qu'il s'arrete avant
-            // de naviguer (sinon on fait un reload a chaque touche -> infernal)
-            _searchTimeout = setTimeout(() => {
-                if (v !== ({{ search_query | tojson }})) {
-                    _navigateWithSearch(v);
-                }
-            }, SEARCH_DEBOUNCE_MS);
+            _filterRowsInstant(searchInput.value);
+            if (searchClear) searchClear.classList.toggle('hidden', !searchInput.value);
         });
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (searchInput.value) {
                     searchInput.value = '';
-                    _navigateWithSearch('');
+                    _filterRowsInstant('');
+                    if (searchClear) searchClear.classList.add('hidden');
+                    // Si on est sur une page avec ?q=... server-side, on retire le filtre
+                    if (({{ search_query | tojson }})) {
+                        _navigateWithSearchServerSide('');
+                    }
                 }
             } else if (e.key === 'Enter') {
-                if (_searchTimeout) clearTimeout(_searchTimeout);
-                _navigateWithSearch(searchInput.value.trim());
+                // Recherche globale sur tout le dossier (server-side, reload page)
+                _navigateWithSearchServerSide(searchInput.value.trim());
             }
         });
     }
     // Bouton "x" pour clear le filtre
     if (searchClear && searchInput) {
-        // Affiche le X si la recherche a quelque chose
         if (searchInput.value) searchClear.classList.remove('hidden');
-        searchInput.addEventListener('input', () => {
-            searchClear.classList.toggle('hidden', !searchInput.value);
-        });
         searchClear.addEventListener('click', () => {
             searchInput.value = '';
-            _navigateWithSearch('');
+            _filterRowsInstant('');
+            searchClear.classList.add('hidden');
+            // Si on est sur une page avec ?q=... server-side, on retire le filtre
+            if (({{ search_query | tojson }})) {
+                _navigateWithSearchServerSide('');
+            }
         });
     }
 
