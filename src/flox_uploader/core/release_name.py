@@ -1507,13 +1507,27 @@ def build_release_name(
             data["year"] = tmdb_release[:4]
             print(f"[INFO] Annee recuperee depuis TMDB : {data['year']}")
 
-    if not data["year"] and not is_tv:
-        die("Impossible de détecter l'année pour le release_name")
-    if not data["year"] and is_tv:
-        print(
-            "[INFO] Pas d'annee detectee (ni nom ni TMDB) pour la serie. "
-            "release_name sera genere sans annee."
-        )
+    if not data["year"]:
+        # Sprint 8 hotfix v7 : avant on faisait die() ici pour les films,
+        # ce qui plantait tout le pipeline et l'user voyait un job "failed"
+        # sans package cree -> impossible d'override le TMDB ID. Maintenant
+        # on emit un signal (penalite -20) et on continue. Le release_name
+        # sortira sans annee (non conforme charte) mais le package est cree
+        # et accessible via la page detail ou l'user peut override le TMDB ID
+        # puis re-preparer pour avoir un release_name correct.
+        from . import naming_signals as _ns_year
+        _ns_year.emit_signal(debug, _ns_year.SIG_YEAR_MISSING, True)
+        if is_tv:
+            print(
+                "[INFO] Pas d'annee detectee (ni nom ni TMDB) pour la serie. "
+                "release_name sera genere sans annee."
+            )
+        else:
+            print(
+                "[AVERTISSEMENT] Pas d'annee detectee pour ce film (ni nom ni TMDB). "
+                "release_name genere sans annee (non conforme charte Gemini). "
+                "Override TMDB ID via la page detail puis re-prepare pour fixer."
+            )
 
     for label, value in [
         ("Langue", lang),
