@@ -13,6 +13,58 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.8] — 2026-05-15
+
+Hotfix Sprint 8 + batch de notes utilisateur. Régression critique du Sprint 8
+réglée + 7 améliorations issues de `NOTES.md`.
+
+### Corrigé
+
+- **🔴 Régression JS Sprint 8** : `tu.toast` / `tu.showPageLoader` étaient
+  cassés par un escape JS invalide dans `tu.buildBugReport` (`'## Message
+  d\\'erreur'` créait une syntax error qui plantait tout le `<script>`).
+  Conséquences en cascade : plus de loader entre les pages, plus de toast
+  de confirmation après "Ajouter à la queue". Fix : remplacement par
+  `"## Message d'erreur"` (double-quotes) + correction des `'\\n'` en `'\n'`.
+- **Navigation Queue → Inbox bloquée pendant une préparation** : ancien
+  handler avec `preventDefault()` + `setTimeout(50ms)` censé fermer les
+  EventSources avant la nav annulait parfois la nav silencieusement.
+  Simplifié : close synchrone, le browser navigue naturellement.
+- **Checkbox "Tous les fichiers" dans Inbox ne filtrait pas correctement** :
+  par défaut on affichait toujours les NFO / posters / sous-titres même
+  quand la checkbox était décochée. Maintenant : décoché = dossiers + vidéos
+  uniquement, coché = tout (NFO, posters, subs, archives, exotiques).
+  Label renommé en "Afficher tout" + tooltip explicatif.
+- **`HE-AAC` / `AAC-LC` sortaient en `He-aac` / `Aac-lc`** : ajout dans
+  `_CANONICAL_CASE` et `_MEDIAINFO_TO_GEMINI_AUDIO_CODEC` pour préserver
+  la casse. Les 3 tokens sont valides selon `rules.json` (Gemini).
+
+### Ajouté
+
+- **Pagination Inbox côté client** : sélecteur `25 / 50 / 100 / 200 / 400 / Tout`
+  (par défaut 50, persisté en localStorage), navigation pages en haut et en bas,
+  numéros de pages style "1 … 4 5 6 … 12" pour les gros dossiers. Sélection
+  conservée à travers les pages. Compatible avec la recherche live et le
+  filtre "Afficher tout". Cachée si 0 élément.
+- **Click n'importe où sur une row Inbox toggle la checkbox** : même UX que
+  Queue. Les clicks sur les liens (navigation sous-dossier) et les boutons
+  sont préservés (pas de double-trigger).
+
+### Modifié
+
+- **Page Config — placeholder secret dynamique** : à l'ouverture, chaque
+  champ secret affiche autant de puces `●` que la vraie clé a de caractères
+  (avant : `***` fixe qui faisait croire que le champ était vide). Le bouton
+  œil reveal toujours la vraie valeur. Détection "non modifié" côté POST
+  accepte l'ancien sentinel `***` (backward compat) et le nouveau format.
+- **Defaults Gemini pré-remplis** : `TRACKER_API_URL = https://gemini-tracker.org/api`
+  et `BANNED_TEAMS = Slay3R, k0RE` arrivent pré-remplis au premier setup.
+  Réduit le travail user vu qu'on ne supporte que Gemini en v1. (Comportement
+  hardcodé compliance.py inchangé : les 2 teams restent bloquées même si
+  l'user vide le champ.)
+
+---
+
 ## [0.3.7] — 2026-05-15
 
 Sprint 8 de `PLAN-V1.md` — **Crash report helper**. Quand quelque chose

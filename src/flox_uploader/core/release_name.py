@@ -98,6 +98,10 @@ _CANONICAL_CASE: dict[str, str] = {
     "HEVC": "HEVC", "AVC": "AVC", "AV1": "AV1", "VC-1": "VC-1",
     # Codecs audio
     "DD": "DD", "DDP": "DDP", "AAC": "AAC", "AC3": "AC3",
+    # NOTES Sprint 8 hotfix : HE-AAC + AAC-LC explicitement listes pour preserver
+    # leur casse (sinon `He-aac` apres capitalize). Les 3 sont valides selon
+    # rules.json (audio_codec_tokens).
+    "HE-AAC": "HE-AAC", "AAC-LC": "AAC-LC",
     "E-AC3": "E-AC3", "DTS": "DTS", "DTS-HD": "DTS-HD",
     "DTS-HDMA": "DTS-HDMA", "DTS-HD.HRA": "DTS-HD.HRA",
     "TRUEHD": "TrueHD", "OPUS": "OPUS", "FLAC": "FLAC",
@@ -1258,6 +1262,12 @@ _MEDIAINFO_TO_GEMINI_AUDIO_CODEC: dict[str, str] = {
     "TRUEHD": "TrueHD",
     "TRUEHD ATMOS": "TrueHD",  # Atmos est dans drop_tokens, donc on garde TrueHD
     "AAC": "AAC",
+    # NOTES Sprint 8 hotfix : MediaInfo distingue HE-AAC (high efficiency)
+    # de AAC-LC (low complexity, standard) du AAC generique. Les 3 sont
+    # valides dans rules.json donc on les preserve tels quels.
+    "HE-AAC": "HE-AAC",
+    "AAC LC": "AAC-LC",
+    "AAC-LC": "AAC-LC",
     "OPUS": "OPUS",
     "FLAC": "FLAC",
     "PCM": "PCM",

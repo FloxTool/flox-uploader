@@ -171,15 +171,19 @@ def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
     """Liste le contenu d'un dossier : sous-dossiers d'abord (alpha), puis
     fichiers d'interet (alpha).
 
-    NOTES round 7 : on affiche maintenant TOUS les fichiers d'interet dans
-    un torrent : video + NFO + posters + sous-titres + archives + .torrent.
-    Toutes les entrees sont selectionnables (pour permettre les bundles
-    non-emboites : film + poster + nfo regroupes en un seul torrent).
+    Filtre :
+    - `show_all=False` (defaut) : dossiers + fichiers video (VIDEO_EXTS) uniquement.
+      Les NFO / posters / sous-titres ne sont PAS visibles par defaut — l'inbox
+      reste claire pour le workflow normal "je selectionne un film a uploader".
+    - `show_all=True` : tout (videos + companions NFO/posters/subs + exotiques
+      .iso/.exe/.bin). Utile pour les bundles non-emboites (film + poster + nfo
+      regroupes en un seul torrent) et pour explorer un dossier inhabituel.
 
-    NOTES round 9 Feat-1 : `show_all=True` retire le filtre extension —
-    permet a l'user d'explorer un dossier qui contient des fichiers
-    "exotiques" (ex : .iso, .img, .exe, .bin) qu'on n'avait pas anticipes.
-    Par defaut on garde le filtre "video + companion" pour reduire le bruit.
+    NOTES Sprint 8 hotfix : la note Louis disait que les NFO/JPEG apparaissaient
+    par defaut alors que la checkbox "Tous les fichiers" etait decochee. C'etait
+    le comportement "round 7" qui exposait les companions sans toggle. On
+    revient a un defaut plus strict (videos seulement) ; les companions
+    redeviennent accessibles via la checkbox.
     """
     if not target.is_dir():
         raise HTTPException(404, f"Dossier introuvable : {target}")
@@ -197,8 +201,8 @@ def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
         is_dir = child.is_dir()
         ext = child.suffix.lower() if not is_dir else ""
         is_video = (not is_dir) and (ext in VIDEO_EXTS)
-        # Filter : dossier OU extension dans INBOX_EXTS (sauf si show_all)
-        if not show_all and not is_dir and ext not in INBOX_EXTS:
+        # Filter : dossier OU video (sauf si show_all coche -> on affiche tout).
+        if not show_all and not is_dir and not is_video:
             continue
         try:
             size = child.stat().st_size if not is_dir else 0
@@ -1410,12 +1414,22 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config")
     def api_config_get():
-        """Retourne les valeurs courantes (secrets masques par defaut)."""
-        from .config_view import read_env_values, SECRET_PLACEHOLDER, SCHEMA
+        """Retourne les valeurs courantes (secrets masques par defaut).
+
+        NOTES Sprint 8 hotfix : pour les secrets non vides, on retourne
+        `"●" * len(value)` (autant de puces que de caracteres). Donne un
+        retour visuel coherent (32 chars => 32 puces) au lieu de "***" fixe
+        qui peut faire croire que la cle est vide.
+        """
+        from .config_view import read_env_values, masked_secret_value, SCHEMA
         values = read_env_values()
         return {
             "values": {
-                f.key: (SECRET_PLACEHOLDER if (f.is_secret and values.get(f.key)) else values.get(f.key, ""))
+                f.key: (
+                    masked_secret_value(values.get(f.key, ""))
+                    if f.is_secret
+                    else values.get(f.key, "")
+                )
                 for f in SCHEMA
             },
         }

@@ -762,13 +762,13 @@
             const combined = [errorTitle, errorMessage].filter(Boolean).join(' — ');
             if (combined) {
                 lines.push('');
-                lines.push('## Message d\\'erreur');
+                lines.push("## Message d'erreur");
                 lines.push('```');
-                const truncated = combined.length > 2000 ? combined.slice(0, 2000) + '\\n... (tronque)' : combined;
+                const truncated = combined.length > 2000 ? combined.slice(0, 2000) + '\n... (tronque)' : combined;
                 lines.push(truncated);
                 lines.push('```');
             }
-            return lines.join('\\n');
+            return lines.join('\n');
         };
         tu.openBugReport = function({errorTitle = '', errorMessage = ''} = {}) {
             const d = window.APP_DIAGNOSTIC || {};

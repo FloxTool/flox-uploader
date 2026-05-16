@@ -883,15 +883,16 @@
     }
     window.addEventListener('beforeunload', _closeAllEventSources);
     window.addEventListener('pagehide', _closeAllEventSources);
+    // Sprint 8 hotfix : on ferme synchrones, on laisse le browser naviguer
+    // naturellement. L'ancienne logique faisait `preventDefault() + setTimeout(50ms)
+    // + window.location.href = href`, ce qui dans certains cas annulait la nav
+    // (symptome observe : loader apparait puis disparait, l'user reste sur /queue
+    // sans message d'erreur). close() est synchrone cote browser donc les sockets
+    // sont liberes immediatement, pas besoin d'orchestrer la nav nous-memes.
     document.querySelectorAll('a[href]').forEach(link => {
         const href = link.getAttribute('href') || '';
         if (!href.startsWith('/') || link.target === '_blank') return;
-        link.addEventListener('click', (ev) => {
-            if (_openEventSources.size === 0) return;
-            ev.preventDefault();
-            _closeAllEventSources();
-            setTimeout(() => { window.location.href = href; }, 50);
-        }, { once: true });
+        link.addEventListener('click', _closeAllEventSources);
     });
 
     // === Clear upload (X button on done/failed uploads) ===

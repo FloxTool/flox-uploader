@@ -93,16 +93,19 @@
             </div>
             <span id="search-count" class="text-xs text-slate-500 dark:text-slate-400"></span>
 
-            {# NOTES round 9 Feat-1 : toggle "Afficher tous les types de fichiers".
-               Par defaut OFF -> on liste video + companion uniquement (signal-to-noise).
-               Quand ON -> on affiche egalement les .iso, .bin, .exe et tout le reste.
+            {# NOTES Sprint 8 hotfix : toggle "Afficher aussi les NFO, posters, sous-titres".
+               Par defaut OFF -> on liste dossiers + videos uniquement (signal-to-noise
+               maximal pour le workflow normal). Quand ON -> on affiche egalement les
+               NFO, posters, sous-titres, archives, .torrent, .iso, .bin, .exe et tout
+               le reste (utile pour les bundles non-emboites et pour explorer un dossier
+               inhabituel).
                Persiste en localStorage tu_inbox_show_all. Recharge la page avec
                ?show_all=1 ou retire le param. #}
             <label class="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none"
-                   data-tu-tooltip="Affiche les fichiers de tout type (par défaut : vidéos + companions seulement)">
+                   data-tu-tooltip="Par défaut : dossiers et fichiers vidéo seulement. Coche pour voir aussi les NFO, posters, sous-titres et autres fichiers (utile pour packager un bundle film + NFO + poster).">
                 <input type="checkbox" id="inbox-show-all-toggle" {% if show_all %}checked{% endif %}
                        class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
-                <span>Tous les fichiers</span>
+                <span>Afficher tout</span>
             </label>
 
             <div class="ml-auto flex items-center gap-2.5">
@@ -199,6 +202,9 @@
             action_href=('/inbox?path=' ~ parent_path) if parent_path else None
         ) }}
     {% else %}
+        {# NOTES Sprint 8 hotfix : barre de pagination (top + bottom).
+           Genere cote JS (cf. _renderPaginationBars). Cachee si <= 1 page. #}
+        <div class="inbox-pagination-bar hidden mb-3" data-position="top"></div>
         <table class="w-full text-sm">
             <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
                 <tr>
@@ -251,6 +257,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        <div class="inbox-pagination-bar hidden mt-3" data-position="bottom"></div>
     {% endif %}
 </div>
 
@@ -359,6 +366,27 @@
             refreshSelection();
         });
     }
+
+    // Sprint 8 hotfix : click n'importe ou sur la row toggle la checkbox.
+    // Meme pattern que queue.html : on ignore les zones interactives (lien
+    // de navigation vers un sous-dossier, checkbox elle-meme, bouton, label)
+    // pour ne pas double-trigger. Le td de la checkbox a deja
+    // `onclick="event.stopPropagation()"` donc on n'a pas a se soucier des
+    // clicks dessus — ils ne remontent pas a la row.
+    document.querySelectorAll('.entry-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('a, button, input, label')) return;
+            const cb = row.querySelector('.file-checkbox');
+            if (!cb) return;
+            cb.checked = !cb.checked;
+            // Dispatch change pour que refreshSelection / shift-click handlers
+            // soient notifies comme si l'user avait clique la checkbox direct.
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        // Visuellement : indique que la row est cliquable. Le hover existe
+        // deja sur .entry-row (bg-slate-50), on ajoute juste cursor-pointer.
+        row.style.cursor = 'pointer';
+    });
 
     // Shift+click range select
     let lastClickedIdx = -1;
@@ -588,7 +616,10 @@
         });
     }
 
-    // Recherche live (accent-insensitive)
+    // Recherche live (accent-insensitive) + Sprint 8 hotfix : pagination
+    // client-side. Les deux interagissent via _refreshDisplay() qui combine
+    // le filtre recherche (data-searchHidden=1) et la pagination (slice
+    // sur les rows visibles apres filtre).
     const searchInput = document.getElementById('search-input');
     const searchCount = document.getElementById('search-count');
     const allRows = () => document.querySelectorAll('tr.entry-row');
@@ -600,29 +631,207 @@
             .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
             .toLowerCase();
     }
-    function applySearch() {
-        if (!searchInput) return;
-        const q = _foldAccents(searchInput.value).trim();
-        const tokens = q.split(/\s+/).filter(t => t.length > 0);
-        let visible = 0;
-        let total = 0;
-        allRows().forEach(row => {
-            total++;
-            const name = _foldAccents(row.dataset.name || '');
-            const ok = tokens.every(t => name.includes(t));
-            row.style.display = ok ? '' : 'none';
-            if (ok) visible++;
+
+    // === Pagination ===
+    // Sprint 8 hotfix : sur les gros dossiers (500+ fichiers), rendre 500
+    // checkboxes + leur metadata fait ramer le navigateur. La pagination
+    // est cote client (le serveur renvoie tout, le DOM est tout en place,
+    // on cache simplement les rows hors page). Avantage : la selection est
+    // conservee a travers les pages, les filtres marchent globalement.
+    const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 400, 'all'];
+    const STORAGE_KEY_PAGE_SIZE = 'tu_inbox_page_size';
+    const DEFAULT_PAGE_SIZE = 50;
+    let _currentPage = 1;
+    let _pageSize = DEFAULT_PAGE_SIZE;
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY_PAGE_SIZE);
+        if (stored === 'all') _pageSize = 'all';
+        else {
+            const n = parseInt(stored, 10);
+            if (PAGE_SIZE_OPTIONS.includes(n)) _pageSize = n;
+        }
+    } catch (e) {}
+
+    function _rowsAfterSearchFilter() {
+        // Rows qui passent le filtre recherche. Si data-search-hidden=1
+        // sur la row, elle est cachee par la recherche.
+        return Array.from(allRows()).filter(r => r.dataset.searchHidden !== '1');
+    }
+
+    function _pageNumbersToShow(current, totalPages) {
+        // Genere la liste des numeros de page a afficher : toujours premier,
+        // dernier, courant ±2, et "..." entre les groupes. Max ~9 entrees.
+        if (totalPages <= 7) {
+            return Array.from({length: totalPages}, (_, i) => i + 1);
+        }
+        const pages = new Set([1, totalPages, current]);
+        for (let d = 1; d <= 2; d++) {
+            if (current - d >= 1) pages.add(current - d);
+            if (current + d <= totalPages) pages.add(current + d);
+        }
+        const sorted = Array.from(pages).sort((a, b) => a - b);
+        const result = [];
+        for (let i = 0; i < sorted.length; i++) {
+            if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+            result.push(sorted[i]);
+        }
+        return result;
+    }
+
+    function _buildPaginationHTML(total, current, totalPages) {
+        // Texte d'etat : "Afficher 51 - 100 sur 234"
+        let rangeText;
+        if (_pageSize === 'all' || total === 0) {
+            rangeText = `${total} élément${total > 1 ? 's' : ''}`;
+        } else {
+            const start = (current - 1) * _pageSize + 1;
+            const end = Math.min(current * _pageSize, total);
+            rangeText = `${start}–${end} sur ${total}`;
+        }
+
+        // Selecteur de page size
+        const sizeOptionsHTML = PAGE_SIZE_OPTIONS.map(opt => {
+            const sel = (opt === _pageSize) ? 'selected' : '';
+            const label = (opt === 'all') ? 'Tout' : String(opt);
+            return `<option value="${opt}" ${sel}>${label}</option>`;
+        }).join('');
+
+        // Boutons navigation
+        let navHTML = '';
+        if (_pageSize !== 'all' && totalPages > 1) {
+            const disPrev = current === 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
+            const disNext = current === totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
+            const btnBase = 'inline-flex items-center justify-center h-7 min-w-7 px-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors';
+            navHTML = `
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="1" ${current === 1 ? 'disabled' : ''} title="Première page">«</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="${current - 1}" ${current === 1 ? 'disabled' : ''} title="Page précédente">‹</button>
+            `;
+            for (const p of _pageNumbersToShow(current, totalPages)) {
+                if (p === '...') {
+                    navHTML += `<span class="text-slate-400 dark:text-slate-500 px-1">…</span>`;
+                } else {
+                    const active = p === current
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700';
+                    navHTML += `<button type="button" class="pagination-btn ${btnBase} ${active}" data-page="${p}">${p}</button>`;
+                }
+            }
+            navHTML += `
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${current + 1}" ${current === totalPages ? 'disabled' : ''} title="Page suivante">›</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${totalPages}" ${current === totalPages ? 'disabled' : ''} title="Dernière page">»</button>
+            `;
+        }
+
+        return `
+            <div class="flex items-center justify-between gap-3 flex-wrap text-xs text-slate-600 dark:text-slate-400">
+                <div class="inline-flex items-center gap-2">
+                    <label class="inline-flex items-center gap-1.5">
+                        <span>Afficher</span>
+                        <select class="pagination-size bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded h-7 text-xs px-1.5">
+                            ${sizeOptionsHTML}
+                        </select>
+                    </label>
+                    <span class="text-slate-500 dark:text-slate-500">·</span>
+                    <span class="tabular-nums">${rangeText}</span>
+                </div>
+                ${navHTML ? `<div class="inline-flex items-center gap-1">${navHTML}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function _renderPaginationBars(total, current, totalPages) {
+        const html = _buildPaginationHTML(total, current, totalPages);
+        document.querySelectorAll('.inbox-pagination-bar').forEach(bar => {
+            bar.innerHTML = html;
+            // Cache la barre si pas de pagination utile (1 page et size != all)
+            const needed = _pageSize === 'all' ? total > 0 : totalPages > 1 || _pageSize !== DEFAULT_PAGE_SIZE;
+            // On affiche toujours la barre des qu'il y a > 0 elements pour
+            // laisser le user changer le page size meme avec peu d'items.
+            bar.classList.toggle('hidden', total === 0);
+
+            // Bind events sur cette barre
+            const sizeSelect = bar.querySelector('.pagination-size');
+            if (sizeSelect) {
+                sizeSelect.addEventListener('change', () => {
+                    const v = sizeSelect.value;
+                    _pageSize = (v === 'all') ? 'all' : parseInt(v, 10);
+                    try {
+                        localStorage.setItem(STORAGE_KEY_PAGE_SIZE, String(_pageSize));
+                    } catch (e) {}
+                    _currentPage = 1;
+                    _refreshDisplay();
+                });
+            }
+            bar.querySelectorAll('.pagination-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const p = parseInt(btn.dataset.page, 10);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                        _currentPage = p;
+                        _refreshDisplay();
+                        // Scroll en haut pour que l'user voit le debut de la page
+                        const main = document.getElementById('main-content');
+                        if (main) main.scrollTo({top: 0, behavior: 'smooth'});
+                    }
+                });
+            });
         });
+    }
+
+    function _refreshDisplay() {
+        // 1. Applique le filtre recherche (marque data-searchHidden)
+        const q = searchInput ? _foldAccents(searchInput.value).trim() : '';
+        const tokens = q.split(/\s+/).filter(t => t.length > 0);
+        let totalAll = 0;
+        allRows().forEach(row => {
+            totalAll++;
+            const name = _foldAccents(row.dataset.name || '');
+            const ok = tokens.length === 0 || tokens.every(t => name.includes(t));
+            if (ok) delete row.dataset.searchHidden;
+            else row.dataset.searchHidden = '1';
+        });
+
+        // 2. Applique la pagination sur les rows qui ont passe le filtre
+        const candidates = _rowsAfterSearchFilter();
+        const totalVisible = candidates.length;
+
+        if (_pageSize === 'all') {
+            allRows().forEach(r => {
+                r.style.display = r.dataset.searchHidden === '1' ? 'none' : '';
+            });
+            _renderPaginationBars(totalVisible, 1, 1);
+        } else {
+            const totalPages = Math.max(1, Math.ceil(totalVisible / _pageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+            const start = (_currentPage - 1) * _pageSize;
+            const end = start + _pageSize;
+            // Reset toutes les rows : caches par defaut
+            allRows().forEach(r => { r.style.display = 'none'; });
+            // Affiche celles dans la page courante (parmi candidates)
+            candidates.slice(start, end).forEach(r => { r.style.display = ''; });
+            _renderPaginationBars(totalVisible, _currentPage, totalPages);
+        }
+
         if (searchCount) {
-            searchCount.textContent = q ? `${visible} / ${total} visible(s)` : '';
+            searchCount.textContent = q ? `${totalVisible} / ${totalAll} visible(s)` : '';
         }
     }
+
     if (searchInput) {
-        searchInput.addEventListener('input', applySearch);
+        searchInput.addEventListener('input', () => {
+            _currentPage = 1;  // reset a la page 1 quand on tape une recherche
+            _refreshDisplay();
+        });
         searchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { searchInput.value = ''; applySearch(); }
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                _currentPage = 1;
+                _refreshDisplay();
+            }
         });
     }
+
+    // First render
+    _refreshDisplay();
 })();
 </script>
 {% endblock %}

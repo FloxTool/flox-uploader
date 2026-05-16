@@ -56,16 +56,13 @@ Bref : sois un collaborateur qui pense, pas un exécutant qui transcrit.
 # Bug : ça plante / résultat faux / régression
 
 
-
 # Release name : un cas où le nom généré n'est pas conforme à la charte Gemini
-- La.Famille.Belier.2014.VOF.1080p.BluRay.5.1.He-aac.x265-FROSTIES je pense que on devrait avoir HE-AAC en maj ? en fait je ne sais meme pas si HE-AAC est accepté par gemini, peux tu verifier ? est-ce qu'on garde juste AAC ?
 
 
 #  UX/UI : truc moche, pas évident, manque, friction
 
 
 # Feature : envie de quelque chose qui n'existe pas
-
 
 
 # Question : pas sûr du comportement attendu
