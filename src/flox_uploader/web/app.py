@@ -1228,24 +1228,162 @@ def create_app() -> FastAPI:
             "updated_keys": sorted(updates.keys()),
         }
 
+    def _build_inbox_url(
+        *,
+        current_path: str,
+        show_all: bool,
+        page: int,
+        size: str,
+        q: str,
+    ) -> str:
+        """Construit une URL /inbox avec les params donnes (escape correct)."""
+        from urllib.parse import urlencode
+        params: dict[str, str] = {}
+        if current_path:
+            params["path"] = current_path
+        if show_all:
+            params["show_all"] = "1"
+        if page > 1:
+            params["page"] = str(page)
+        if size != "50":  # default
+            params["size"] = size
+        if q:
+            params["q"] = q
+        return "/inbox" + (f"?{urlencode(params)}" if params else "")
+
+    def _compute_pagination_links(
+        *,
+        current: int,
+        total_pages: int,
+        current_path: str,
+        show_all: bool,
+        size: str,
+        q: str,
+    ) -> list[dict]:
+        """Genere les liens de navigation pagination : <<, <, [pages], >, >>.
+
+        Affiche au max ~9 entrees (1 ... 4 5 6 ... 12). Pour les pages 1 et N,
+        les liens precedent/suivant sont disabled. Les ellipsis ('…') sont
+        marquees `is_ellipsis=True`."""
+        if total_pages <= 1:
+            return []
+
+        def url(p: int) -> str:
+            return _build_inbox_url(
+                current_path=current_path, show_all=show_all,
+                page=p, size=size, q=q,
+            )
+
+        items: list[dict] = []
+        # Premiere + Precedente
+        items.append({"label": "«", "url": url(1), "is_disabled": current == 1, "title": "Première page"})
+        items.append({"label": "‹", "url": url(max(1, current - 1)), "is_disabled": current == 1, "title": "Page précédente"})
+
+        # Calcul des numeros de pages a afficher
+        if total_pages <= 7:
+            page_nums = list(range(1, total_pages + 1))
+        else:
+            pages_set = {1, total_pages, current}
+            for d in (1, 2):
+                if current - d >= 1:
+                    pages_set.add(current - d)
+                if current + d <= total_pages:
+                    pages_set.add(current + d)
+            page_nums = sorted(pages_set)
+
+        prev_num = 0
+        for p in page_nums:
+            if p - prev_num > 1:
+                items.append({"label": "…", "is_ellipsis": True})
+            items.append({"label": str(p), "url": url(p), "is_active": p == current})
+            prev_num = p
+
+        # Suivante + Derniere
+        items.append({"label": "›", "url": url(min(total_pages, current + 1)), "is_disabled": current == total_pages, "title": "Page suivante"})
+        items.append({"label": "»", "url": url(total_pages), "is_disabled": current == total_pages, "title": "Dernière page"})
+        return items
+
     @app.get("/inbox", response_class=HTMLResponse)
-    def page_inbox(request: Request, path: str | None = None, show_all: int = 0):
+    def page_inbox(
+        request: Request,
+        path: str | None = None,
+        show_all: int = 0,
+        page: int = 1,
+        size: str = "50",
+        q: str = "",
+    ):
         """Browser de fichiers : navigation + selection multi pour ajouter
         a la queue.
 
-        NOTES round 9 Feat-1 : `?show_all=1` retire le filtre extension et
-        affiche tous les fichiers (utile quand on cherche des .iso ou
-        fichiers exotiques). Le toggle UI persiste la preference en
-        localStorage et ajoute / retire le query param.
+        Sprint 8 hotfix : pagination server-side. Avant on rendait tout
+        en HTML, ce qui faisait ramer le browser sur les gros dossiers
+        (714+ fichiers). Maintenant on slice cote serveur et on rend
+        seulement `size` rows. La pagination + le search se font via
+        navigation URL (?page=N&size=K&q=...).
+
+        Params :
+        - `path` : dossier a lister
+        - `show_all` : 0|1, affiche aussi NFO/poster/sub/exotiques si 1
+        - `page` : numero de page (1-based, defaut 1)
+        - `size` : taille de page ("25" / "50" / "100" / "200" / "400" / "all")
+        - `q` : recherche multi-token accent-insensitive (server-side)
         """
+        # Normalisation params
+        if page < 1:
+            page = 1
+        page_size: int | None  # None = pas de pagination (size=all)
+        if size == "all":
+            page_size = None
+        else:
+            try:
+                page_size = int(size)
+                if page_size < 1 or page_size > 2000:
+                    page_size = 50
+            except (ValueError, TypeError):
+                page_size = 50
+
         target = _safe_resolve_path(path) if path else _browse_root()
         try:
-            entries = _list_directory(target, show_all=bool(show_all))
+            all_entries = _list_directory(target, show_all=bool(show_all))
         except HTTPException as e:
-            entries = []
+            all_entries = []
             error = e.detail
         else:
             error = None
+
+        # Filtre recherche server-side (accent-insensitive, multi-token).
+        # Reproduit la logique JS _foldAccents() pour garder un comportement
+        # coherent : "deja" matche "déjà", etc.
+        if q.strip():
+            import unicodedata
+
+            def _fold(s: str) -> str:
+                normalized = unicodedata.normalize("NFD", s.lower())
+                without_accents = "".join(c for c in normalized if not unicodedata.combining(c))
+                return (without_accents
+                        .replace("œ", "oe").replace("æ", "ae"))
+            tokens = [t for t in _fold(q.strip()).split() if t]
+            filtered = [
+                e for e in all_entries
+                if all(t in _fold(e.name) for t in tokens)
+            ]
+        else:
+            filtered = all_entries
+
+        # Pagination server-side
+        total = len(filtered)
+        if page_size is None:
+            # size=all : on retourne tout
+            page_entries = filtered
+            total_pages = 1
+            page = 1
+        else:
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            if page > total_pages:
+                page = total_pages
+            start = (page - 1) * page_size
+            page_entries = filtered[start:start + page_size]
+
         crumbs: list[dict[str, str]] = []
         cur = target
         while True:
@@ -1254,18 +1392,56 @@ def create_app() -> FastAPI:
                 break
             cur = cur.parent
         crumbs.reverse()
+
+        # Liens de navigation pagination (server-side, pas de JS pour les construire)
+        pagination_links = _compute_pagination_links(
+            current=page, total_pages=total_pages,
+            current_path=str(target), show_all=bool(show_all),
+            size=size, q=q,
+        )
+        # URLs pre-calcules pour le selecteur de page-size (change la size, reset page=1)
+        size_options = []
+        for opt in ["25", "50", "100", "200", "400", "all"]:
+            size_options.append({
+                "value": opt,
+                "label": "Tout" if opt == "all" else opt,
+                "url": _build_inbox_url(
+                    current_path=str(target), show_all=bool(show_all),
+                    page=1, size=opt, q=q,
+                ),
+                "is_active": opt == size,
+            })
+        # Range pour le compteur "X-Y sur Z"
+        if size == "all" or total == 0:
+            range_start = 1 if total > 0 else 0
+            range_end = total
+        else:
+            ps = int(size) if size != "all" else total
+            range_start = (page - 1) * ps + 1
+            range_end = min(page * ps, total)
+
         return templates.TemplateResponse(
             request,
             "inbox.html",
             {
                 "page": "inbox",
                 "current_path": str(target),
-                "entries": entries,
+                "entries": page_entries,
                 "crumbs": crumbs,
                 "parent_path": str(target.parent) if target.parent != target else None,
                 "error": error,
                 "quick_roots": _list_quick_roots(),
                 "show_all": bool(show_all),
+                # Pagination
+                "current_page": page,
+                "page_size": size,
+                "total_entries": total,
+                "total_pages": total_pages,
+                "search_query": q,
+                "pagination_links": pagination_links,
+                "size_options": size_options,
+                "range_start": range_start,
+                "range_end": range_end,
             },
         )
 
