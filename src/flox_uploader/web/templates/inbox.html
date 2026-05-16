@@ -55,6 +55,20 @@
                            placeholder="Tape un chemin et appuie sur Entrée">
                 </div>
                 {{ button('Aller', type='submit', id='path-go-btn', variant='secondary', size='sm') }}
+                {# Sprint 8 hotfix v6 : bouton ★ pour ajouter le dossier courant
+                   aux favoris (BROWSE_ROOTS dans .env). Toggle add/remove. #}
+                <button id="favorite-toggle-btn" type="button"
+                        data-is-favorite="{{ '1' if is_current_favorite else '0' }}"
+                        data-tu-tooltip="{{ 'Retirer ce dossier des favoris' if is_current_favorite else 'Ajouter ce dossier aux favoris (apparait dans la sidebar inbox)' }}"
+                        class="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border transition-colors duration-fast
+                               {% if is_current_favorite %}
+                                   border-warning-300 dark:border-warning-700 bg-warning-50 dark:bg-warning-900/30 text-warning-700 dark:text-warning-300 hover:bg-warning-100 dark:hover:bg-warning-900/50
+                               {% else %}
+                                   border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700
+                               {% endif %}">
+                    {{ icon('star', size='sm') }}
+                    <span class="hidden sm:inline">{{ 'Favori' if is_current_favorite else 'Ajouter aux favoris' }}</span>
+                </button>
             </form>
         </div>
 
@@ -620,6 +634,51 @@
             if (target) {
                 if (typeof window.showPageLoader === 'function') window.showPageLoader();
                 window.location.href = '/inbox?path=' + encodeURIComponent(target);
+            }
+        });
+    }
+
+    // Sprint 8 hotfix v6 : bouton "Ajouter aux favoris" / "Favori"
+    // Toggle BROWSE_ROOTS dans .env et reload pour rafraichir la sidebar.
+    const favoriteBtn = document.getElementById('favorite-toggle-btn');
+    if (favoriteBtn) {
+        favoriteBtn.addEventListener('click', async () => {
+            const currentPath = ({{ current_path | tojson }});
+            favoriteBtn.disabled = true;
+            try {
+                const resp = await fetch('/api/inbox/favorites/toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: currentPath}),
+                });
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    throw new Error(text || 'Erreur HTTP ' + resp.status);
+                }
+                const data = await resp.json();
+                tu.toast({
+                    title: data.is_favorite ? 'Ajouté aux favoris' : 'Retiré des favoris',
+                    message: data.is_favorite
+                        ? 'Ce dossier apparaît maintenant dans les raccourcis de la sidebar.'
+                        : 'Ce dossier n\'apparaît plus dans les raccourcis.',
+                    tone: 'success',
+                    duration: 3000,
+                });
+                // Reload pour rafraichir la sidebar (quick_roots) + le bouton.
+                // On garde un petit delai pour que le toast soit visible avant
+                // le reload.
+                setTimeout(() => {
+                    if (typeof window.showPageLoader === 'function') window.showPageLoader();
+                    window.location.reload();
+                }, 400);
+            } catch (e) {
+                tu.toast({
+                    title: 'Erreur',
+                    message: String(e.message || e),
+                    tone: 'danger',
+                    duration: 6000,
+                });
+                favoriteBtn.disabled = false;
             }
         });
     }

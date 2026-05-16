@@ -54,7 +54,7 @@ Bref : sois un collaborateur qui pense, pas un exécutant qui transcrit.
 ## Notes
 
 # Bug : ça plante / résultat faux / régression
-
+- [À INVESTIGUER avec le log] Le package "Cours Lola Cours (Lola rennt) ..." reste bloqué en "preparing". Le pipeline continue déjà même sans TMDB match (pipeline.py:186), donc le blocage doit être ailleurs. **Pour creuser : Louis, peux-tu cliquer sur 📜 dans la queue pour le job bloqué et me copier le log ?** Workaround immédiat : page détail du package → override TMDB ID = 104 (Lola rennt) → reprepare.
 
 # Release name : un cas où le nom généré n'est pas conforme à la charte Gemini
 

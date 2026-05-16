@@ -158,20 +158,27 @@ def _normalize_token_case(token: str) -> str:
     if re.match(r"^\d+(\.\d+)?$", token):
         return token
 
-    # Codec audio compose : codec + (sep optionnel) + channels X.Y
-    # Exemples : DTS2.0, DDP5.1, AAC2.0, AC35.1, E-AC3.5.1, DTS-HD.MA, TrueHD7.1
+    # Codec audio compose : codec + (sep optionnel) + channels.
+    # Deux familles de channels selon la charte Gemini :
+    #   - Numerical : 1.0, 2.0, 4.0, 5.1, 6.1, 7.1
+    #     Exemples : DDP5.1, E-AC3.5.1, TrueHD7.1, DTS2.0
+    #   - CH-suffix : 2CH, 6CH, 8CH (toujours en MAJUSCULES)
+    #     Exemples : AAC6CH, DDP8CH, AC32CH
     # Le codec peut contenir des tirets (E-AC3, DTS-HD), des chiffres (AC3, MP3),
     # mais doit commencer par une lettre.
     audio_match = re.match(
-        r"^([A-Za-z][A-Za-z0-9-]*?)(\.?)([0-9]\.[0-9])$",
+        r"^([A-Za-z][A-Za-z0-9-]*?)(\.?)(\d\.\d|\d{1,2}CH)$",
         token,
+        re.IGNORECASE,
     )
     if audio_match:
         codec_part, sep, channels = audio_match.groups()
         codec_canonical = _CANONICAL_CASE.get(
             codec_part.upper(), codec_part.upper()
         )
-        return f"{codec_canonical}{sep}{channels}"
+        # Channels : numerical garde sa forme (5.1 reste 5.1), CH-suffix
+        # forcement en MAJUSCULES selon la charte (6ch -> 6CH).
+        return f"{codec_canonical}{sep}{channels.upper()}"
 
     # Mots du titre : capitalize la premiere lettre, garde le reste lowercase
     return token[0].upper() + token[1:].lower()

@@ -1253,6 +1253,27 @@ def create_app() -> FastAPI:
             "updated_keys": sorted(updates.keys()),
         }
 
+    def _is_path_in_favorites(target_path: str) -> bool:
+        """True si `target_path` est dans BROWSE_ROOTS (separe par `;`).
+
+        Comparaison sur la chaine normalisee (resolved) pour eviter les
+        faux negatifs entre "C:/Foo" et "C:\\Foo" ou "C:/Foo/".
+        """
+        custom = os.getenv("BROWSE_ROOTS", "").strip()
+        if not custom:
+            return False
+        normalized_target = str(Path(target_path).resolve()).rstrip("\\/")
+        for raw in custom.split(";"):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                if str(Path(raw).resolve()).rstrip("\\/") == normalized_target:
+                    return True
+            except OSError:
+                continue
+        return False
+
     @app.get("/inbox", response_class=HTMLResponse)
     def page_inbox(request: Request, path: str | None = None, show_all: int = 0):
         """Browser de fichiers : navigation + selection multi pour ajouter
@@ -1301,8 +1322,64 @@ def create_app() -> FastAPI:
                 "error": error,
                 "quick_roots": _list_quick_roots(),
                 "show_all": bool(show_all),
+                # NOTES Sprint 8 hotfix v6 : indique si le dossier courant est
+                # deja un favori. Le bouton "Ajouter aux favoris" dans le
+                # header devient "Retirer des favoris" si vrai.
+                "is_current_favorite": _is_path_in_favorites(str(target)),
             },
         )
+
+    @app.post("/api/inbox/favorites/toggle")
+    def api_inbox_favorites_toggle(payload: dict[str, Any]):
+        """Sprint 8 hotfix v6 : toggle un dossier dans BROWSE_ROOTS.
+
+        Permet d'ajouter / retirer un favori directement depuis la page
+        Inbox sans passer par /config. Le BROWSE_ROOTS est ecrit dans le
+        .env (persistant) ET applique a os.environ (effet immediat).
+        """
+        target_path = (payload.get("path") or "").strip()
+        if not target_path:
+            raise HTTPException(400, "Path requis")
+        # Valide que c'est un dossier reel sur disque
+        try:
+            target = Path(target_path).resolve()
+        except OSError:
+            raise HTTPException(400, f"Path invalide : {target_path}")
+        if not target.is_dir():
+            raise HTTPException(400, f"Pas un dossier : {target_path}")
+        target_str = str(target).rstrip("\\/")
+
+        from .config_view import write_env_values, apply_updates
+        current = os.getenv("BROWSE_ROOTS", "").strip()
+        # Liste actuelle avec chemins normalises pour la dedup
+        paths_raw = [p.strip() for p in current.split(";") if p.strip()] if current else []
+        paths_normalized: list[str] = []
+        seen: set[str] = set()
+        for p in paths_raw:
+            try:
+                norm = str(Path(p).resolve()).rstrip("\\/")
+            except OSError:
+                continue
+            if norm not in seen:
+                seen.add(norm)
+                paths_normalized.append(norm)
+
+        is_currently_favorite = target_str in seen
+        if is_currently_favorite:
+            paths_normalized = [p for p in paths_normalized if p != target_str]
+            action = "removed"
+        else:
+            paths_normalized.append(target_str)
+            action = "added"
+
+        new_value = ";".join(paths_normalized)
+        write_env_values({"BROWSE_ROOTS": new_value})
+        apply_updates({"BROWSE_ROOTS": new_value})
+        return {
+            "is_favorite": not is_currently_favorite,
+            "action": action,
+            "favorites_count": len(paths_normalized),
+        }
 
     @app.get("/history", response_class=HTMLResponse)
     def page_history(request: Request):
