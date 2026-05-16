@@ -54,18 +54,15 @@ Bref : sois un collaborateur qui pense, pas un exécutant qui transcrit.
 ## Notes
 
 # Bug : ça plante / résultat faux / régression
-
-
+- [À INVESTIGUER avec le log] Le package "Cours Lola Cours (Lola rennt) ..." reste bloqué en "preparing". Le pipeline continue déjà même sans TMDB match (pipeline.py:186), donc le blocage doit être ailleurs. **Pour creuser : Louis, peux-tu cliquer sur 📜 dans la queue pour le job bloqué et me copier le log ?** Workaround immédiat : page détail du package → override TMDB ID = 104 (Lola rennt) → reprepare.
 
 # Release name : un cas où le nom généré n'est pas conforme à la charte Gemini
-- La.Famille.Belier.2014.VOF.1080p.BluRay.5.1.He-aac.x265-FROSTIES je pense que on devrait avoir HE-AAC en maj ? en fait je ne sais meme pas si HE-AAC est accepté par gemini, peux tu verifier ? est-ce qu'on garde juste AAC ?
 
 
 #  UX/UI : truc moche, pas évident, manque, friction
 
 
 # Feature : envie de quelque chose qui n'existe pas
-
 
 
 # Question : pas sûr du comportement attendu

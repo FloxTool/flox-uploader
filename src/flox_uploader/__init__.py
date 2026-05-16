@@ -37,6 +37,17 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.8 : Sprint 8 hotfix — fixes JS escape (regression Sprint 8 qui
+#           cassait tu.toast / tu.showPageLoader) + 7 notes NOTES.md :
+#           (1) checkbox inbox "Afficher tout" : par defaut on n'affiche
+#           que dossiers + videos, les NFO/poster/sub sous le toggle ;
+#           (2) navigation Queue->Inbox debloquee (suppression preventDefault
+#           + setTimeout fragile) ; (3) HE-AAC / AAC-LC preserves en
+#           majuscules ; (4) secret placeholder dynamique : autant de
+#           puces que de caracteres ; (5) defaults Gemini pre-remplis
+#           (TRACKER_API_URL, BANNED_TEAMS) ; (6) pagination Inbox
+#           client-side (25/50/100/200/400/Tout, page navigation) ;
+#           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.7"
+__version__ = "0.3.8"

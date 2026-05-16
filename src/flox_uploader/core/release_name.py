@@ -98,6 +98,10 @@ _CANONICAL_CASE: dict[str, str] = {
     "HEVC": "HEVC", "AVC": "AVC", "AV1": "AV1", "VC-1": "VC-1",
     # Codecs audio
     "DD": "DD", "DDP": "DDP", "AAC": "AAC", "AC3": "AC3",
+    # NOTES Sprint 8 hotfix : HE-AAC + AAC-LC explicitement listes pour preserver
+    # leur casse (sinon `He-aac` apres capitalize). Les 3 sont valides selon
+    # rules.json (audio_codec_tokens).
+    "HE-AAC": "HE-AAC", "AAC-LC": "AAC-LC",
     "E-AC3": "E-AC3", "DTS": "DTS", "DTS-HD": "DTS-HD",
     "DTS-HDMA": "DTS-HDMA", "DTS-HD.HRA": "DTS-HD.HRA",
     "TRUEHD": "TrueHD", "OPUS": "OPUS", "FLAC": "FLAC",
@@ -154,20 +158,27 @@ def _normalize_token_case(token: str) -> str:
     if re.match(r"^\d+(\.\d+)?$", token):
         return token
 
-    # Codec audio compose : codec + (sep optionnel) + channels X.Y
-    # Exemples : DTS2.0, DDP5.1, AAC2.0, AC35.1, E-AC3.5.1, DTS-HD.MA, TrueHD7.1
+    # Codec audio compose : codec + (sep optionnel) + channels.
+    # Deux familles de channels selon la charte Gemini :
+    #   - Numerical : 1.0, 2.0, 4.0, 5.1, 6.1, 7.1
+    #     Exemples : DDP5.1, E-AC3.5.1, TrueHD7.1, DTS2.0
+    #   - CH-suffix : 2CH, 6CH, 8CH (toujours en MAJUSCULES)
+    #     Exemples : AAC6CH, DDP8CH, AC32CH
     # Le codec peut contenir des tirets (E-AC3, DTS-HD), des chiffres (AC3, MP3),
     # mais doit commencer par une lettre.
     audio_match = re.match(
-        r"^([A-Za-z][A-Za-z0-9-]*?)(\.?)([0-9]\.[0-9])$",
+        r"^([A-Za-z][A-Za-z0-9-]*?)(\.?)(\d\.\d|\d{1,2}CH)$",
         token,
+        re.IGNORECASE,
     )
     if audio_match:
         codec_part, sep, channels = audio_match.groups()
         codec_canonical = _CANONICAL_CASE.get(
             codec_part.upper(), codec_part.upper()
         )
-        return f"{codec_canonical}{sep}{channels}"
+        # Channels : numerical garde sa forme (5.1 reste 5.1), CH-suffix
+        # forcement en MAJUSCULES selon la charte (6ch -> 6CH).
+        return f"{codec_canonical}{sep}{channels.upper()}"
 
     # Mots du titre : capitalize la premiere lettre, garde le reste lowercase
     return token[0].upper() + token[1:].lower()
@@ -1258,6 +1269,12 @@ _MEDIAINFO_TO_GEMINI_AUDIO_CODEC: dict[str, str] = {
     "TRUEHD": "TrueHD",
     "TRUEHD ATMOS": "TrueHD",  # Atmos est dans drop_tokens, donc on garde TrueHD
     "AAC": "AAC",
+    # NOTES Sprint 8 hotfix : MediaInfo distingue HE-AAC (high efficiency)
+    # de AAC-LC (low complexity, standard) du AAC generique. Les 3 sont
+    # valides dans rules.json donc on les preserve tels quels.
+    "HE-AAC": "HE-AAC",
+    "AAC LC": "AAC-LC",
+    "AAC-LC": "AAC-LC",
     "OPUS": "OPUS",
     "FLAC": "FLAC",
     "PCM": "PCM",
@@ -1490,13 +1507,27 @@ def build_release_name(
             data["year"] = tmdb_release[:4]
             print(f"[INFO] Annee recuperee depuis TMDB : {data['year']}")
 
-    if not data["year"] and not is_tv:
-        die("Impossible de détecter l'année pour le release_name")
-    if not data["year"] and is_tv:
-        print(
-            "[INFO] Pas d'annee detectee (ni nom ni TMDB) pour la serie. "
-            "release_name sera genere sans annee."
-        )
+    if not data["year"]:
+        # Sprint 8 hotfix v7 : avant on faisait die() ici pour les films,
+        # ce qui plantait tout le pipeline et l'user voyait un job "failed"
+        # sans package cree -> impossible d'override le TMDB ID. Maintenant
+        # on emit un signal (penalite -20) et on continue. Le release_name
+        # sortira sans annee (non conforme charte) mais le package est cree
+        # et accessible via la page detail ou l'user peut override le TMDB ID
+        # puis re-preparer pour avoir un release_name correct.
+        from . import naming_signals as _ns_year
+        _ns_year.emit_signal(debug, _ns_year.SIG_YEAR_MISSING, True)
+        if is_tv:
+            print(
+                "[INFO] Pas d'annee detectee (ni nom ni TMDB) pour la serie. "
+                "release_name sera genere sans annee."
+            )
+        else:
+            print(
+                "[AVERTISSEMENT] Pas d'annee detectee pour ce film (ni nom ni TMDB). "
+                "release_name genere sans annee (non conforme charte Gemini). "
+                "Override TMDB ID via la page detail puis re-prepare pour fixer."
+            )
 
     for label, value in [
         ("Langue", lang),

@@ -115,6 +115,14 @@ SIG_OMDB_DATA_MISSING = "omdb_data_missing"
 manquant, ou rate limit). La fiche BBCode sera moins riche (pas d'etoiles
 IMDb, pas de bandeau awards). Valeur : True."""
 
+SIG_YEAR_MISSING = "year_missing"
+"""Annee absente du nom du fichier ET TMDB n'a pas trouve de candidat.
+Cas typique : "Cours Lola Cours (Lola rennt).mkv" — pas d'annee dans le
+nom, et TMDB rejette le candidat 104 faute de signal de pertinence
+(notamment l'annee). Le release_name sortira sans annee (non conforme
+charte) mais le package est cree quand meme pour permettre a l'user de
+override le TMDB ID via la page detail et re-preparer. Sprint 8 hotfix v7."""
+
 # --- Categorie (Lot N.4) ---
 
 SIG_CATEGORY_LOW_CONFIDENCE = "category_low_confidence"
@@ -177,6 +185,10 @@ SIGNAL_METADATA: dict[str, tuple[int, str]] = {
     SIG_USER_MANUAL_RELEASE_NAME: (3, "Nom de release saisi à la main (pipeline auto bypass)"),
     # Données externes
     SIG_OMDB_DATA_MISSING:       (1, "Pas de note IMDb / récompenses (OMDb non disponible)"),
+    # Sprint 8 hotfix v7 : annee manquante = bloquant pour charte Gemini mais
+    # on ne plante plus le pipeline. Penalite forte (-20) pour signaler clairement
+    # qu'il faut override TMDB / corriger.
+    SIG_YEAR_MISSING:            (20, "Année manquante (ni dans le nom ni dans TMDB) — override TMDB ID requis pour conformité charte Gemini"),
     # Catégorie incertaine (Lot N.4) : -1 pt, juste un nudge pour aller vérifier.
     SIG_CATEGORY_LOW_CONFIDENCE: (1, "Catégorie devinée par défaut (TMDB sans match) — vérifie si c'est un docu, anime, sport ou émission TV avant l'upload"),
     # Compliance : DEPRECATED depuis NOTES round 6. La penalite est passee

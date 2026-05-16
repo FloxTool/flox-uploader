@@ -88,6 +88,20 @@
 <script>
 (function() {
     const SECRET_PLACEHOLDER = '***';
+    const SECRET_MASK_CHAR = '●';
+
+    // Sprint 8 hotfix : detect tant l'ancien "***" (legacy) que le nouveau
+    // placeholder dynamique "●●●...●" (autant de puces que de caracteres
+    // dans la vraie cle). Permet au bouton "reveal" de declencher le fetch
+    // /api/config/reveal meme apres le passage au nouveau format.
+    function _isMaskedPlaceholder(v) {
+        if (!v) return false;
+        if (v === SECRET_PLACEHOLDER) return true;
+        for (const c of v) {
+            if (c !== SECRET_MASK_CHAR) return false;
+        }
+        return true;
+    }
 
     // Toggle visibilite des secrets
     document.querySelectorAll('.btn-toggle-secret').forEach(btn => {
@@ -95,7 +109,7 @@
             const input = document.getElementById(btn.dataset.target);
             if (!input) return;
             // 1er click : reveal via API
-            if (input.value === SECRET_PLACEHOLDER && input.type === 'password') {
+            if (_isMaskedPlaceholder(input.value) && input.type === 'password') {
                 btn.disabled = true;
                 try {
                     const resp = await fetch('/api/config/reveal?key=' + encodeURIComponent(input.dataset.key));

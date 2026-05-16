@@ -253,29 +253,63 @@ def test_inbox_browses_subdirectory(client: TestClient, tmp_path: Path):
     assert "Foo.2024.1080p.mkv" in resp.text
 
 
-def test_inbox_lists_companion_files_for_bundle(client: TestClient, tmp_path: Path):
-    """NOTES round 7 : on affiche maintenant tous les fichiers candidats
-    pour un torrent (video + NFO + posters + sous-titres + archives + .torrent),
-    pas seulement les videos. Le mix peut etre regroupe en bundle.
-    Les fichiers HORS perimetre (ex: .exe, .py, .log) restent caches."""
+def test_inbox_hides_companions_by_default(client: TestClient, tmp_path: Path):
+    """NOTES Sprint 8 hotfix : revolu round 7. Par defaut on n'affiche que
+    les dossiers + videos. Les companions (NFO, posters, sous-titres) ne sont
+    plus visibles tant que la checkbox "Afficher tout" n'est pas cochee."""
     sub = tmp_path / "browse" / "Mixed"
     sub.mkdir()
     (sub / "movie.mkv").write_bytes(b"x")
-    (sub / "thumbnail.jpg").write_bytes(b"x")     # poster -> visible
-    (sub / "readme.nfo").write_text("nfo")        # NFO -> visible
-    (sub / "subs.srt").write_text("subs")         # sous-titres -> visible
+    (sub / "thumbnail.jpg").write_bytes(b"x")     # poster -> cache (showall=off)
+    (sub / "readme.nfo").write_text("nfo")        # NFO -> cache
+    (sub / "subs.srt").write_text("subs")         # sous-titres -> cache
     (sub / "script.exe").write_bytes(b"exe")      # hors perimetre -> cache
     (sub / "log.log").write_text("log")           # hors perimetre -> cache
     resp = client.get(f"/inbox?path={sub}")
     assert resp.status_code == 200
-    # Fichiers d'interet visibles
+    # Seul le fichier video apparait
+    assert "movie.mkv" in resp.text
+    assert "thumbnail.jpg" not in resp.text
+    assert "readme.nfo" not in resp.text
+    assert "subs.srt" not in resp.text
+    assert "script.exe" not in resp.text
+    assert "log.log" not in resp.text
+
+
+def test_inbox_shows_everything_with_show_all(client: TestClient, tmp_path: Path):
+    """Avec ?show_all=1 (checkbox "Afficher tout" cochee), on voit TOUT :
+    videos + companions + fichiers exotiques (.exe, .log, etc.)."""
+    sub = tmp_path / "browse" / "Mixed2"
+    sub.mkdir()
+    (sub / "movie.mkv").write_bytes(b"x")
+    (sub / "thumbnail.jpg").write_bytes(b"x")
+    (sub / "readme.nfo").write_text("nfo")
+    (sub / "subs.srt").write_text("subs")
+    (sub / "script.exe").write_bytes(b"exe")
+    resp = client.get(f"/inbox?path={sub}&show_all=1")
+    assert resp.status_code == 200
+    # Avec show_all : tout est visible
     assert "movie.mkv" in resp.text
     assert "thumbnail.jpg" in resp.text
     assert "readme.nfo" in resp.text
     assert "subs.srt" in resp.text
-    # Hors perimetre toujours cache
-    assert "script.exe" not in resp.text
-    assert "log.log" not in resp.text
+    assert "script.exe" in resp.text
+
+
+def test_inbox_returns_all_entries(client: TestClient, tmp_path: Path):
+    """Sprint 8 hotfix v5 : retour a la pagination client-side. Le serveur
+    retourne TOUTES les entries en HTML, le JS cache les rows hors page
+    via display:none. Cela permet au search d'etre instantane sur tout
+    le dossier (zero latence)."""
+    sub = tmp_path / "browse" / "BigFolder"
+    sub.mkdir()
+    for i in range(60):
+        (sub / f"movie_{i:03d}.mkv").write_bytes(b"x")
+    resp = client.get(f"/inbox?path={sub}")
+    assert resp.status_code == 200
+    # Toutes les 60 entries sont rendues en HTML (le JS s'occupe de la pagination)
+    assert "movie_000.mkv" in resp.text
+    assert "movie_059.mkv" in resp.text
 
 
 # ============================================================
@@ -731,13 +765,21 @@ def test_config_page_renders(client: TestClient):
 
 
 def test_config_api_get_masks_secrets(client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    """GET /api/config doit retourner *** pour les secrets non vides."""
-    monkeypatch.setenv("TRACKER_API_KEY", "secret-real-key")
+    """GET /api/config doit retourner une serie de puces de meme longueur
+    que le vrai secret (Sprint 8 hotfix : avant on retournait '***' fixe).
+    Les valeurs non secretes restent en clair."""
+    secret = "secret-real-key"
+    monkeypatch.setenv("TRACKER_API_KEY", secret)
     monkeypatch.setenv("TRACKER_API_URL", "https://example.com/api")
     resp = client.get("/api/config")
     assert resp.status_code == 200
     values = resp.json()["values"]
-    assert values["TRACKER_API_KEY"] == "***"
+    # Le masque est compose uniquement de puces et a la meme longueur que
+    # le secret reel — donne un retour visuel coherent dans l'UI.
+    masked = values["TRACKER_API_KEY"]
+    assert len(masked) == len(secret)
+    assert set(masked) == {"●"}
+    # Les non-secrets restent en clair.
     assert values["TRACKER_API_URL"] == "https://example.com/api"
 
 

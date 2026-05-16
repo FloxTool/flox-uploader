@@ -171,43 +171,72 @@ def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
     """Liste le contenu d'un dossier : sous-dossiers d'abord (alpha), puis
     fichiers d'interet (alpha).
 
-    NOTES round 7 : on affiche maintenant TOUS les fichiers d'interet dans
-    un torrent : video + NFO + posters + sous-titres + archives + .torrent.
-    Toutes les entrees sont selectionnables (pour permettre les bundles
-    non-emboites : film + poster + nfo regroupes en un seul torrent).
+    Filtre :
+    - `show_all=False` (defaut) : dossiers + fichiers video (VIDEO_EXTS) uniquement.
+      Les NFO / posters / sous-titres ne sont PAS visibles par defaut — l'inbox
+      reste claire pour le workflow normal "je selectionne un film a uploader".
+    - `show_all=True` : tout (videos + companions NFO/posters/subs + exotiques
+      .iso/.exe/.bin). Utile pour les bundles non-emboites (film + poster + nfo
+      regroupes en un seul torrent) et pour explorer un dossier inhabituel.
 
-    NOTES round 9 Feat-1 : `show_all=True` retire le filtre extension —
-    permet a l'user d'explorer un dossier qui contient des fichiers
-    "exotiques" (ex : .iso, .img, .exe, .bin) qu'on n'avait pas anticipes.
-    Par defaut on garde le filtre "video + companion" pour reduire le bruit.
+    NOTES Sprint 8 hotfix : la note Louis disait que les NFO/JPEG apparaissaient
+    par defaut alors que la checkbox "Tous les fichiers" etait decochee. C'etait
+    le comportement "round 7" qui exposait les companions sans toggle. On
+    revient a un defaut plus strict (videos seulement) ; les companions
+    redeviennent accessibles via la checkbox.
     """
     if not target.is_dir():
         raise HTTPException(404, f"Dossier introuvable : {target}")
 
+    # Sprint 8 hotfix v4 : scandir() est ~10-100x plus rapide que iterdir() sur
+    # Windows car il cache les infos is_dir() + stat() en mémoire à partir
+    # d'UN SEUL syscall par entrée. Avant on faisait 3+ syscalls par fichier
+    # (iterdir + is_dir + stat + resolve). Pour 714 fichiers, on passe de
+    # ~2000 syscalls a ~1 (le scandir initial). Gain perceptible immediat.
     entries: list[FileEntry] = []
+    target_str = str(target)
     try:
-        children = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        with os.scandir(target) as it:
+            raw_entries = list(it)
     except PermissionError:
         raise HTTPException(403, f"Acces refuse : {target}")
 
-    for child in children:
+    # Tri : dossiers d'abord, alpha (insensitif a la casse).
+    # is_dir() sur un DirEntry utilise le cache scandir → pas de syscall.
+    raw_entries.sort(key=lambda e: (not e.is_dir(), e.name.lower()))
+
+    for child in raw_entries:
         # Dossiers caches : on ignore (.git, __pycache__, etc.)
         if child.name.startswith("."):
             continue
-        is_dir = child.is_dir()
-        ext = child.suffix.lower() if not is_dir else ""
-        is_video = (not is_dir) and (ext in VIDEO_EXTS)
-        # Filter : dossier OU extension dans INBOX_EXTS (sauf si show_all)
-        if not show_all and not is_dir and ext not in INBOX_EXTS:
-            continue
         try:
-            size = child.stat().st_size if not is_dir else 0
+            is_dir = child.is_dir()
         except OSError:
-            size = 0
+            continue
+        name = child.name
+        # Extension : substr du nom, pas de syscall.
+        if is_dir or "." not in name:
+            ext = ""
+        else:
+            ext = "." + name.rsplit(".", 1)[-1].lower()
+        is_video = (not is_dir) and (ext in VIDEO_EXTS)
+        # Filter : dossier OU video (sauf si show_all coche -> on affiche tout).
+        if not show_all and not is_dir and not is_video:
+            continue
+        # Size : stat() sur DirEntry est cached → 0 syscall supplementaire.
+        size = 0
+        if not is_dir:
+            try:
+                size = child.stat(follow_symlinks=False).st_size
+            except OSError:
+                size = 0
         kind = "dir" if is_dir else _KIND_BY_EXT.get(ext, "other")
+        # Path absolu : on joint juste target + name (target deja resolved).
+        # Evite child.resolve() qui ferait un syscall (readlink, etc.).
+        path_str = os.path.join(target_str, name)
         entries.append(FileEntry(
-            name=child.name,
-            path=str(child.resolve()),
+            name=name,
+            path=path_str,
             is_dir=is_dir,
             size_pretty=_format_size(size) if not is_dir else "",
             is_video=is_video,
@@ -974,13 +1003,14 @@ def create_app() -> FastAPI:
         veut rejouer la procedure : la page redirige vers /inbox via JS apres
         save reussi).
         """
-        from .config_view import read_env_values, SECRET_PLACEHOLDER, SCHEMA
+        from .config_view import read_env_values, masked_secret_value, SCHEMA
         values = read_env_values()
-        # Masque les secrets pour l'affichage initial.
+        # Sprint 8 hotfix : masque dynamique de longueur reelle pour les
+        # secrets (autant de puces que de caracteres) cote setup wizard aussi.
         display_values: dict[str, str] = {}
         for f in SCHEMA:
             v = values.get(f.key, "")
-            display_values[f.key] = SECRET_PLACEHOLDER if (f.is_secret and v) else v
+            display_values[f.key] = masked_secret_value(v) if f.is_secret else v
         # Sprint 2 : detection 1er run pour afficher un welcome plus prominent.
         # Critere : fichier .env absent OU aucune valeur critique definie.
         # On utilise REQUIRED_ENV_KEYS (source de verite de "qu'est-ce qui est
@@ -1223,14 +1253,45 @@ def create_app() -> FastAPI:
             "updated_keys": sorted(updates.keys()),
         }
 
+    def _is_path_in_favorites(target_path: str) -> bool:
+        """True si `target_path` est dans BROWSE_ROOTS (separe par `;`).
+
+        Comparaison sur la chaine normalisee (resolved) pour eviter les
+        faux negatifs entre "C:/Foo" et "C:\\Foo" ou "C:/Foo/".
+        """
+        custom = os.getenv("BROWSE_ROOTS", "").strip()
+        if not custom:
+            return False
+        normalized_target = str(Path(target_path).resolve()).rstrip("\\/")
+        for raw in custom.split(";"):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                if str(Path(raw).resolve()).rstrip("\\/") == normalized_target:
+                    return True
+            except OSError:
+                continue
+        return False
+
     @app.get("/inbox", response_class=HTMLResponse)
     def page_inbox(request: Request, path: str | None = None, show_all: int = 0):
         """Browser de fichiers : navigation + selection multi pour ajouter
         a la queue.
 
+        Sprint 8 hotfix v5 : le serveur retourne TOUT le listing (toutes les
+        rows en HTML). La pagination + search se font 100% cote client :
+        - pagination = cache les rows hors page via display:none (perf DOM minimale)
+        - search = filtre instantane sur l'ensemble (zero latence)
+
+        Pourquoi pas server-side : v3 etait propre mais le filesystem scan
+        prenait le meme temps quel que soit la pagination (le filesystem ne
+        sait pas paginer). Mieux vaut tout rendre une fois et garder l'UI
+        client-side fluide. `os.scandir()` (v4) rend le scan rapide meme
+        pour 5000+ fichiers.
+
         NOTES round 9 Feat-1 : `?show_all=1` retire le filtre extension et
-        affiche tous les fichiers (utile quand on cherche des .iso ou
-        fichiers exotiques). Le toggle UI persiste la preference en
+        affiche tous les fichiers. Le toggle UI persiste la preference en
         localStorage et ajoute / retire le query param.
         """
         target = _safe_resolve_path(path) if path else _browse_root()
@@ -1261,8 +1322,64 @@ def create_app() -> FastAPI:
                 "error": error,
                 "quick_roots": _list_quick_roots(),
                 "show_all": bool(show_all),
+                # NOTES Sprint 8 hotfix v6 : indique si le dossier courant est
+                # deja un favori. Le bouton "Ajouter aux favoris" dans le
+                # header devient "Retirer des favoris" si vrai.
+                "is_current_favorite": _is_path_in_favorites(str(target)),
             },
         )
+
+    @app.post("/api/inbox/favorites/toggle")
+    def api_inbox_favorites_toggle(payload: dict[str, Any]):
+        """Sprint 8 hotfix v6 : toggle un dossier dans BROWSE_ROOTS.
+
+        Permet d'ajouter / retirer un favori directement depuis la page
+        Inbox sans passer par /config. Le BROWSE_ROOTS est ecrit dans le
+        .env (persistant) ET applique a os.environ (effet immediat).
+        """
+        target_path = (payload.get("path") or "").strip()
+        if not target_path:
+            raise HTTPException(400, "Path requis")
+        # Valide que c'est un dossier reel sur disque
+        try:
+            target = Path(target_path).resolve()
+        except OSError:
+            raise HTTPException(400, f"Path invalide : {target_path}")
+        if not target.is_dir():
+            raise HTTPException(400, f"Pas un dossier : {target_path}")
+        target_str = str(target).rstrip("\\/")
+
+        from .config_view import write_env_values, apply_updates
+        current = os.getenv("BROWSE_ROOTS", "").strip()
+        # Liste actuelle avec chemins normalises pour la dedup
+        paths_raw = [p.strip() for p in current.split(";") if p.strip()] if current else []
+        paths_normalized: list[str] = []
+        seen: set[str] = set()
+        for p in paths_raw:
+            try:
+                norm = str(Path(p).resolve()).rstrip("\\/")
+            except OSError:
+                continue
+            if norm not in seen:
+                seen.add(norm)
+                paths_normalized.append(norm)
+
+        is_currently_favorite = target_str in seen
+        if is_currently_favorite:
+            paths_normalized = [p for p in paths_normalized if p != target_str]
+            action = "removed"
+        else:
+            paths_normalized.append(target_str)
+            action = "added"
+
+        new_value = ";".join(paths_normalized)
+        write_env_values({"BROWSE_ROOTS": new_value})
+        apply_updates({"BROWSE_ROOTS": new_value})
+        return {
+            "is_favorite": not is_currently_favorite,
+            "action": action,
+            "favorites_count": len(paths_normalized),
+        }
 
     @app.get("/history", response_class=HTMLResponse)
     def page_history(request: Request):
@@ -1328,16 +1445,18 @@ def create_app() -> FastAPI:
     @app.get("/config", response_class=HTMLResponse)
     def page_config(request: Request):
         """Page d'edition des variables d'environnement (.env)."""
-        from .config_view import schema_grouped, read_env_values, SECRET_PLACEHOLDER
+        from .config_view import schema_grouped, read_env_values, masked_secret_value
         values = read_env_values()
-        # Masque les secrets pour l'affichage initial (le user voit *** au lieu
-        # de la cle reelle, et pour la sauvegarder il doit re-saisir).
+        # Sprint 8 hotfix : masque dynamique de longueur reelle pour les
+        # secrets (autant de puces que de caracteres). Donne un retour visuel
+        # coherent au lieu de "***" fixe qui faisait croire que le champ
+        # etait vide.
         sections = []
         for section_name, fields in schema_grouped():
             display_fields = []
             for f in fields:
                 v = values.get(f.key, "")
-                display = SECRET_PLACEHOLDER if (f.is_secret and v) else v
+                display = masked_secret_value(v) if f.is_secret else v
                 display_fields.append((f, v, display))
             sections.append((section_name, display_fields))
         return templates.TemplateResponse(
@@ -1410,12 +1529,22 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config")
     def api_config_get():
-        """Retourne les valeurs courantes (secrets masques par defaut)."""
-        from .config_view import read_env_values, SECRET_PLACEHOLDER, SCHEMA
+        """Retourne les valeurs courantes (secrets masques par defaut).
+
+        NOTES Sprint 8 hotfix : pour les secrets non vides, on retourne
+        `"●" * len(value)` (autant de puces que de caracteres). Donne un
+        retour visuel coherent (32 chars => 32 puces) au lieu de "***" fixe
+        qui peut faire croire que la cle est vide.
+        """
+        from .config_view import read_env_values, masked_secret_value, SCHEMA
         values = read_env_values()
         return {
             "values": {
-                f.key: (SECRET_PLACEHOLDER if (f.is_secret and values.get(f.key)) else values.get(f.key, ""))
+                f.key: (
+                    masked_secret_value(values.get(f.key, ""))
+                    if f.is_secret
+                    else values.get(f.key, "")
+                )
                 for f in SCHEMA
             },
         }

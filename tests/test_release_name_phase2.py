@@ -284,6 +284,26 @@ class TestCanonicalCase:
         ("10bit", "10Bit"),
         ("10BIT", "10Bit"),
         ("imax", "IMAX"),
+        # Sprint 8 hotfix : codec audio + channels (les 2 patterns charte Gemini)
+        # Numerical X.Y (DDP5.1, E-AC3.5.1, TrueHD7.1) — deja gere avant
+        ("DDP5.1", "DDP5.1"),
+        ("ddp5.1", "DDP5.1"),
+        ("E-AC3.5.1", "E-AC3.5.1"),
+        ("e-ac3.5.1", "E-AC3.5.1"),
+        ("TrueHD7.1", "TrueHD7.1"),
+        ("truehd7.1", "TrueHD7.1"),
+        # CH-suffix (AAC6CH, DDP8CH, AC36CH) — fix Sprint 8 hotfix v6
+        ("aac6ch", "AAC6CH"),
+        ("AAC6CH", "AAC6CH"),
+        ("Aac6ch", "AAC6CH"),
+        ("ddp8ch", "DDP8CH"),
+        ("DD2CH", "DD2CH"),
+        ("dd2ch", "DD2CH"),
+        ("ac36ch", "AC36CH"),
+        ("AC36CH", "AC36CH"),
+        # CH-suffix avec dot separateur (E-AC3.6CH)
+        ("e-ac3.6ch", "E-AC3.6CH"),
+        ("E-AC3.6CH", "E-AC3.6CH"),
     ])
     def test_canonical_case(self, input_token: str, expected: str):
         assert _normalize_token_case(input_token) == expected

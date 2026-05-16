@@ -47,6 +47,10 @@ SCHEMA: list[ConfigField] = [
         kind="url",
         placeholder="https://gemini-tracker.org/api",
         description="Endpoint racine de l'API Unit3D du tracker.",
+        # NOTES Sprint 8 hotfix : pre-rempli vu qu'on ne supporte que Gemini en v1.
+        # Quand on ajoutera un 2e tracker (v0.7+ PLAN-V1), ce default deviendra
+        # dependant du tracker selectionne.
+        default="https://gemini-tracker.org/api",
     ),
     ConfigField(
         key="TRACKER_API_KEY",
@@ -134,12 +138,16 @@ SCHEMA: list[ConfigField] = [
         kind="textarea",
         placeholder="ExempleTeam1, ExempleTeam2",
         description=(
-            "Liste de teams supplementaires a bloquer (en plus des defauts "
-            "k0RE / Slay3R). Separateurs : virgule, point-virgule ou retour "
-            "ligne. Si une release porte une team de cette liste, l'upload "
-            "est refuse et le package marque en echec. "
+            "Liste de teams a bloquer cote application. Separateurs : virgule, "
+            "point-virgule ou retour ligne. Si une release porte une team de "
+            "cette liste, l'upload est refuse et le package marque en echec. "
             "Mets a jour cette liste quand le tracker en publie une nouvelle."
         ),
+        # NOTES Sprint 8 hotfix : pre-rempli avec les 2 teams bannies actuelles
+        # Gemini (Slay3R + k0RE). Le user risque d'oublier de les remplir, et
+        # ces 2 teams sont les "evidentes" connues de tout le monde. Quand
+        # Gemini en ajoute une, l'user complete cette liste.
+        default="Slay3R, k0RE",
     ),
 ]
 
@@ -161,7 +169,43 @@ def schema_grouped() -> list[tuple[str, list[ConfigField]]]:
 # ============================================================
 
 # Sentinel utilise pour signifier "ne change pas le secret existant".
+# NOTES Sprint 8 hotfix : on garde "***" comme sentinel legacy (backward
+# compat pour les sessions navigateur en cache). Le NOUVEAU placeholder
+# retourne par l'API est `"●" * len(value)` (cf. `masked_secret_value`)
+# pour donner un retour visuel coherent : 32 chars => 32 puces. Le check
+# cote validate_updates accepte les deux formats.
 SECRET_PLACEHOLDER = "***"
+SECRET_MASK_CHAR = "●"
+
+
+def masked_secret_value(real_value: str) -> str:
+    """Retourne une string de meme longueur que `real_value`, faite de
+    puces (SECRET_MASK_CHAR). Permet d'afficher dans le champ Config un
+    masque qui reflete la longueur reelle de la cle (au lieu d'un "***"
+    fixe qui peut faire croire que la cle est vide).
+
+    Pour `real_value` vide ou None : retourne "" (pas de masque).
+    """
+    if not real_value:
+        return ""
+    return SECRET_MASK_CHAR * len(real_value)
+
+
+def _is_secret_placeholder(value: str) -> bool:
+    """True si la string ressemble a un placeholder de secret non modifie.
+
+    Accepte :
+    - "***" (sentinel legacy, backward compat sessions navigateur)
+    - "●●●●..." (le nouveau placeholder de longueur dynamique)
+
+    Refuse "" (= secret vide volontairement) et toute string qui contient
+    autre chose que des puces.
+    """
+    if not value:
+        return False
+    if value == SECRET_PLACEHOLDER:
+        return True
+    return all(c == SECRET_MASK_CHAR for c in value)
 
 
 def read_env_values() -> dict[str, str]:
@@ -302,8 +346,8 @@ def validate_updates(payload: dict[str, str]) -> tuple[dict[str, str], list[str]
             continue
         field = schema_by_key[key]
         v = (raw if raw is not None else "").strip() if isinstance(raw, str) else str(raw)
-        # Secrets : SECRET_PLACEHOLDER -> on garde l'existant
-        if field.is_secret and v == SECRET_PLACEHOLDER:
+        # Secrets : placeholder non modifie (legacy "***" ou nouveau "●●●...") -> on garde l'existant
+        if field.is_secret and _is_secret_placeholder(v):
             continue  # ne PAS inclure dans updates
         if field.kind == "bool":
             v = "1" if v.lower() in ("1", "true", "yes", "on") else "0"

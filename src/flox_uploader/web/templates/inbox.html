@@ -55,6 +55,20 @@
                            placeholder="Tape un chemin et appuie sur Entrée">
                 </div>
                 {{ button('Aller', type='submit', id='path-go-btn', variant='secondary', size='sm') }}
+                {# Sprint 8 hotfix v6 : bouton ★ pour ajouter le dossier courant
+                   aux favoris (BROWSE_ROOTS dans .env). Toggle add/remove. #}
+                <button id="favorite-toggle-btn" type="button"
+                        data-is-favorite="{{ '1' if is_current_favorite else '0' }}"
+                        data-tu-tooltip="{{ 'Retirer ce dossier des favoris' if is_current_favorite else 'Ajouter ce dossier aux favoris (apparait dans la sidebar inbox)' }}"
+                        class="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border transition-colors duration-fast
+                               {% if is_current_favorite %}
+                                   border-warning-300 dark:border-warning-700 bg-warning-50 dark:bg-warning-900/30 text-warning-700 dark:text-warning-300 hover:bg-warning-100 dark:hover:bg-warning-900/50
+                               {% else %}
+                                   border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700
+                               {% endif %}">
+                    {{ icon('star', size='sm') }}
+                    <span class="hidden sm:inline">{{ 'Favori' if is_current_favorite else 'Ajouter aux favoris' }}</span>
+                </button>
             </form>
         </div>
 
@@ -93,16 +107,19 @@
             </div>
             <span id="search-count" class="text-xs text-slate-500 dark:text-slate-400"></span>
 
-            {# NOTES round 9 Feat-1 : toggle "Afficher tous les types de fichiers".
-               Par defaut OFF -> on liste video + companion uniquement (signal-to-noise).
-               Quand ON -> on affiche egalement les .iso, .bin, .exe et tout le reste.
+            {# NOTES Sprint 8 hotfix : toggle "Afficher aussi les NFO, posters, sous-titres".
+               Par defaut OFF -> on liste dossiers + videos uniquement (signal-to-noise
+               maximal pour le workflow normal). Quand ON -> on affiche egalement les
+               NFO, posters, sous-titres, archives, .torrent, .iso, .bin, .exe et tout
+               le reste (utile pour les bundles non-emboites et pour explorer un dossier
+               inhabituel).
                Persiste en localStorage tu_inbox_show_all. Recharge la page avec
                ?show_all=1 ou retire le param. #}
             <label class="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none"
-                   data-tu-tooltip="Affiche les fichiers de tout type (par défaut : vidéos + companions seulement)">
+                   data-tu-tooltip="Par défaut : dossiers et fichiers vidéo seulement. Coche pour voir aussi les NFO, posters, sous-titres et autres fichiers (utile pour packager un bundle film + NFO + poster).">
                 <input type="checkbox" id="inbox-show-all-toggle" {% if show_all %}checked{% endif %}
                        class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
-                <span>Tous les fichiers</span>
+                <span>Afficher tout</span>
             </label>
 
             <div class="ml-auto flex items-center gap-2.5">
@@ -199,6 +216,12 @@
             action_href=('/inbox?path=' ~ parent_path) if parent_path else None
         ) }}
     {% else %}
+        {# Sprint 8 hotfix v5 : pagination + search 100% client-side.
+           Le serveur a rendu TOUT (toutes les rows en HTML). Le JS cache les
+           rows hors page via display:none (perf DOM minimale, pas de roundtrip).
+           Search filtre instant sur l'ensemble. Top + bottom bars remplies
+           dynamiquement par _renderPaginationBars(). #}
+        <div class="inbox-pagination-bar hidden mb-3" data-position="top"></div>
         <table class="w-full text-sm">
             <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
                 <tr>
@@ -224,10 +247,14 @@
                 } %}
                 {% for entry in entries %}
                 {% set ks = kind_styles.get(entry.kind, kind_styles['other']) %}
-                <tr class="entry-row hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast" data-name="{{ entry.name | lower }}">
-                    <td class="px-4 py-2" onclick="event.stopPropagation()">
+                <tr class="entry-row cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors duration-fast" data-name="{{ entry.name | lower }}">
+                    <td class="px-4 py-2">
                         {# Toutes les entrees sont selectionnables (bundle de mix
-                           fichiers/dossiers possible via le menu deroulant). #}
+                           fichiers/dossiers possible via le menu deroulant).
+                           Sprint 8 hotfix v3 : on a retire le onclick="event.stopPropagation()"
+                           du td (le gardait sur l'input seulement) pour que les clicks
+                           autour de la checkbox (dans le padding du td) bubble jusqu'a
+                           la row et toggle la checkbox via le handler delegation. #}
                         <input type="checkbox" class="file-checkbox w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500" data-path="{{ entry.path }}" data-kind="{{ entry.kind }}" onclick="event.stopPropagation()">
                     </td>
                     <td class="px-4 py-2">
@@ -251,6 +278,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        <div class="inbox-pagination-bar hidden mt-3" data-position="bottom"></div>
     {% endif %}
 </div>
 
@@ -357,6 +385,28 @@
             const target = checkAll.checked;
             checkboxes().forEach(cb => { cb.checked = target; });
             refreshSelection();
+        });
+    }
+
+    // Sprint 8 hotfix v2 : click n'importe ou sur la row toggle la checkbox.
+    // EVENT DELEGATION : 1 listener sur tbody au lieu de 714 sur chaque row
+    // (perf win sur les gros dossiers). On ignore les zones interactives
+    // (lien sous-dossier, checkbox, bouton, label). Le td de la checkbox a
+    // deja `onclick="event.stopPropagation()"` donc les clicks dessus ne
+    // remontent pas — la checkbox elle-meme se toggle normalement.
+    const tbody = document.querySelector('tbody');
+    if (tbody) {
+        tbody.addEventListener('click', (e) => {
+            const row = e.target.closest('.entry-row');
+            if (!row) return;
+            if (e.target.closest('a, button, input, label')) return;
+            const cb = row.querySelector('.file-checkbox');
+            if (!cb) return;
+            // cb.click() simule un vrai click utilisateur : toggle checked +
+            // dispatch click + change events vers tous les handlers attaches
+            // (refreshSelection, shift-click range, etc.). Plus robuste que
+            // de modifier cb.checked manuellement + dispatch un seul Event.
+            cb.click();
         });
     }
 
@@ -588,10 +638,67 @@
         });
     }
 
-    // Recherche live (accent-insensitive)
+    // Sprint 8 hotfix v6 : bouton "Ajouter aux favoris" / "Favori"
+    // Toggle BROWSE_ROOTS dans .env et reload pour rafraichir la sidebar.
+    const favoriteBtn = document.getElementById('favorite-toggle-btn');
+    if (favoriteBtn) {
+        favoriteBtn.addEventListener('click', async () => {
+            const currentPath = ({{ current_path | tojson }});
+            favoriteBtn.disabled = true;
+            try {
+                const resp = await fetch('/api/inbox/favorites/toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: currentPath}),
+                });
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    throw new Error(text || 'Erreur HTTP ' + resp.status);
+                }
+                const data = await resp.json();
+                tu.toast({
+                    title: data.is_favorite ? 'Ajouté aux favoris' : 'Retiré des favoris',
+                    message: data.is_favorite
+                        ? 'Ce dossier apparaît maintenant dans les raccourcis de la sidebar.'
+                        : 'Ce dossier n\'apparaît plus dans les raccourcis.',
+                    tone: 'success',
+                    duration: 3000,
+                });
+                // Reload pour rafraichir la sidebar (quick_roots) + le bouton.
+                // On garde un petit delai pour que le toast soit visible avant
+                // le reload.
+                setTimeout(() => {
+                    if (typeof window.showPageLoader === 'function') window.showPageLoader();
+                    window.location.reload();
+                }, 400);
+            } catch (e) {
+                tu.toast({
+                    title: 'Erreur',
+                    message: String(e.message || e),
+                    tone: 'danger',
+                    duration: 6000,
+                });
+                favoriteBtn.disabled = false;
+            }
+        });
+    }
+
+    // === Sprint 8 hotfix v5 : pagination + search 100% CLIENT-SIDE ===
+    // Le serveur a rendu TOUT le listing (toutes les rows en HTML). On a
+    // donc tout en DOM. Le JS combine 2 filtres :
+    //   1. Search : marque les rows non-matching comme data-search-hidden=1
+    //   2. Pagination : parmi les rows non-hidden, affiche seulement la slice
+    //      de la page courante (display:none les autres)
+    //
+    // Avantage : zero latence pour les 2 (tout est en JS, pas de roundtrip).
+    // La selection est implicite : les checkboxes restent en DOM meme cachees,
+    // donc pas besoin de sessionStorage pour persister cross-pages.
+
     const searchInput = document.getElementById('search-input');
+    const searchClear = document.querySelector('.tu-search-clear');
     const searchCount = document.getElementById('search-count');
     const allRows = () => document.querySelectorAll('tr.entry-row');
+
     function _foldAccents(s) {
         return (s || '')
             .normalize('NFD')
@@ -600,29 +707,189 @@
             .replace(/æ/g, 'ae').replace(/Æ/g, 'AE')
             .toLowerCase();
     }
-    function applySearch() {
-        if (!searchInput) return;
-        const q = _foldAccents(searchInput.value).trim();
-        const tokens = q.split(/\s+/).filter(t => t.length > 0);
-        let visible = 0;
-        let total = 0;
-        allRows().forEach(row => {
-            total++;
-            const name = _foldAccents(row.dataset.name || '');
-            const ok = tokens.every(t => name.includes(t));
-            row.style.display = ok ? '' : 'none';
-            if (ok) visible++;
+
+    // --- Pagination state (localStorage + en memoire) ---
+    const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 400, 'all'];
+    const STORAGE_KEY_PAGE_SIZE = 'tu_inbox_page_size';
+    const DEFAULT_PAGE_SIZE = 50;
+    let _currentPage = 1;
+    let _pageSize = DEFAULT_PAGE_SIZE;
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY_PAGE_SIZE);
+        if (stored === 'all') _pageSize = 'all';
+        else {
+            const n = parseInt(stored, 10);
+            if (PAGE_SIZE_OPTIONS.includes(n)) _pageSize = n;
+        }
+    } catch (e) {}
+
+    function _rowsAfterSearchFilter() {
+        return Array.from(allRows()).filter(r => r.dataset.searchHidden !== '1');
+    }
+
+    function _pageNumbersToShow(current, totalPages) {
+        if (totalPages <= 7) {
+            return Array.from({length: totalPages}, (_, i) => i + 1);
+        }
+        const pages = new Set([1, totalPages, current]);
+        for (let d = 1; d <= 2; d++) {
+            if (current - d >= 1) pages.add(current - d);
+            if (current + d <= totalPages) pages.add(current + d);
+        }
+        const sorted = Array.from(pages).sort((a, b) => a - b);
+        const result = [];
+        for (let i = 0; i < sorted.length; i++) {
+            if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+            result.push(sorted[i]);
+        }
+        return result;
+    }
+
+    function _buildPaginationHTML(total, current, totalPages) {
+        let rangeText;
+        if (_pageSize === 'all' || total === 0) {
+            rangeText = `${total} élément${total > 1 ? 's' : ''}`;
+        } else {
+            const start = (current - 1) * _pageSize + 1;
+            const end = Math.min(current * _pageSize, total);
+            rangeText = `${start}–${end} sur ${total}`;
+        }
+        const sizeOptionsHTML = PAGE_SIZE_OPTIONS.map(opt => {
+            const sel = (opt === _pageSize) ? 'selected' : '';
+            const label = (opt === 'all') ? 'Tout' : String(opt);
+            return `<option value="${opt}" ${sel}>${label}</option>`;
+        }).join('');
+        let navHTML = '';
+        if (_pageSize !== 'all' && totalPages > 1) {
+            const disPrev = current === 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
+            const disNext = current === totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
+            const btnBase = 'inline-flex items-center justify-center h-7 min-w-7 px-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors';
+            navHTML = `
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="1" ${current === 1 ? 'disabled' : ''} title="Première page">«</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="${current - 1}" ${current === 1 ? 'disabled' : ''} title="Page précédente">‹</button>
+            `;
+            for (const p of _pageNumbersToShow(current, totalPages)) {
+                if (p === '...') {
+                    navHTML += `<span class="text-slate-400 dark:text-slate-500 px-1">…</span>`;
+                } else {
+                    const active = p === current
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700';
+                    navHTML += `<button type="button" class="pagination-btn ${btnBase} ${active}" data-page="${p}">${p}</button>`;
+                }
+            }
+            navHTML += `
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${current + 1}" ${current === totalPages ? 'disabled' : ''} title="Page suivante">›</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${totalPages}" ${current === totalPages ? 'disabled' : ''} title="Dernière page">»</button>
+            `;
+        }
+        return `
+            <div class="flex items-center justify-between gap-3 flex-wrap text-xs text-slate-600 dark:text-slate-400">
+                <div class="inline-flex items-center gap-2">
+                    <label class="inline-flex items-center gap-1.5">
+                        <span>Afficher</span>
+                        <select class="pagination-size bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded h-7 text-xs px-1.5">
+                            ${sizeOptionsHTML}
+                        </select>
+                    </label>
+                    <span class="text-slate-500 dark:text-slate-500">·</span>
+                    <span class="tabular-nums">${rangeText}</span>
+                </div>
+                ${navHTML ? `<div class="inline-flex items-center gap-1">${navHTML}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function _renderPaginationBars(total, current, totalPages) {
+        const html = _buildPaginationHTML(total, current, totalPages);
+        document.querySelectorAll('.inbox-pagination-bar').forEach(bar => {
+            bar.innerHTML = html;
+            bar.classList.toggle('hidden', total === 0);
+            const sizeSelect = bar.querySelector('.pagination-size');
+            if (sizeSelect) {
+                sizeSelect.addEventListener('change', () => {
+                    const v = sizeSelect.value;
+                    _pageSize = (v === 'all') ? 'all' : parseInt(v, 10);
+                    try { localStorage.setItem(STORAGE_KEY_PAGE_SIZE, String(_pageSize)); } catch (e) {}
+                    _currentPage = 1;
+                    _refreshDisplay();
+                });
+            }
+            bar.querySelectorAll('.pagination-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const p = parseInt(btn.dataset.page, 10);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                        _currentPage = p;
+                        _refreshDisplay();
+                        const main = document.getElementById('main-content');
+                        if (main) main.scrollTo({top: 0, behavior: 'smooth'});
+                    }
+                });
+            });
         });
+    }
+
+    function _refreshDisplay() {
+        // 1. Filtre recherche : marque les rows non-matching
+        const q = searchInput ? searchInput.value.trim() : '';
+        const tokens = _foldAccents(q).split(/\s+/).filter(t => t.length > 0);
+        let totalAll = 0;
+        allRows().forEach(row => {
+            totalAll++;
+            const name = _foldAccents(row.dataset.name || '');
+            const ok = tokens.length === 0 || tokens.every(t => name.includes(t));
+            if (ok) delete row.dataset.searchHidden;
+            else row.dataset.searchHidden = '1';
+        });
+        // 2. Pagination sur les rows non-hidden
+        const candidates = _rowsAfterSearchFilter();
+        const totalVisible = candidates.length;
+        if (_pageSize === 'all') {
+            allRows().forEach(r => {
+                r.style.display = r.dataset.searchHidden === '1' ? 'none' : '';
+            });
+            _renderPaginationBars(totalVisible, 1, 1);
+        } else {
+            const totalPages = Math.max(1, Math.ceil(totalVisible / _pageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+            const start = (_currentPage - 1) * _pageSize;
+            const end = start + _pageSize;
+            allRows().forEach(r => { r.style.display = 'none'; });
+            candidates.slice(start, end).forEach(r => { r.style.display = ''; });
+            _renderPaginationBars(totalVisible, _currentPage, totalPages);
+        }
         if (searchCount) {
-            searchCount.textContent = q ? `${visible} / ${total} visible(s)` : '';
+            searchCount.textContent = q ? `${totalVisible} / ${totalAll} visible(s)` : '';
         }
     }
+
     if (searchInput) {
-        searchInput.addEventListener('input', applySearch);
+        searchInput.addEventListener('input', () => {
+            _currentPage = 1;  // reset a la page 1 a chaque nouvelle recherche
+            if (searchClear) searchClear.classList.toggle('hidden', !searchInput.value);
+            _refreshDisplay();
+        });
         searchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') { searchInput.value = ''; applySearch(); }
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                if (searchClear) searchClear.classList.add('hidden');
+                _currentPage = 1;
+                _refreshDisplay();
+            }
         });
     }
+    if (searchClear && searchInput) {
+        if (searchInput.value) searchClear.classList.remove('hidden');
+        searchClear.addEventListener('click', () => {
+            searchInput.value = '';
+            searchClear.classList.add('hidden');
+            _currentPage = 1;
+            _refreshDisplay();
+        });
+    }
+
+    // First render
+    _refreshDisplay();
 })();
 </script>
 {% endblock %}
