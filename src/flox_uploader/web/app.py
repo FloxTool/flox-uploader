@@ -978,13 +978,14 @@ def create_app() -> FastAPI:
         veut rejouer la procedure : la page redirige vers /inbox via JS apres
         save reussi).
         """
-        from .config_view import read_env_values, SECRET_PLACEHOLDER, SCHEMA
+        from .config_view import read_env_values, masked_secret_value, SCHEMA
         values = read_env_values()
-        # Masque les secrets pour l'affichage initial.
+        # Sprint 8 hotfix : masque dynamique de longueur reelle pour les
+        # secrets (autant de puces que de caracteres) cote setup wizard aussi.
         display_values: dict[str, str] = {}
         for f in SCHEMA:
             v = values.get(f.key, "")
-            display_values[f.key] = SECRET_PLACEHOLDER if (f.is_secret and v) else v
+            display_values[f.key] = masked_secret_value(v) if f.is_secret else v
         # Sprint 2 : detection 1er run pour afficher un welcome plus prominent.
         # Critere : fichier .env absent OU aucune valeur critique definie.
         # On utilise REQUIRED_ENV_KEYS (source de verite de "qu'est-ce qui est
@@ -1332,16 +1333,18 @@ def create_app() -> FastAPI:
     @app.get("/config", response_class=HTMLResponse)
     def page_config(request: Request):
         """Page d'edition des variables d'environnement (.env)."""
-        from .config_view import schema_grouped, read_env_values, SECRET_PLACEHOLDER
+        from .config_view import schema_grouped, read_env_values, masked_secret_value
         values = read_env_values()
-        # Masque les secrets pour l'affichage initial (le user voit *** au lieu
-        # de la cle reelle, et pour la sauvegarder il doit re-saisir).
+        # Sprint 8 hotfix : masque dynamique de longueur reelle pour les
+        # secrets (autant de puces que de caracteres). Donne un retour visuel
+        # coherent au lieu de "***" fixe qui faisait croire que le champ
+        # etait vide.
         sections = []
         for section_name, fields in schema_grouped():
             display_fields = []
             for f in fields:
                 v = values.get(f.key, "")
-                display = SECRET_PLACEHOLDER if (f.is_secret and v) else v
+                display = masked_secret_value(v) if f.is_secret else v
                 display_fields.append((f, v, display))
             sections.append((section_name, display_fields))
         return templates.TemplateResponse(

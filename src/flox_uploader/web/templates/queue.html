@@ -883,16 +883,32 @@
     }
     window.addEventListener('beforeunload', _closeAllEventSources);
     window.addEventListener('pagehide', _closeAllEventSources);
-    // Sprint 8 hotfix : on ferme synchrones, on laisse le browser naviguer
-    // naturellement. L'ancienne logique faisait `preventDefault() + setTimeout(50ms)
-    // + window.location.href = href`, ce qui dans certains cas annulait la nav
-    // (symptome observe : loader apparait puis disparait, l'user reste sur /queue
-    // sans message d'erreur). close() est synchrone cote browser donc les sockets
-    // sont liberes immediatement, pas besoin d'orchestrer la nav nous-memes.
+
+    // Sprint 8 hotfix v2 : on intercepte les clicks sur les liens internes
+    // pour fermer les EventSources AVANT la nav. Sans ca, le worker uvicorn
+    // qui sert les SSE (preparation/upload streams) reste bloque et empeche
+    // la requete GET /inbox d'aboutir → l'user reste figé sur /queue avec
+    // un loader qui spin dans le vide.
+    //
+    // Le timing matters : close() cote browser est synchrone, mais le
+    // serveur peut prendre quelques centaines de ms a detecter le close
+    // et liberer son worker. On fait close + delay 300ms + nav explicite.
+    // L'ancienne valeur (50ms) etait trop courte sur certaines machines.
+    //
+    // `mousedown` se fire AVANT `click` → on a un peu plus de marge pour
+    // que la close arrive cote serveur avant que la nav se declenche.
+    function _closeAndNavigate(href, ev) {
+        if (_openEventSources.size === 0) return;  // pas de source → nav normale
+        ev.preventDefault();
+        _closeAllEventSources();
+        // Indicateur visuel pendant les 300ms d'attente
+        if (typeof window.showPageLoader === 'function') window.showPageLoader();
+        setTimeout(() => { window.location.href = href; }, 300);
+    }
     document.querySelectorAll('a[href]').forEach(link => {
         const href = link.getAttribute('href') || '';
         if (!href.startsWith('/') || link.target === '_blank') return;
-        link.addEventListener('click', _closeAllEventSources);
+        link.addEventListener('click', (ev) => _closeAndNavigate(link.getAttribute('href') || href, ev), { once: true });
     });
 
     // === Clear upload (X button on done/failed uploads) ===
