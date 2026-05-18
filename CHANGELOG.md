@@ -13,6 +13,29 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.9] — 2026-05-16
+
+Hotfix critique : impossible de préparer un package depuis l'installeur Windows
+v0.3.8 (régression depuis le bundling Sprint 5).
+
+### Corrigé
+
+- **🔴 Subprocess prepare cassé en bundle PyInstaller** : `jobs_runner.py` lançait
+  le subprocess avec `[sys.executable, "-m", "flox_uploader.cli", "prepare", ...]`.
+  En mode dev Python ça marche. En mode `.exe` PyInstaller, `sys.executable` est
+  l'app elle-même (pas Python) → l'app reçoit `-m flox_uploader.cli prepare ...`
+  comme arguments et argparse lève *"unrecognized arguments"*. Tous les jobs
+  échouaient immédiatement avec cette erreur.
+
+  Fix : détection `getattr(sys, "frozen", False)` (set par PyInstaller).
+  En bundle : `[sys.executable, "prepare", ...]` (l'.exe route directement via
+  argparse). En dev : pattern `-m` inchangé.
+
+  Régression introduite par Sprint 5 (bundling Windows) mais révélée seulement
+  maintenant que Louis essaie d'uploader pour de vrai depuis sa version installée.
+
+---
+
 ## [0.3.8] — 2026-05-15
 
 Hotfix Sprint 8 + batch de notes utilisateur. Régression critique du Sprint 8

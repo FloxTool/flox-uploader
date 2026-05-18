@@ -37,6 +37,13 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.9 : Sprint 8 hotfix v8 — fix critique bundle PyInstaller. Le
+#           subprocess prepare etait lance avec `sys.executable -m
+#           flox_uploader.cli prepare ...`, ce qui en mode .exe (frozen)
+#           passait `-m flox_uploader.cli prepare ...` comme args a l'app
+#           principale -> "unrecognized arguments". Aucun upload possible
+#           sur la v0.3.8 installee. Fix : detecter sys.frozen et invoquer
+#           le .exe directement avec la sous-commande.
 #   0.3.8 : Sprint 8 hotfix — fixes JS escape (regression Sprint 8 qui
 #           cassait tu.toast / tu.showPageLoader) + 7 notes NOTES.md :
 #           (1) checkbox inbox "Afficher tout" : par defaut on n'affiche
@@ -50,4 +57,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.8"
+__version__ = "0.3.9"

@@ -421,12 +421,22 @@ def _run_prepare_job(job_id: int) -> None:
     snapshot = _snapshot_upload_packages()
     _pre_launch_pkg_snapshot[job_id] = snapshot
 
-    # Construit la commande CLI subprocess
-    cmd = [
-        sys.executable, "-m", "flox_uploader.cli",
-        "prepare", str(job.file_path),
-        "--tracker", "gemini",
-    ]
+    # Construit la commande CLI subprocess.
+    # IMPORTANT bundle PyInstaller : en mode .exe (`sys.frozen=True`),
+    # `sys.executable` est l'.exe Flox Uploader lui-meme, pas Python.
+    # Donc on ne peut pas faire `-m flox_uploader.cli` (le .exe interprete
+    # ces args et argparse leve "unrecognized arguments"). On invoque
+    # directement le .exe avec la sous-commande, qui est routee par
+    # argparse du cli.py (build_parser() expose prepare/upload/serve).
+    # En mode dev (python ou venv), on garde `-m flox_uploader.cli`.
+    if getattr(sys, "frozen", False):
+        cmd = [sys.executable, "prepare", str(job.file_path), "--tracker", "gemini"]
+    else:
+        cmd = [
+            sys.executable, "-m", "flox_uploader.cli",
+            "prepare", str(job.file_path),
+            "--tracker", "gemini",
+        ]
     if job.force_fr:
         cmd.extend(["--force-fr", job.force_fr])
     if job.tmdb_id_override:
