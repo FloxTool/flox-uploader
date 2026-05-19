@@ -37,6 +37,11 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.11 : Sprint 8 hotfix v10 — propage les erreurs de fetch GitHub.
+#           Le bouton "Verifier les mises a jour" mentait avec "A jour"
+#           quand le fetch GitHub avait silencieusement echoue. Maintenant
+#           on retourne l'erreur explicite + le JS affiche un toast danger
+#           "Verification impossible : <raison>" + label "Echec - reessayer".
 #   0.3.10 : Sprint 8 hotfix v9 — fix incomplet de v0.3.9. Le fix v0.3.9
 #           appelait [exe, "prepare", ...] mais l'entry point bundle est
 #           launcher.py (pas cli.py) qui a son propre argparse limite a
@@ -63,4 +68,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.10"
+__version__ = "0.3.11"

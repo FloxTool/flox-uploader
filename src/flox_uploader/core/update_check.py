@@ -174,12 +174,19 @@ def _save_cache(payload: dict) -> None:
 # Fetch reseau
 # ============================================================================
 
-def _fetch_latest_release() -> dict | None:
-    """GET `/releases/latest` sur GitHub. Retourne le JSON ou None en cas
-    d'erreur (network, timeout, status != 200, JSON invalide).
+def _fetch_latest_release() -> "tuple[dict | None, str]":
+    """GET `/releases/latest` sur GitHub. Retourne (JSON, error_msg).
 
-    On ne retry pas : si GitHub est down, on reessaiera au prochain cycle 6h.
-    Le silent fail est intentionnel (cf. doc module).
+    Sprint 8 hotfix v10 : on retourne maintenant aussi le message d'erreur
+    eventuel pour qu'il soit propage au caller. Avant on retournait juste
+    None silencieusement, l'user ne savait pas pourquoi le bouton "Verifier
+    les mises a jour" disait "A jour" alors qu'une nouvelle version etait
+    publiee (cas observe : fetch failed -> cache pas mis a jour -> on lit
+    l'ancienne valeur -> tout l'app pense que c'est a jour).
+
+    Retour : (data, error)
+      - (dict, "")    : succes, JSON parse correctement
+      - (None, msg)   : echec, msg explicatif (timeout / status code / etc.)
     """
     try:
         resp = requests.get(
@@ -192,10 +199,17 @@ def _fetch_latest_release() -> dict | None:
             },
         )
         if resp.status_code != 200:
-            return None
-        return resp.json()
-    except Exception:
-        return None
+            return None, f"GitHub a répondu HTTP {resp.status_code} (attendu 200)"
+        try:
+            return resp.json(), ""
+        except ValueError as e:
+            return None, f"Réponse GitHub invalide (JSON parse) : {e}"
+    except requests.Timeout:
+        return None, f"GitHub n'a pas répondu en {FETCH_TIMEOUT_SECONDS}s (timeout)"
+    except requests.ConnectionError as e:
+        return None, f"Connexion impossible à GitHub (offline / firewall ?) : {e}"
+    except Exception as e:
+        return None, f"Erreur inattendue : {type(e).__name__} : {e}"
 
 
 # ============================================================================
@@ -246,14 +260,17 @@ def _is_cache_stale() -> bool:
     return (time.time() - ts) >= CACHE_TTL_SECONDS
 
 
-def _refresh_now() -> bool:
-    """Fetch + write cache. Retourne True si fetch reussi.
+def _refresh_now() -> "tuple[bool, str]":
+    """Fetch + write cache. Retourne (succes, error_msg).
 
-    Public pour les tests (mock requests + call direct). En prod on passe
-    par `refresh_cache_if_stale_async()` qui spawn un thread."""
-    data = _fetch_latest_release()
+    Public pour les tests. En prod on passe par
+    `refresh_cache_if_stale_async()` qui spawn un thread.
+
+    Sprint 8 hotfix v10 : retourne maintenant aussi le message d'erreur
+    pour pouvoir le propager a l'user (cf. force_refresh_sync)."""
+    data, err = _fetch_latest_release()
     if data is None:
-        return False
+        return False, err
     payload = {
         "checked_at_epoch": time.time(),
         "checked_at_iso": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -262,7 +279,7 @@ def _refresh_now() -> bool:
         "release_notes": data.get("body") or "",
     }
     _save_cache(payload)
-    return True
+    return True, ""
 
 
 def refresh_cache_if_stale_async() -> None:
@@ -335,14 +352,16 @@ def ensure_cache_exists_sync(timeout_seconds: float = 5.0) -> bool:
     return result["done"]
 
 
-def force_refresh_sync() -> UpdateInfo:
-    """Sprint 8 hotfix v8 : force un refresh sync, retourne le resultat.
+def force_refresh_sync() -> "tuple[UpdateInfo, str]":
+    """Sprint 8 hotfix v10 : force un refresh sync, retourne (info, error).
 
     Utilise par l'endpoint POST /api/update-info/refresh quand l'user clique
-    le bouton "Verifier maintenant" dans la page Guide. Bloque jusqu'a 5s
-    max (timeout HTTP du fetch GitHub) puis retourne l'UpdateInfo a jour.
+    "Verifier maintenant" dans la page Guide. Bloque jusqu'a 5s max
+    (timeout HTTP du fetch GitHub) puis retourne :
+      - (UpdateInfo a jour, "")            : fetch reussi
+      - (UpdateInfo du cache ancien, msg)  : fetch echoue, msg explicatif
 
-    Si le fetch echoue (offline, rate limit, etc.), retourne le cache
-    existant (ou un UpdateInfo vide si jamais cache)."""
-    _refresh_now()  # synchrone, ignore le lock pour priorite user
-    return read_cached_update_info()
+    Le caller (endpoint) doit verifier error_msg : si non-vide, signaler
+    a l'user que la verification a echoue au lieu de pretendre "A jour"."""
+    _ok, err = _refresh_now()
+    return read_cached_update_info(), err
