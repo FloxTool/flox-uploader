@@ -867,11 +867,19 @@ def create_app() -> FastAPI:
     from ..core.update_check import (
         read_cached_update_info as _read_update_info,
         refresh_cache_if_stale_async as _refresh_update_async,
+        ensure_cache_exists_sync as _ensure_update_cache_sync,
     )
     templates.env.globals["update_info"] = lambda: _read_update_info()
-    # Best-effort : spawn thread daemon au boot. Si stale (ou cache vide),
-    # un refresh tourne en background — la premiere page UI peut afficher
-    # un banner update sous 1-2s sans bloquer le startup serveur.
+    # Sprint 8 hotfix v8 : si le cache n'existe pas (1er boot ou silent fail
+    # precedent), on bloque max 5s pour le creer SYNC. Garantit que le banner
+    # update est visible des le 1er hit utilisateur. Cas observe v0.3.7 :
+    # le thread daemon ne creait jamais le cache (raison inconnue, probable
+    # specifique au bundle PyInstaller --windowed).
+    try:
+        _ensure_update_cache_sync(timeout_seconds=5.0)
+    except Exception:
+        pass
+    # Best-effort apres : spawn thread daemon pour refresh si stale (>6h).
     try:
         _refresh_update_async()
     except Exception:
@@ -1500,6 +1508,17 @@ def create_app() -> FastAPI:
         """
         from ..core.diagnostic import collect_diagnostic
         return collect_diagnostic().to_dict()
+
+    @app.post("/api/update-info/refresh")
+    def api_update_info_refresh():
+        """Sprint 8 hotfix v8 : force un refresh sync du cache update.
+
+        Utilise par le bouton "Verifier maintenant" dans la page Guide.
+        Bloque jusqu'a 5s (timeout fetch GitHub) puis retourne l'UpdateInfo
+        a jour. Permet a l'user de debloquer manuellement si le refresh
+        auto au boot a echoue (cas observe sur v0.3.7 de Louis)."""
+        from ..core.update_check import force_refresh_sync
+        return force_refresh_sync().to_dict()
 
     @app.get("/api/update-info")
     def api_update_info():
