@@ -13,6 +13,25 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.13] — 2026-05-19
+
+### Ajouté
+
+- **Bouton "Ouvrir le dossier du `.torrent` uploadé"** sur la page détail
+  d'un package en état `uploaded`. Le path affiché et ouvert priorise
+  `TORRENT_FINAL_DIR` (watch folder qBittorrent / Transmission configuré
+  dans `.env`) puis tombe sur le parent de `final_torrent_path` (= le
+  `.torrent` final avec passkey dans le `package_dir`).
+- Nouvel endpoint `POST /api/packages/{name}/open-torrent-folder`.
+
+### Notes
+
+- Le lien "Voir sur Gemini" existait déjà dans l'en-tête de la page détail
+  (badge vert "Voir sur Gemini" à droite des métadonnées, ligne 88-96 du
+  template). Aucun changement nécessaire de ce côté.
+
+---
+
 ## [0.3.12] — 2026-05-19
 
 Batch de 7 notes UX issues de `NOTES.md`.

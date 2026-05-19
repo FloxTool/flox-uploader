@@ -37,6 +37,10 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.13 : Sprint 8 hotfix v12 — bouton "Ouvrir le dossier du .torrent
+#           uploade" sur la page detail. Priorise TORRENT_FINAL_DIR (watch
+#           folder qBittorrent) puis parent de final_torrent_path en fallback.
+#           Endpoint POST /api/packages/{name}/open-torrent-folder.
 #   0.3.12 : Sprint 8 hotfix v11 — batch de 7 notes UX NOTES.md :
 #           (1) terminal popup pendant prepare cache via CREATE_NO_WINDOW,
 #           (2) colonne "Mode" obsolete retiree de la table Uploads,
@@ -77,4 +81,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.12"
+__version__ = "0.3.13"

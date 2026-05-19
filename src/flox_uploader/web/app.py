@@ -531,6 +531,11 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "updated_at": state_data.updated_at if state_data else "",
         "uploaded_torrent_id": state_data.uploaded_torrent_id if state_data else None,
         "uploaded_torrent_url": state_data.uploaded_torrent_url if state_data else "",
+        # Sprint 8 hotfix v12 : path du .torrent final (avec passkey) + le watch
+        # folder (TORRENT_FINAL_DIR) si configure. Permet d'afficher sur la
+        # page detail un bouton "Ouvrir le dossier du torrent uploade".
+        "final_torrent_path": (state_data.final_torrent_path if state_data else "") or "",
+        "torrent_final_dir": (os.environ.get("TORRENT_FINAL_DIR") or "").strip(),
         "existing_torrent_id": state_data.existing_torrent_id if state_data else None,
         "existing_torrent_url": state_data.existing_torrent_url if state_data else "",
         "dedup_confidence": (state_data.dedup_confidence if state_data else "") or "",
@@ -2527,6 +2532,39 @@ def create_app() -> FastAPI:
         target = _resolve_package_dir(name)
         _open_folder_in_explorer(target)
         return {"ok": True, "path": str(target)}
+
+    @app.post("/api/packages/{name}/open-torrent-folder")
+    def api_package_open_torrent_folder(name: str):
+        """Ouvre le dossier qui CONTIENT le .torrent final uploadé.
+
+        Priorite :
+        1. `TORRENT_FINAL_DIR` env var si configure (watch folder qBittorrent /
+           Transmission ou l'user a copie le .torrent pour le seed).
+        2. Parent de `state.final_torrent_path` (le .torrent dans le package_dir).
+
+        Si aucun des deux n'est dispo (package non uploaded, ou state corrompu),
+        retourne 404 avec un message explicite."""
+        target = _resolve_package_dir(name)
+        # Priorite 1 : TORRENT_FINAL_DIR (le watch folder configure)
+        final_dir = (os.environ.get("TORRENT_FINAL_DIR") or "").strip()
+        if final_dir:
+            candidate = Path(final_dir)
+            if candidate.is_dir():
+                _open_folder_in_explorer(candidate)
+                return {"ok": True, "path": str(candidate), "source": "TORRENT_FINAL_DIR"}
+        # Priorite 2 : parent du .torrent final stocke dans le package_dir
+        state_data = read_state(target)
+        if state_data and state_data.final_torrent_path:
+            torrent_path = Path(state_data.final_torrent_path)
+            if torrent_path.exists():
+                _open_folder_in_explorer(torrent_path.parent)
+                return {"ok": True, "path": str(torrent_path.parent), "source": "package_state"}
+        raise HTTPException(
+            404,
+            "Aucun .torrent final n'est connu pour ce package. "
+            "Soit l'upload n'a pas eu lieu, soit TORRENT_FINAL_DIR n'est pas configuré "
+            "et le state ne contient pas final_torrent_path.",
+        )
 
     @app.post("/api/packages/{name}/open-source-folder")
     def api_package_open_source_folder(name: str):
