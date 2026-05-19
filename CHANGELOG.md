@@ -13,6 +13,25 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.10] — 2026-05-19
+
+Hotfix v9 — finit le travail de v0.3.9 qui ne suffisait pas.
+
+### Corrigé
+
+- **🔴 Subprocess prepare encore cassé en bundle (round 2)** : le fix v0.3.9
+  appelait `[Flox Uploader.exe, "prepare", ...]` au lieu de `[exe, "-m", ...]`.
+  Sauf que l'entry point du bundle est `launcher.py` (pas `cli.py`), qui a
+  son propre argparse limité à `--host/--port/--no-browser/--insecure-host`.
+  Résultat : *"unrecognized arguments: prepare ..."* — même symptôme que avant.
+
+  Fix : `launcher.py` détecte si le 1er argument est une sous-commande connue
+  (`prepare/upload/inspect/serve`) et délègue à `cli.main()` qui sait router
+  via argparse subparsers. Sans args ou avec `--host/--port` : mode launcher
+  classique (serve avec defaults) — comportement double-clic préservé.
+
+---
+
 ## [0.3.9] — 2026-05-16
 
 Hotfix critique : impossible de préparer un package depuis l'installeur Windows
