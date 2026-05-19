@@ -60,7 +60,18 @@ def main() -> int:
     Accepte les memes options que `cmd_serve` pour permettre aux users
     avances de lancer avec --host / --port custom. Default safe : 127.0.0.1
     + port 8765.
+
+    Sprint 8 hotfix v9 : si le 1er arg est une sous-commande connue
+    (prepare / upload / inspect / serve), on delegue a `cli.main()` qui
+    sait router via argparse subparsers. Necessaire pour que les subprocess
+    lances par jobs_runner (`[sys.executable, 'prepare', ...]`) atterrissent
+    bien sur cmd_prepare au lieu de planter "unrecognized arguments: prepare".
     """
+    _CLI_SUBCOMMANDS = {"prepare", "upload", "inspect", "serve"}
+    if len(sys.argv) > 1 and sys.argv[1] in _CLI_SUBCOMMANDS:
+        from flox_uploader.cli import main as cli_main
+        return cli_main()
+
     parser = argparse.ArgumentParser(
         prog="Flox Uploader",
         description=(

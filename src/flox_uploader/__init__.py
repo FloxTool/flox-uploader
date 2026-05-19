@@ -37,13 +37,19 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.10 : Sprint 8 hotfix v9 — fix incomplet de v0.3.9. Le fix v0.3.9
+#           appelait [exe, "prepare", ...] mais l'entry point bundle est
+#           launcher.py (pas cli.py) qui a son propre argparse limite a
+#           --host/--port/etc. Resultat : "unrecognized arguments: prepare ...".
+#           Fix v0.3.10 : launcher.py detecte les sous-commandes connues
+#           (prepare/upload/inspect/serve) et delegue a cli.main().
 #   0.3.9 : Sprint 8 hotfix v8 — fix critique bundle PyInstaller. Le
 #           subprocess prepare etait lance avec `sys.executable -m
 #           flox_uploader.cli prepare ...`, ce qui en mode .exe (frozen)
 #           passait `-m flox_uploader.cli prepare ...` comme args a l'app
 #           principale -> "unrecognized arguments". Aucun upload possible
 #           sur la v0.3.8 installee. Fix : detecter sys.frozen et invoquer
-#           le .exe directement avec la sous-commande.
+#           le .exe directement avec la sous-commande. ⚠ INCOMPLET — voir v0.3.10.
 #   0.3.8 : Sprint 8 hotfix — fixes JS escape (regression Sprint 8 qui
 #           cassait tu.toast / tu.showPageLoader) + 7 notes NOTES.md :
 #           (1) checkbox inbox "Afficher tout" : par defaut on n'affiche
@@ -57,4 +63,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.9"
+__version__ = "0.3.10"
