@@ -1511,14 +1511,18 @@ def create_app() -> FastAPI:
 
     @app.post("/api/update-info/refresh")
     def api_update_info_refresh():
-        """Sprint 8 hotfix v8 : force un refresh sync du cache update.
+        """Sprint 8 hotfix v10 : force un refresh sync + retourne l'erreur eventuelle.
 
         Utilise par le bouton "Verifier maintenant" dans la page Guide.
-        Bloque jusqu'a 5s (timeout fetch GitHub) puis retourne l'UpdateInfo
-        a jour. Permet a l'user de debloquer manuellement si le refresh
-        auto au boot a echoue (cas observe sur v0.3.7 de Louis)."""
+        Bloque jusqu'a 5s (timeout fetch GitHub) puis retourne :
+          {info: {...UpdateInfo...}, fetch_error: "" ou message}
+
+        Si fetch_error est non-vide, le JS doit signaler l'echec a l'user
+        au lieu de pretendre "A jour" (qui serait base sur l'ancien cache).
+        """
         from ..core.update_check import force_refresh_sync
-        return force_refresh_sync().to_dict()
+        info, err = force_refresh_sync()
+        return {"info": info.to_dict(), "fetch_error": err}
 
     @app.get("/api/update-info")
     def api_update_info():

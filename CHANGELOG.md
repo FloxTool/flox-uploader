@@ -13,6 +13,29 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.11] — 2026-05-19
+
+Hotfix v10 — le bouton "Vérifier les mises à jour" mentait silencieusement.
+
+### Corrigé
+
+- **🔴 "Vérifier les mises à jour" affichait "À jour" même quand fetch GitHub échouait** :
+  cas observé chez Louis sur v0.3.9 — il cliquait le bouton, le toast disait
+  "À jour" alors que v0.3.10 venait de sortir. Cause : le silent fail (`except: pass`)
+  cachait l'échec, le code lisait l'ancien cache (`latest=v0.3.9`), `is_newer`
+  retournait False → toast "À jour" trompeur.
+
+  Fix : `_fetch_latest_release()` retourne maintenant `(data, error_msg)`.
+  L'erreur remonte jusqu'à l'endpoint `POST /api/update-info/refresh` qui
+  retourne `{info, fetch_error}`. Le JS distingue :
+  - `fetch_error == ""` + `info.available == True` → toast success "Nouvelle version vX.Y.Z"
+  - `fetch_error == ""` + `info.available == False` → toast info "À jour"
+  - `fetch_error != ""` → toast **danger** "Vérification impossible : `<raison>`" + bouton "Échec — réessayer"
+
+  Messages d'erreur explicites : HTTP 4xx/5xx, timeout, connection refused, JSON invalide.
+
+---
+
 ## [0.3.10] — 2026-05-19
 
 Hotfix v9 — finit le travail de v0.3.9 qui ne suffisait pas.

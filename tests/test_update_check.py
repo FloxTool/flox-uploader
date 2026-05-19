@@ -173,30 +173,38 @@ def test_is_cache_stale_when_epoch_missing_or_invalid(isolated_data_dir):
 # _fetch_latest_release — silent fail
 # ============================================================================
 
-def test_fetch_returns_none_on_404():
-    """Pas de release => 404 GitHub => None."""
+def test_fetch_returns_error_on_404():
+    """Pas de release => 404 GitHub => (None, error_msg). Sprint 8 hotfix v10."""
     with patch.object(uc.requests, "get") as mock_get:
         mock_get.return_value.status_code = 404
-        assert uc._fetch_latest_release() is None
+        data, err = uc._fetch_latest_release()
+        assert data is None
+        assert "404" in err
 
 
-def test_fetch_returns_none_on_5xx():
+def test_fetch_returns_error_on_5xx():
     with patch.object(uc.requests, "get") as mock_get:
         mock_get.return_value.status_code = 503
-        assert uc._fetch_latest_release() is None
+        data, err = uc._fetch_latest_release()
+        assert data is None
+        assert "503" in err
 
 
-def test_fetch_returns_none_on_403_rate_limit():
+def test_fetch_returns_error_on_403_rate_limit():
     with patch.object(uc.requests, "get") as mock_get:
         mock_get.return_value.status_code = 403
-        assert uc._fetch_latest_release() is None
+        data, err = uc._fetch_latest_release()
+        assert data is None
+        assert "403" in err
 
 
-def test_fetch_returns_none_on_network_error():
-    """Offline / DNS / timeout : requests raise → None, jamais d'exception
-    qui remonte au caller."""
+def test_fetch_returns_error_on_network_error():
+    """Offline / DNS / timeout : requests raise → (None, msg explicatif),
+    jamais d'exception qui remonte au caller."""
     with patch.object(uc.requests, "get", side_effect=Exception("network down")):
-        assert uc._fetch_latest_release() is None
+        data, err = uc._fetch_latest_release()
+        assert data is None
+        assert err  # non-vide
 
 
 def test_fetch_returns_dict_on_200():
@@ -207,9 +215,10 @@ def test_fetch_returns_dict_on_200():
             "html_url": "https://github.com/FloxTool/flox-uploader/releases/tag/v0.4.0",
             "body": "First release",
         }
-        result = uc._fetch_latest_release()
-        assert result is not None
-        assert result["tag_name"] == "v0.4.0"
+        data, err = uc._fetch_latest_release()
+        assert data is not None
+        assert data["tag_name"] == "v0.4.0"
+        assert err == ""
 
 
 # ============================================================================
@@ -218,13 +227,14 @@ def test_fetch_returns_dict_on_200():
 
 def test_refresh_now_writes_cache_on_success(isolated_data_dir):
     with patch.object(uc, "_fetch_latest_release") as mock_fetch:
-        mock_fetch.return_value = {
+        mock_fetch.return_value = ({
             "tag_name": "v0.4.0",
             "html_url": "https://github.com/FloxTool/flox-uploader/releases/tag/v0.4.0",
             "body": "First public release",
-        }
-        ok = uc._refresh_now()
+        }, "")
+        ok, err = uc._refresh_now()
         assert ok is True
+        assert err == ""
 
     cache = uc._load_cache()
     assert cache is not None
@@ -237,7 +247,7 @@ def test_refresh_now_writes_cache_on_success(isolated_data_dir):
 
 def test_refresh_now_keeps_old_cache_on_fetch_fail(isolated_data_dir):
     """Silent fail : si fetch echoue ET cache existe → on garde le cache,
-    on ne le perd pas en remplacant par du vide."""
+    on ne le perd pas en remplacant par du vide. Error msg propage."""
     # Cache initial
     uc._save_cache({
         "checked_at_epoch": time.time() - (10 * 3600),  # stale
@@ -246,9 +256,10 @@ def test_refresh_now_keeps_old_cache_on_fetch_fail(isolated_data_dir):
         "release_notes": "old notes",
     })
     # Fetch echoue
-    with patch.object(uc, "_fetch_latest_release", return_value=None):
-        ok = uc._refresh_now()
+    with patch.object(uc, "_fetch_latest_release", return_value=(None, "GitHub down")):
+        ok, err = uc._refresh_now()
         assert ok is False
+        assert err == "GitHub down"
 
     # Cache toujours present, intact
     cache = uc._load_cache()

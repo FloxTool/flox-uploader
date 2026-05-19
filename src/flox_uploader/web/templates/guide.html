@@ -558,22 +558,38 @@
                 try {
                     const resp = await fetch('/api/update-info/refresh', {method: 'POST'});
                     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const data = await resp.json();
-                    if (data.available) {
+                    const payload = await resp.json();
+                    const info = payload.info || {};
+                    const fetchError = payload.fetch_error || '';
+                    // Sprint 8 hotfix v10 : si le fetch GitHub a echoue, on
+                    // signale clairement l'echec au lieu de pretendre "A jour"
+                    // (qui serait base sur l'ancien cache, donc trompeur).
+                    if (fetchError) {
                         tu.toast({
-                            title: 'Mise à jour disponible : ' + data.latest,
-                            message: 'Version actuelle : ' + data.current + '. Le banner indigo en haut de page te mène à la release.',
+                            title: 'Vérification impossible',
+                            message: fetchError + ' — réessaie dans quelques minutes.',
+                            tone: 'danger',
+                            duration: 8000,
+                        });
+                        label.textContent = 'Échec — réessayer';
+                        btn.disabled = false;
+                        return;
+                    }
+                    if (info.available) {
+                        tu.toast({
+                            title: 'Mise à jour disponible : ' + info.latest,
+                            message: 'Version actuelle : ' + info.current + '. Le banner indigo en haut de page te mène à la release.',
                             tone: 'success',
                             duration: 6000,
                         });
-                        label.textContent = data.latest + ' disponible !';
+                        label.textContent = info.latest + ' disponible !';
                         // Reload pour faire apparaitre le banner update (sauf
                         // s'il a deja ete dismiss par l'user pour cette version)
                         setTimeout(() => window.location.reload(), 1500);
                     } else {
                         tu.toast({
                             title: 'À jour',
-                            message: 'Tu es déjà sur la dernière version (' + data.current + ').',
+                            message: 'Tu es déjà sur la dernière version (' + info.current + ').',
                             tone: 'info',
                             duration: 4000,
                         });
