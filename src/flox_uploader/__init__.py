@@ -37,6 +37,15 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.12 : Sprint 8 hotfix v11 — batch de 7 notes UX NOTES.md :
+#           (1) terminal popup pendant prepare cache via CREATE_NO_WINDOW,
+#           (2) colonne "Mode" obsolete retiree de la table Uploads,
+#           (3-4) shift-click + check-all + persistance sessionStorage
+#           sur la section Preparations en cours, (5) suppression package
+#           uploaded autorisee avec warning specifique sur le nouvel
+#           infohash, (6) selection des packages uploaded sur queue
+#           (exclus du bouton Uploader), (7) bouton "Ouvrir le dossier
+#           source" sur la page detail (parent du .mkv original).
 #   0.3.11 : Sprint 8 hotfix v10 — propage les erreurs de fetch GitHub.
 #           Le bouton "Verifier les mises a jour" mentait avec "A jour"
 #           quand le fetch GitHub avait silencieusement echoue. Maintenant
@@ -68,4 +77,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.11"
+__version__ = "0.3.12"

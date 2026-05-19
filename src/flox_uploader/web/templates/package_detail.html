@@ -600,6 +600,14 @@
                 <div class="flex items-start gap-2">
                     <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 w-16">Source</span>
                     <span class="font-mono break-all text-slate-700 dark:text-slate-300 flex-1">{{ source_file_path }}</span>
+                    {# Sprint 8 hotfix v11 : ouvrir le dossier du fichier source.
+                       Utile pour retrouver le .mkv original apres upload (changer
+                       de seedbox, ranger, etc.). #}
+                    <button id="btn-open-source-folder" type="button"
+                            class="interactive inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 flex-shrink-0"
+                            aria-label="Ouvrir le dossier source dans l'explorateur" data-tu-tooltip="Ouvrir le dossier du fichier source">
+                        {{ icon('folder-open', size='sm') }}
+                    </button>
                 </div>
                 {% endif %}
                 <div class="flex items-start gap-2">
@@ -1115,7 +1123,9 @@
 </section>
 {% endif %}
 
-{% if state != 'uploaded' %}
+{# Sprint 8 hotfix v11 : suppression autorisee meme pour les packages
+   uploaded (avec warning specifique). Le confirm-name tape par l'user
+   reste le garde-fou principal. #}
 <section class="bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg p-4 mb-6">
     <h3 class="text-sm font-semibold text-danger-900 dark:text-danger-200 mb-2 inline-flex items-center gap-2">
         {{ icon('alert-triangle', size='md') }}
@@ -1124,9 +1134,16 @@
     <p class="text-xs text-danger-700 dark:text-danger-300 mb-3">
         Supprime ce package du disque. Le fichier source d'origine n'est pas touché, mais le dossier package, le .torrent généré, le NFO et la présentation seront perdus.
     </p>
+    {% if state == 'uploaded' %}
+    <p class="text-xs text-danger-800 dark:text-danger-200 mb-3 font-medium inline-flex items-start gap-1.5">
+        {{ icon('alert-triangle', size='sm', classes='mt-0.5 flex-shrink-0') }}
+        <span>
+            Ce package a été <strong>uploadé sur le tracker</strong>. Si tu le re-prépares plus tard, le nouveau <code class="font-mono text-[11px] px-1 py-0.5 rounded bg-danger-100 dark:bg-danger-900/50">.torrent</code> aura un <strong>infohash différent</strong> (regénéré localement) et ne sera donc pas reconnu comme le même torrent que celui déjà sur le tracker. Tu ne pourras pas re-seeder l'upload existant sans le .torrent d'origine.
+        </span>
+    </p>
+    {% endif %}
     {{ button('Supprimer ce package', id='btn-delete-package', variant='danger', icon_name='trash-2') }}
 </section>
-{% endif %}
 
 {% endblock %}
 
@@ -1376,6 +1393,31 @@
                 tu.toast({ title: 'Chemin copié', tone: 'success', duration: 1500 });
             } catch (e) {
                 tu.toast({ title: 'Échec de la copie', message: e.message, tone: 'danger' });
+            }
+        });
+    }
+
+    // Sprint 8 hotfix v11 : bouton "Ouvrir le dossier source" (parent du
+    // fichier .mkv original). Meme pattern que btnOpen pour le package_dir.
+    const btnOpenSrc = document.getElementById('btn-open-source-folder');
+    if (btnOpenSrc) {
+        const originalSrcHTML = btnOpenSrc.innerHTML;
+        const _checkSvg3 = '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+        btnOpenSrc.addEventListener('click', async () => {
+            btnOpenSrc.disabled = true;
+            try {
+                const resp = await fetch(apiBase + '/open-source-folder', {method: 'POST'});
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                btnOpenSrc.innerHTML = _checkSvg3;
+                setTimeout(() => { btnOpenSrc.innerHTML = originalSrcHTML; }, 1200);
+            } catch (e) {
+                tu.toast({ title: 'Impossible d\'ouvrir le dossier source', message: e.message, tone: 'danger' });
+                btnOpenSrc.innerHTML = originalSrcHTML;
+            } finally {
+                btnOpenSrc.disabled = false;
             }
         });
     }

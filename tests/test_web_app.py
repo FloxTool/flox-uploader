@@ -551,8 +551,11 @@ def test_package_delete_works(client: TestClient, tmp_path: Path):
     assert not pkg.exists()
 
 
-def test_package_delete_refuses_uploaded(client: TestClient, tmp_path: Path):
-    """DELETE refuse 409 sur un package en etat uploaded."""
+def test_package_delete_accepts_uploaded(client: TestClient, tmp_path: Path):
+    """Sprint 8 hotfix v11 : DELETE accepte maintenant les packages uploaded.
+    Avant on bloquait avec 409 ; maintenant on supprime. La confirmation
+    tape-le-nom reste le garde-fou. L'UI affiche un warning specifique pour
+    les uploaded ("recreer creera un nouveau infohash")."""
     from flox_uploader.core.package_state import PackageState, transition
 
     pkg = _make_prepared_package(tmp_path, "UploadedPkg")
@@ -563,8 +566,9 @@ def test_package_delete_refuses_uploaded(client: TestClient, tmp_path: Path):
         f"/api/packages/{pkg.name}",
         json={"confirm_name": pkg.name},
     )
-    assert resp.status_code == 409
-    assert pkg.is_dir()
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert not pkg.is_dir()
 
 
 # ============================================================

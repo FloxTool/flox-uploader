@@ -177,7 +177,6 @@
         <thead class="bg-slate-50/60 dark:bg-slate-900/40 text-left text-slate-500 dark:text-slate-400 text-xs font-medium">
             <tr>
                 <th class="px-4 py-2.5 font-medium">Package</th>
-                <th class="px-4 py-2.5 w-32 font-medium">Mode</th>
                 <th class="px-4 py-2.5 w-56 font-medium">Statut</th>
                 <th class="px-4 py-2.5 w-40 font-medium">Mis à jour</th>
                 <th class="px-4 py-2.5 w-24 text-center font-medium">Actions</th>
@@ -196,13 +195,6 @@
                             {{ icon('external-link', size='sm') }}
                             Voir sur le tracker (ID {{ u.uploaded_torrent_id }})
                         </a>
-                    {% endif %}
-                </td>
-                <td class="px-4 py-2.5">
-                    {% if u.dry_run %}
-                        {{ badge('Dry-run', tone='neutral') }}
-                    {% else %}
-                        {{ badge('Réel', tone='primary') }}
                     {% endif %}
                 </td>
                 <td class="px-4 py-2.5">
@@ -414,15 +406,18 @@
                 data-filter-bucket="{{ p.confidence_bucket }}"
                 data-filter-has-issues="{{ has_issues_flag }}">
                 <td class="p-0 text-center">
-                    {% if p.state != 'uploaded' %}
+                    {# Sprint 8 hotfix v11 : checkbox visible meme pour les
+                       packages uploaded (avant on les cachait). Le bouton
+                       "Uploader" exclut deja les uploaded via filter
+                       state in {prepared, validated} (cf. refreshQueueSelection).
+                       Le bouton "Supprimer" les accepte (utile pour cleanup). #}
                     <label class="flex items-center justify-center w-full h-full cursor-pointer px-2 py-3">
                         <input type="checkbox" class="package-checkbox w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500"
                                data-package="{{ p.package_dir }}"
                                data-package-name="{{ p.package_name }}"
                                data-package-state="{{ p.state }}"
-                               {% if p.confidence_bucket == 'ready' and p.state == 'prepared' %}checked data-tu-tooltip="Auto-coche : score {{ p.confidence_score }}"{% else %}data-tu-tooltip="Score {{ p.confidence_score }} · état {{ p.state }}"{% endif %}>
+                               {% if p.confidence_bucket == 'ready' and p.state == 'prepared' %}checked data-tu-tooltip="Auto-coche : score {{ p.confidence_score }}"{% elif p.state == 'uploaded' %}data-tu-tooltip="Déjà uploadé — non pris en compte par le bouton Uploader, mais sélectionnable pour suppression"{% else %}data-tu-tooltip="Score {{ p.confidence_score }} · état {{ p.state }}"{% endif %}>
                     </label>
-                    {% endif %}
                 </td>
                 {# RELEASE NAME — une seule ligne propre, plus de warnings inline #}
                 <td class="px-4 py-3">
@@ -1609,6 +1604,36 @@
     const prepSelectedCount = document.getElementById('prep-selected-count');
     const prepCheckAll = document.getElementById('prep-check-all');
     const prepDelBtn = document.getElementById('prep-delete-selection');
+
+    // Persistance selection (sessionStorage) — survit aux reloads auto
+    // declenches par le polling de la queue ou par les page nav.
+    const PREP_SELECTION_KEY = 'tu_queue_prep_selection_v1';
+    function _loadPrepSelection() {
+        try {
+            const raw = sessionStorage.getItem(PREP_SELECTION_KEY);
+            if (!raw) return null;
+            return new Set(JSON.parse(raw));
+        } catch (e) { return null; }
+    }
+    function _savePrepSelection() {
+        try {
+            const ids = Array.from(prepCheckboxes())
+                .filter(cb => cb.checked && !cb.disabled)
+                .map(cb => cb.dataset.jobId);
+            sessionStorage.setItem(PREP_SELECTION_KEY, JSON.stringify(ids));
+        } catch (e) {}
+    }
+    // Restore au boot : on coche les checkboxes dont le job_id est dans le Set.
+    // Les jobs disparus depuis (deja prepared / supprimes) sont juste ignores.
+    const _prepRestored = _loadPrepSelection();
+    if (_prepRestored !== null) {
+        prepCheckboxes().forEach(cb => {
+            if (!cb.disabled && _prepRestored.has(cb.dataset.jobId)) {
+                cb.checked = true;
+            }
+        });
+    }
+
     function refreshPrepSelection() {
         const all = Array.from(prepCheckboxes()).filter(cb => !cb.disabled);
         const selected = all.filter(cb => cb.checked);
@@ -1628,12 +1653,39 @@
             }
         }
     }
-    prepCheckboxes().forEach(cb => cb.addEventListener('change', refreshPrepSelection));
+    function _onPrepSelectionChanged() {
+        refreshPrepSelection();
+        _savePrepSelection();
+    }
+    prepCheckboxes().forEach(cb => cb.addEventListener('change', _onPrepSelectionChanged));
+
+    // Shift+click range select — meme pattern que .package-checkbox (l.969-984)
+    let _prepLastClickedIdx = -1;
+    function _prepIndexOf(cb) { return Array.from(prepCheckboxes()).indexOf(cb); }
+    prepCheckboxes().forEach(cb => {
+        cb.addEventListener('click', (event) => {
+            if (cb.disabled) return;
+            const idx = _prepIndexOf(cb);
+            if (event.shiftKey && _prepLastClickedIdx >= 0 && idx !== _prepLastClickedIdx) {
+                const all = Array.from(prepCheckboxes());
+                const [start, end] = idx < _prepLastClickedIdx
+                    ? [idx, _prepLastClickedIdx]
+                    : [_prepLastClickedIdx, idx];
+                const newState = cb.checked;
+                for (let i = start; i <= end; i++) {
+                    if (!all[i].disabled) all[i].checked = newState;
+                }
+                _onPrepSelectionChanged();
+            }
+            _prepLastClickedIdx = idx;
+        });
+    });
+
     if (prepCheckAll) {
         prepCheckAll.addEventListener('change', () => {
             const target = prepCheckAll.checked;
             prepCheckboxes().forEach(cb => { if (!cb.disabled) cb.checked = target; });
-            refreshPrepSelection();
+            _onPrepSelectionChanged();
         });
     }
     refreshPrepSelection();

@@ -452,6 +452,16 @@ def _run_prepare_job(job_id: int) -> None:
     # Force PYTHONUNBUFFERED pour que le log streame en temps reel via SSE
     subprocess_env["PYTHONUNBUFFERED"] = "1"
 
+    # Sprint 8 hotfix v11 : sur Windows en mode bundle PyInstaller, le
+    # subprocess (qui est l'exe lui-meme avec sous-commande prepare) ouvre
+    # une fenetre console qui pop au premier plan et vole le focus. CREATE_NO_WINDOW
+    # cache la console sans empecher TerminateProcess (donc kill() reste OK).
+    # Pas d'effet sur les autres OS (creationflags ignore).
+    popen_kwargs: dict = {}
+    if sys.platform == "win32":
+        # subprocess.CREATE_NO_WINDOW = 0x08000000
+        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
     proc = None
     return_code = None
     try:
@@ -461,8 +471,7 @@ def _run_prepare_job(job_id: int) -> None:
                 stdout=logf,
                 stderr=subprocess.STDOUT,
                 env=subprocess_env,
-                # Note : pas de creationflags Windows particulier — on veut
-                # que kill() = TerminateProcess soit immediat
+                **popen_kwargs,
             )
             with _running_procs_lock:
                 _running_procs[job_id] = proc

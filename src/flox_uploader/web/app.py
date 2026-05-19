@@ -1929,8 +1929,13 @@ def create_app() -> FastAPI:
         """Supprime un package : rm -rf le dossier + clean les jobs lies.
 
         Body : {"confirm_name": "..."} doit matcher le nom du package, sinon 400.
-        Refuse de supprimer un package en etat 'uploaded' (proteger les uploads
-        reussis). Pour ces cas, l'utilisateur doit faire la suppression manuelle.
+
+        Sprint 8 hotfix v11 : on accepte maintenant la suppression d'un package
+        UPLOADED (avant on bloquait avec HTTP 409). La confirmation tape-le-nom
+        est suffisante comme garde-fou pour eviter les suppressions accidentelles.
+        L'UI cote page detail affiche un warning specifique pour les uploaded
+        ("recreer ce package creera un nouveau .torrent dont l'infohash ne
+        matchera pas celui uploade").
         """
         import shutil
         from ..core import jobs_db
@@ -1941,14 +1946,6 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 400,
                 f"Confirmation invalide. Attendu : '{target.name}', recu : '{confirm}'",
-            )
-        # Protection : refuse de supprimer si state == uploaded
-        state_data = read_state(target)
-        if state_data is not None and state_data.state == PackageState.UPLOADED:
-            raise HTTPException(
-                409,
-                "Package deja uploade : suppression refusee. "
-                "Si tu veux vraiment, supprime le manuellement.",
             )
         # Cleanup jobs lies (le file_path source reste sur disque, on touche pas)
         source_job = jobs_db.find_job_for_package(str(target))
@@ -2496,25 +2493,15 @@ def create_app() -> FastAPI:
             raise HTTPException(500, f"Echec ecriture : {e}")
         return {"ok": True, "size": len(text), "overridden": True}
 
-    @app.post("/api/packages/{name}/open-folder")
-    def api_package_open_folder(name: str):
-        """UI4 : ouvre le dossier package dans l'explorateur OS du serveur.
+    def _open_folder_in_explorer(target: Path) -> None:
+        """Helper : ouvre `target` dans l'explorateur OS du serveur.
 
-        `window.open('file:///...')` cote browser est bloque par Chrome /
-        Edge / Firefox pour des raisons de securite (les pages web ne peuvent
-        pas ouvrir l'explorateur local). Comme la web UI tourne sur la meme
-        machine que le user, on contourne en utilisant l'OS cote serveur :
-        os.startfile(path) sur Windows, subprocess Linux/Mac.
-
-        Refuse si la web UI est exposee sur un host non-local (--insecure-host) :
-        on n'ouvre PAS un dossier sur le serveur a la demande d'un client distant.
-        """
-        target = _resolve_package_dir(name)
-        # Garde-fou : si la UI est exposee, ne pas ouvrir (action serveur a la demande client)
-        # On detecte indirectement via la presence du flag insecure dans l'env du process.
-        # Pour le moment on accepte toujours en local. Un vrai check necessiterait
-        # l'inspection de uvicorn config qui n'est pas trivial cote middleware.
+        os.startfile sur Windows (Explorer), `open` sur macOS, `xdg-open`
+        sur Linux. Leve HTTPException si le path n'existe pas ou si l'OS
+        refuse l'ouverture."""
         import os as _os
+        if not target.exists():
+            raise HTTPException(404, f"Dossier introuvable : {target}")
         try:
             if _os.name == "nt":
                 _os.startfile(str(target))  # type: ignore[attr-defined]
@@ -2526,7 +2513,41 @@ def create_app() -> FastAPI:
                 subprocess.Popen(["xdg-open", str(target)])
         except (OSError, FileNotFoundError) as e:
             raise HTTPException(500, f"Impossible d'ouvrir : {e}")
+
+    @app.post("/api/packages/{name}/open-folder")
+    def api_package_open_folder(name: str):
+        """UI4 : ouvre le dossier package dans l'explorateur OS du serveur.
+
+        `window.open('file:///...')` cote browser est bloque par Chrome /
+        Edge / Firefox pour des raisons de securite. Comme la web UI tourne
+        sur la meme machine que le user, on contourne via os.startfile.
+        Action serveur — accepte uniquement en local (la UI etant a 127.0.0.1
+        par defaut, le risque est nul ; si l'user passe --insecure-host,
+        c'est sa responsabilite)."""
+        target = _resolve_package_dir(name)
+        _open_folder_in_explorer(target)
         return {"ok": True, "path": str(target)}
+
+    @app.post("/api/packages/{name}/open-source-folder")
+    def api_package_open_source_folder(name: str):
+        """Sprint 8 hotfix v11 : ouvre le dossier qui CONTIENT le fichier
+        source du package (le .mkv qu'on a uploade). Utile sur la page detail
+        d'un package uploade pour aller retrouver le fichier original
+        (changer de seedbox, re-encoder, etc.).
+
+        Lit le `source_file_path` depuis le state du package, ouvre son parent."""
+        target = _resolve_package_dir(name)
+        state_data = read_state(target)
+        if state_data is None or not state_data.source_file_path:
+            raise HTTPException(404, "Pas de fichier source connu pour ce package")
+        source = Path(state_data.source_file_path)
+        if not source.exists():
+            raise HTTPException(
+                404,
+                f"Le fichier source n'existe plus à l'emplacement enregistré : {source}",
+            )
+        _open_folder_in_explorer(source.parent)
+        return {"ok": True, "path": str(source.parent)}
 
     @app.delete("/api/packages/{name}/presentation")
     def api_package_presentation_reset(name: str):

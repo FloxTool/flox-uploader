@@ -13,6 +13,40 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.12] — 2026-05-19
+
+Batch de 7 notes UX issues de `NOTES.md`.
+
+### Corrigé
+
+- **Terminal popup pendant les prepares** : sur Windows en bundle, le subprocess
+  `prepare` ouvrait une fenêtre console qui pop au premier plan et volait le
+  focus pendant la frappe utilisateur. Fix : `creationflags=CREATE_NO_WINDOW`
+  passé à `subprocess.Popen` (no-op sur autres OS, le kill reste OK).
+- **Sélection perdue dans "Préparations en cours" au reload auto** : la liste
+  des jobs cochés disparaissait quand le polling de queue déclenchait un
+  `window.location.reload()` (quand un job finissait par ex). Fix : persistance
+  `sessionStorage` (`tu_queue_prep_selection_v1`), restaure au mount.
+
+### Modifié
+
+- **Colonne "Mode" retirée** de la table Uploads (vestige du dry-run obsolète).
+- **Shift-click + check-all** sur la section "Préparations en cours" (existait
+  déjà sur "Packages prêts" et Inbox — uniformisation).
+- **Suppression d'un package uploadé autorisée** (avant : HTTP 409 + bouton
+  caché). Garde-fou : la confirmation tape-le-nom reste. La zone dangereuse
+  affiche maintenant un warning supplémentaire pour les uploadés : "recréer
+  ce package créera un .torrent avec un infohash différent, non reconnu par
+  le tracker".
+- **Sélection des packages uploadés autorisée** sur la page Queue (avant :
+  checkbox cachée). Bouton "Uploader" continue d'exclure les uploadés via
+  filter `state in {prepared, validated}` — pas de risque de double upload.
+- **Bouton "Ouvrir le dossier source"** sur la page détail (à côté de la
+  ligne Source). Nouvel endpoint `POST /api/packages/{name}/open-source-folder`
+  qui ouvre le parent du `.mkv` original dans l'Explorateur OS.
+
+---
+
 ## [0.3.11] — 2026-05-19
 
 Hotfix v10 — le bouton "Vérifier les mises à jour" mentait silencieusement.
