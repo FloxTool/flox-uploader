@@ -463,7 +463,17 @@
         <dl class="divide-y divide-slate-100 dark:divide-slate-700/60">
             <div class="px-4 py-3 flex items-center justify-between gap-3">
                 <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Version</dt>
-                <dd class="text-sm font-mono text-slate-900 dark:text-slate-100">{{ app_version }}</dd>
+                <dd class="inline-flex items-center gap-2">
+                    <span class="text-sm font-mono text-slate-900 dark:text-slate-100">{{ app_version }}</span>
+                    {# Sprint 8 hotfix v8 : bouton "Verifier maintenant" pour
+                       forcer un refresh sync du cache update. Sert quand le
+                       refresh auto au boot a echoue (silent fail). #}
+                    <button type="button" id="guide-check-update"
+                            class="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        {{ icon('refresh-cw', size='sm') }}
+                        <span id="guide-check-update-label">Vérifier les mises à jour</span>
+                    </button>
+                </dd>
             </div>
             <div class="px-4 py-3 flex items-center justify-between gap-3">
                 <dt class="text-sm font-medium text-slate-700 dark:text-slate-300">Périmètre actuel</dt>
@@ -530,6 +540,55 @@
                     // Fallback ultra-defensif : on ouvre la page Issues nue.
                     window.open('https://github.com/FloxTool/flox-uploader/issues/new?template=bug.yml',
                                 '_blank', 'noopener,noreferrer');
+                }
+            });
+        })();
+
+        // Sprint 8 hotfix v8 : bouton "Verifier les mises a jour" dans la
+        // section "A propos". Force un refresh sync du cache (utile si le
+        // refresh auto au boot a silent-failed).
+        (function() {
+            const btn = document.getElementById('guide-check-update');
+            const label = document.getElementById('guide-check-update-label');
+            if (!btn || !label) return;
+            btn.addEventListener('click', async () => {
+                const originalLabel = label.textContent;
+                btn.disabled = true;
+                label.textContent = 'Vérification…';
+                try {
+                    const resp = await fetch('/api/update-info/refresh', {method: 'POST'});
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    if (data.available) {
+                        tu.toast({
+                            title: 'Mise à jour disponible : ' + data.latest,
+                            message: 'Version actuelle : ' + data.current + '. Le banner indigo en haut de page te mène à la release.',
+                            tone: 'success',
+                            duration: 6000,
+                        });
+                        label.textContent = data.latest + ' disponible !';
+                        // Reload pour faire apparaitre le banner update (sauf
+                        // s'il a deja ete dismiss par l'user pour cette version)
+                        setTimeout(() => window.location.reload(), 1500);
+                    } else {
+                        tu.toast({
+                            title: 'À jour',
+                            message: 'Tu es déjà sur la dernière version (' + data.current + ').',
+                            tone: 'info',
+                            duration: 4000,
+                        });
+                        label.textContent = 'À jour ✓';
+                        setTimeout(() => { label.textContent = originalLabel; btn.disabled = false; }, 3000);
+                    }
+                } catch (e) {
+                    tu.toast({
+                        title: 'Vérification échouée',
+                        message: 'Impossible de joindre GitHub : ' + String(e.message || e),
+                        tone: 'danger',
+                        duration: 6000,
+                    });
+                    label.textContent = originalLabel;
+                    btn.disabled = false;
                 }
             });
         })();

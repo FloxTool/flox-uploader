@@ -27,6 +27,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """
     monkeypatch.setenv("FLOX_UPLOADER_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("BROWSE_ROOT", str(tmp_path / "browse"))
+    # Sprint 8 hotfix v8 : skip le fetch GitHub au boot pour eviter le
+    # timeout 5s × N tests qui creent une app.
+    monkeypatch.setenv("FLOX_DISABLE_UPDATE_CHECK", "1")
     # Variables critiques requises par le middleware first-run.
     # Valeurs bidons : les tests qui appellent l'API tracker mockent les requetes.
     monkeypatch.setenv("TRACKER_API_URL", "https://gemini-tracker.test/api")
@@ -59,6 +62,8 @@ def client_unconfigured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Test
     monkeypatch.setattr(_cfg, "env_file", lambda: tmp_path / "no_such.env")
     monkeypatch.setenv("FLOX_UPLOADER_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("BROWSE_ROOT", str(tmp_path / "browse"))
+    # Sprint 8 hotfix v8 : skip le fetch GitHub au boot pour eviter le timeout
+    monkeypatch.setenv("FLOX_DISABLE_UPDATE_CHECK", "1")
     # Volontairement : on retire les vars critiques au cas ou elles seraient
     # heritees du shell/CI.
     for k in ("TRACKER_API_URL", "TRACKER_API_KEY", "TRACKER_ANNOUNCE", "TMDB_API_KEY"):

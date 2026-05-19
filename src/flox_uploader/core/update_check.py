@@ -292,3 +292,57 @@ def refresh_cache_if_stale_async() -> None:
 
     t = threading.Thread(target=_runner, daemon=True, name="flox-update-check")
     t.start()
+
+
+def ensure_cache_exists_sync(timeout_seconds: float = 5.0) -> bool:
+    """Sprint 8 hotfix v8 : garantit que le cache existe au boot.
+
+    Si le cache `.update_cache.json` n'a JAMAIS ete cree, on fait un refresh
+    SYNC (bloquant max `timeout_seconds`) pour le creer. Important au 1er
+    boot de l'app pour que le banner update soit visible des le 1er hit
+    utilisateur (au lieu de devoir attendre que le thread daemon termine).
+
+    Cas observe : sur la v0.3.7 installee de Louis, `.update_cache.json`
+    n'existait toujours pas apres plusieurs jours. Le thread daemon
+    `refresh_cache_if_stale_async()` lance au boot a manifestement
+    silent-failed (raison inconnue : timing, GIL, threading specifique
+    au bundle PyInstaller `--windowed` ou autre).
+
+    Le refresh sync de 5s au 1er boot est acceptable. Apres, le cache
+    existe et on tombe dans le code path async classique (TTL 6h).
+
+    Skip si env var `FLOX_DISABLE_UPDATE_CHECK=1` est set (utilise par
+    les tests pour eviter d'appeler GitHub a chaque create_app()).
+
+    Retourne True si un refresh sync a eu lieu, False si le cache existait
+    deja OU si l'update check est desactive."""
+    if os.environ.get("FLOX_DISABLE_UPDATE_CHECK") == "1":
+        return False
+    if _load_cache() is not None:
+        return False
+    # Cache absent : refresh sync avec timeout court
+    result = {"done": False}
+
+    def _runner() -> None:
+        try:
+            _refresh_now()
+        finally:
+            result["done"] = True
+
+    t = threading.Thread(target=_runner, daemon=True, name="flox-update-check-sync")
+    t.start()
+    t.join(timeout=timeout_seconds)
+    return result["done"]
+
+
+def force_refresh_sync() -> UpdateInfo:
+    """Sprint 8 hotfix v8 : force un refresh sync, retourne le resultat.
+
+    Utilise par l'endpoint POST /api/update-info/refresh quand l'user clique
+    le bouton "Verifier maintenant" dans la page Guide. Bloque jusqu'a 5s
+    max (timeout HTTP du fetch GitHub) puis retourne l'UpdateInfo a jour.
+
+    Si le fetch echoue (offline, rate limit, etc.), retourne le cache
+    existant (ou un UpdateInfo vide si jamais cache)."""
+    _refresh_now()  # synchrone, ignore le lock pour priorite user
+    return read_cached_update_info()
