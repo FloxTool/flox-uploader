@@ -288,8 +288,18 @@ def refresh_cache_if_stale_async() -> None:
     Idempotent + thread-safe : si un refresh est deja en cours, on no-op.
     Si le cache est frais, on no-op aussi. Le caller (app startup,
     endpoint /api/update-info) peut appeler ca a chaque hit sans craindre
-    de surcharge."""
+    de surcharge.
+
+    Skip si env var `FLOX_DISABLE_UPDATE_CHECK=1` (tests). Sans ce skip,
+    le thread daemon spawne en CI pendant les tests, fetch GitHub avec
+    le vrai __version__, et ecrase le cache que les tests setent via
+    `monkeypatch.setattr(uc, '__version__', ...)` + `_save_cache(...)`.
+    Race condition visible surtout sur Python 3.12 (CI plus rapide).
+    """
     global _refresh_in_progress
+
+    if os.environ.get("FLOX_DISABLE_UPDATE_CHECK") == "1":
+        return
 
     if not _is_cache_stale():
         return
