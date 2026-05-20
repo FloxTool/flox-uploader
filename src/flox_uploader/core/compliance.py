@@ -145,29 +145,55 @@ def _check_audio_codec(release_name: str, audio_tracks: list[dict]) -> list[Comp
 
 
 def _check_audio_channels(release_name: str, audio_tracks: list[dict]) -> list[ComplianceIssue]:
-    """Verifie 5.1 / 7.1 / etc. annonce vs piste principale."""
+    """Verifie le layout audio (5.1 / 7.1 / etc.) dans le nom vs MediaInfo.
+
+    Sprint 8 hotfix v16 : refonte de la detection + check apres 3 faux positifs
+    rapportes par Louis (Edge of Tomorrow, Elemental, Everythings).
+
+    Fix 1 (regex) : avant on utilisait deux regex separes —
+      - `\\b\\d\\.\\d\\b` (rate les formats colles `AC35.1`/`DDP5.1`)
+      - `[A-Z]\\d\\.\\d` (faux positif `F2.2` dans `VF2.2160p`)
+    Maintenant : `\\d\\.\\d(?!\\d)` (digit-point-digit non suivi de digit).
+    Match `5.1`, `7.1`, `2.0` partout (y compris colles `AC35.1`), evite `2.2`
+    de `VF2.2160p` (suivi de `1` -> lookahead negatif fail).
+
+    Fix 2 (check) : avant on comparait uniquement avec `audio_tracks[0]`
+    (piste principale). Si le release contient 2 pistes (ex: une 7.1 default
+    + une 5.1 alternative) et l'user a tagge la 5.1 dans le nom, on faussait
+    le warning. Maintenant : on accepte le nom si N'IMPORTE QUELLE piste
+    match. Le warning ne se declenche que si AUCUNE piste ne match.
+    """
     if not audio_tracks:
         return []
-    main_channels = (audio_tracks[0].get("channels") or "").strip()
-    if not main_channels:
+    # Toutes les channels detectees par MediaInfo (toutes pistes, pas juste la 1ere)
+    all_channels = {
+        (t.get("channels") or "").strip()
+        for t in audio_tracks
+        if (t.get("channels") or "").strip()
+    }
+    if not all_channels:
         return []
+
+    # Extraction des layouts dans le nom : digit.digit non suivi d'un digit.
+    # Exclut donc `2.2160` (resolution `2160p`) qui aurait matche le pattern
+    # `2.2` avec les regex precedents.
     name = release_name
-    # Cherche tous les patterns X.Y dans le nom (apres tout codec audio)
-    found = re.findall(r"\b\d\.\d\b", name)
-    # Aussi : pattern colle CodecXY (ex: DDP5.1, AC35.1) -> on extrait \d\.\d apres lettre
-    found += re.findall(r"[A-Z]\d\.\d", name)  # ex: P5.1, C5.1
+    found = re.findall(r"\d\.\d(?!\d)", name)
 
     if not found:
+        # Pour le message : on indique la piste principale comme reference
+        # (mais on accepterait n'importe quelle piste si elle etait dans le nom).
+        main_channels = (audio_tracks[0].get("channels") or "").strip()
         return [ComplianceIssue(
             Severity.WARN, "audio_channels",
             f"Piste principale est {main_channels} mais aucun layout dans le nom"
         )]
-    # Normalise : "P5.1" -> "5.1"
-    found_norm = [re.sub(r"^[A-Z]", "", f) for f in found]
-    if main_channels not in found_norm:
+    # Au moins UNE piste audio doit matcher au moins UN layout dans le nom.
+    if not (set(found) & all_channels):
         return [ComplianceIssue(
             Severity.WARN, "audio_channels",
-            f"Nom dit {found_norm} mais MediaInfo detecte {main_channels}"
+            f"Nom dit {found} mais MediaInfo detecte uniquement "
+            f"{sorted(all_channels)} (aucune piste ne correspond)"
         )]
     return []
 

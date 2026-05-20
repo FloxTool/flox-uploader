@@ -13,6 +13,49 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.16] — 2026-05-20
+
+Batch de notes : 4 bugs UX + 3 faux positifs compliance audio + 1 feature.
+
+### Corrigé
+
+- **🔴 Console MediaInfo qui flashait à chaque navigation (bundle Windows)** :
+  `_detect_mediainfo()` lançait `subprocess.run(["mediainfo", "--Version"])`
+  **à chaque page render** (via le diagnostic injecté pour le bouton "Signaler
+  un bug"), sans `CREATE_NO_WINDOW`. Sur le bundle PyInstaller, ça faisait
+  popper une fenêtre console une milliseconde à chaque changement de page →
+  curseur qui glitche en triple, frappe interrompue, sensation de page qui
+  saute. Fix : résultat **caché** au niveau module (la version MediaInfo ne
+  change pas pendant la session) + `CREATE_NO_WINDOW` sur Windows. C'était la
+  cause commune des 4 bugs d'affichage signalés.
+- **Polling de la queue bloqué si modal ouverte** : quand un job finissait
+  pendant que la modal "log" était ouverte, le polling faisait `return` sans
+  reprogrammer de tick → plus aucune actualisation auto, refresh manuel
+  obligatoire. Fix : on reprogramme un poll dans 2s même modal ouverte.
+
+### Modifié
+
+- **Compliance audio : 3 faux positifs corrigés** (Edge of Tomorrow,
+  Elemental, Everythings). Refonte de `_check_audio_channels` :
+  - Nouvelle regex `\d\.\d(?!\d)` : matche `5.1`/`7.1`/`2.0` partout y compris
+    les formats collés `AC35.1`/`DDP5.1`, **mais évite** le faux positif `2.2`
+    extrait de `VF2.2160p` (le `2.2` était suivi de `160p`).
+  - Le check accepte maintenant **n'importe quelle piste audio** détectée par
+    MediaInfo (avant : uniquement la piste principale `audio_tracks[0]`). Donc
+    un release avec 2 pistes (7.1 default + 5.1 alt) taggé `5.1` ne lève plus
+    de warning.
+
+### Ajouté
+
+- **Section "Upload vers le tracker" en mode `uploaded`** : récap centralisé
+  demandé par Louis. Affiche le statut "Uploadé" + date, le lien "Voir sur le
+  tracker" (proéminent), le dossier du `.torrent` final (avec bouton "Ouvrir"),
+  et le log d'upload complet (collapsible). La section "Log d'upload" séparée
+  est fusionnée dedans pour `uploaded` (gardée à part pour `failed` /
+  `aborted_duplicate`).
+
+---
+
 ## [0.3.15] — 2026-05-20
 
 ### Modifié

@@ -38,12 +38,43 @@ def test_detect_os_label(platform_system, expected):
 # _detect_mediainfo
 # ============================================================================
 
+@pytest.fixture(autouse=True)
+def _reset_mediainfo_cache():
+    """Sprint 8 hotfix v16 : reset le cache module-level avant chaque test
+    sinon le resultat du 1er test (typiquement False/'') pollue les suivants."""
+    diag._MEDIAINFO_CACHE = None
+    yield
+    diag._MEDIAINFO_CACHE = None
+
+
 def test_detect_mediainfo_when_binary_missing():
     """`shutil.which` renvoie None -> available=False, version=''."""
     with patch.object(diag.shutil, "which", return_value=None):
         ok, version = diag._detect_mediainfo()
         assert ok is False
         assert version == ""
+
+
+def test_detect_mediainfo_cache_avoids_subprocess_on_second_call():
+    """Sprint 8 hotfix v16 : le 1er appel resout via subprocess, les suivants
+    lisent le cache module-level. Verifie qu'aucun call subprocess n'est fait
+    au 2e call. Critique pour eviter le flash de console sur Windows bundle."""
+    with patch.object(diag.shutil, "which", return_value="/usr/bin/mediainfo"):
+        with patch.object(diag.subprocess, "run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "MediaInfoLib - v24.06"
+            mock_run.return_value.stderr = ""
+            # 1er appel : populate cache via subprocess
+            diag._detect_mediainfo()
+            assert mock_run.call_count == 1
+            # 2e/3e appel : doit lire le cache, AUCUN subprocess additionnel
+            diag._detect_mediainfo()
+            diag._detect_mediainfo()
+            assert mock_run.call_count == 1, (
+                f"Cache cassé : subprocess appelé {mock_run.call_count} fois "
+                f"au lieu de 1. Le bug 'flash console sur Windows à chaque "
+                f"page render' revient !"
+            )
 
 
 def test_detect_mediainfo_when_present():
