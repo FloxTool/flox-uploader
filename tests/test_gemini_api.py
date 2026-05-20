@@ -20,9 +20,42 @@ from flox_uploader.core.gemini_api import (
     UploadPayload,
     _classify_delta,
     _compute_delta_pct,
+    _parse_torrent_id_from_url,
 )
 
 responses = pytest.importorskip("responses")
+
+
+# ============================================================
+# Sprint 8 hotfix v13 : _parse_torrent_id_from_url
+# ============================================================
+# Bug observe (Louis, v0.3.12) : torrent_id retournait None sur les uploads
+# reussis, faisant disparaitre le lien "Voir sur Gemini" sur la page detail.
+
+@pytest.mark.parametrize("url,expected_id", [
+    # Format download direct avec passkey en query
+    ("https://gemini-tracker.org/torrents/download/12345.torrent?passkey=abc", 12345),
+    ("https://gemini-tracker.org/torrents/download/12345?passkey=abc", 12345),
+    # Format download avec passkey en path-style
+    ("https://gemini-tracker.org/torrents/download/12345/abcdef0123abcdef", 12345),
+    # Page details
+    ("https://gemini-tracker.org/torrents/12345", 12345),
+    ("https://gemini-tracker.org/torrents/12345/", 12345),
+    # Avec fragment
+    ("https://gemini-tracker.org/torrents/12345#description", 12345),
+])
+def test_parse_torrent_id_valid_formats(url, expected_id):
+    assert _parse_torrent_id_from_url(url) == expected_id
+
+
+@pytest.mark.parametrize("url", [
+    "",
+    "https://gemini-tracker.org/",
+    "not-a-url",
+    "https://gemini-tracker.org/torrents/foo",  # path sans digits
+])
+def test_parse_torrent_id_returns_none(url):
+    assert _parse_torrent_id_from_url(url) is None
 
 
 # ============================================================

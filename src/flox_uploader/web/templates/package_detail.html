@@ -624,6 +624,29 @@
                         {{ icon('copy', size='sm') }}
                     </button>
                 </div>
+                {# Sprint 8 hotfix v12 : si le package est uploade, on affiche
+                   aussi le dossier ou se trouve le .torrent final avec passkey
+                   (priorite : TORRENT_FINAL_DIR > parent de final_torrent_path).
+                   Bouton "Ouvrir" pour aller voir le .torrent en 1 click —
+                   utile pour le passer dans qBittorrent/Transmission. #}
+                {% if state == 'uploaded' and (torrent_final_dir or final_torrent_path) %}
+                <div class="flex items-start gap-2">
+                    <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 w-16">Torrent</span>
+                    <span class="font-mono break-all text-slate-700 dark:text-slate-300 flex-1">
+                        {% if torrent_final_dir %}
+                            {{ torrent_final_dir }}
+                            <span class="text-[10px] text-slate-500 dark:text-slate-500 ml-1">(watch folder)</span>
+                        {% else %}
+                            {{ final_torrent_path }}
+                        {% endif %}
+                    </span>
+                    <button id="btn-open-torrent-folder" type="button"
+                            class="interactive inline-flex items-center justify-center w-6 h-6 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 flex-shrink-0"
+                            aria-label="Ouvrir le dossier du .torrent" data-tu-tooltip="Ouvrir le dossier qui contient le .torrent uploadé">
+                        {{ icon('folder-open', size='sm') }}
+                    </button>
+                </div>
+                {% endif %}
                 {% if source_force_fr %}
                 <div class="text-primary-700 dark:text-primary-400 inline-flex items-center gap-1 text-xs">
                     <span class="text-slate-500 dark:text-slate-400 w-16">Force FR</span>
@@ -1393,6 +1416,31 @@
                 tu.toast({ title: 'Chemin copié', tone: 'success', duration: 1500 });
             } catch (e) {
                 tu.toast({ title: 'Échec de la copie', message: e.message, tone: 'danger' });
+            }
+        });
+    }
+
+    // Sprint 8 hotfix v12 : bouton "Ouvrir le dossier du .torrent uploade".
+    // Pointe sur TORRENT_FINAL_DIR si configure, sinon le package_dir.
+    const btnOpenTorrent = document.getElementById('btn-open-torrent-folder');
+    if (btnOpenTorrent) {
+        const originalTorrentHTML = btnOpenTorrent.innerHTML;
+        const _checkSvgTrnt = '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+        btnOpenTorrent.addEventListener('click', async () => {
+            btnOpenTorrent.disabled = true;
+            try {
+                const resp = await fetch(apiBase + '/open-torrent-folder', {method: 'POST'});
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                btnOpenTorrent.innerHTML = _checkSvgTrnt;
+                setTimeout(() => { btnOpenTorrent.innerHTML = originalTorrentHTML; }, 1200);
+            } catch (e) {
+                tu.toast({ title: 'Impossible d\'ouvrir le dossier du .torrent', message: e.message, tone: 'danger' });
+                btnOpenTorrent.innerHTML = originalTorrentHTML;
+            } finally {
+                btnOpenTorrent.disabled = false;
             }
         });
     }
