@@ -13,6 +13,23 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.17] — 2026-05-20
+
+### Corrigé
+
+- **Faux positif compliance audio sur les codecs finissant par un chiffre**
+  (cas Emilia Pérez : `E-AC3.5.1`). Le warning disait *"Nom dit ['3.5']"* car
+  `re.findall` (non-chevauchant) matchait `3.5` (le `3` de AC**3** + `.5`) puis
+  ratait le vrai `5.1` qui suivait. Pareil potentiellement pour `AC3.5.1`,
+  `MP3.x` etc.
+
+  Fix : capture **en chevauchement** (`(?=(\d\.\d))`) de tous les `digit.digit`,
+  puis filtrage sur une liste blanche de layouts audio réellement valides
+  (`1.0 / 2.0 / 2.1 / 4.0 / 5.1 / 6.1 / 7.1`). `3.5` et `2.2` n'en faisant pas
+  partie, ils ne sont plus jamais pris pour des layouts. +2 tests.
+
+---
+
 ## [0.3.16] — 2026-05-20
 
 Batch de notes : 4 bugs UX + 3 faux positifs compliance audio + 1 feature.
