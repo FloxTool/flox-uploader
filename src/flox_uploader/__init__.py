@@ -37,6 +37,13 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.17 : Sprint 8 hotfix v17 — 4e faux positif compliance audio
+#           (Emilia Perez : E-AC3.5.1). Le findall non-overlappant matchait
+#           `3.5` (le 3 de AC3 + .5) et ratait le vrai `5.1`. Fix : capture
+#           en chevauchement (lookahead) + filtre sur les layouts audio
+#           valides (_VALID_AUDIO_LAYOUTS : 1.0/2.0/2.1/4.0/5.1/6.1/7.1) —
+#           '3.5' et '2.2' n'en font pas partie donc ne sont jamais pris
+#           pour des layouts.
 #   0.3.16 : Sprint 8 hotfix v16 — batch UX/compliance/feature :
 #           (1) Console mediainfo qui flashait a chaque page render fix via
 #           cache module-level + CREATE_NO_WINDOW (cause des bugs curseur
@@ -110,4 +117,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.16"
+__version__ = "0.3.17"

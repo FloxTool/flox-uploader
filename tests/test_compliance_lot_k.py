@@ -599,6 +599,35 @@ def test_audio_channels_detects_glued_layout_AC35_1():
     assert not any(i.field == "audio_channels" for i in issues)
 
 
+def test_audio_channels_eac3_dot_5_1_not_misread_as_3_5():
+    """Cas 4 (Emilia Perez, v0.3.17) : `E-AC3.5.1` ne doit PAS etre lu comme
+    layout '3.5' (le 3 de AC3 + .5). Le vrai layout est 5.1, present dans
+    MediaInfo -> aucun warning. Le findall non-overlappant matchait `3.5`
+    et ratait `5.1` ; le fix capture en chevauchement + filtre layouts valides."""
+    audio = [
+        {"codec": "DDP", "channels": "5.1"},
+        {"codec": "DDP", "channels": "5.1"},
+        {"codec": "DDP", "channels": "2.0"},
+    ]
+    issues = check_compliance(
+        "Emilia.Perez.2024.MULTi.VFF.2160p.AD.SDR.WEBRip.E-AC3.5.1.x265-TyHD",
+        _mi(audio=audio),
+    )
+    assert not any(i.field == "audio_channels" for i in issues)
+
+
+def test_audio_channels_3_5_not_a_valid_layout():
+    """Garde-fou : `3.5` n'est pas un layout audio valide, donc meme isole
+    dans un nom bizarre il ne doit jamais etre pris pour un layout."""
+    audio = [{"codec": "DDP", "channels": "5.1"}]
+    # Nom artificiel avec '3.5' isole mais aussi le vrai 5.1
+    issues = check_compliance(
+        "Foo.2024.MULTi.VFF.1080p.BluRay.DDP5.1.x265-TEAM",
+        _mi(audio=audio),
+    )
+    assert not any(i.field == "audio_channels" for i in issues)
+
+
 def test_audio_channels_still_warns_when_truly_mismatched():
     """Sanity check : le warning doit toujours se declencher quand
     le nom dit X.Y mais aucune piste MediaInfo ne match."""

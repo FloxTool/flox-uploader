@@ -144,24 +144,34 @@ def _check_audio_codec(release_name: str, audio_tracks: list[dict]) -> list[Comp
     return []
 
 
+# Layouts audio canoniques valides (charte Gemini : 1.0, 2.0, 4.0, 5.1, 6.1,
+# 7.1 + 2.1 courant). On NE matche QUE ces valeurs comme layout dans le nom.
+# Critique pour eviter de prendre `3.5` (= le `3` de AC3 + `.5` du layout 5.1)
+# ou `2.2` (= `VF2` + `.2160p`) pour un layout — ils ne sont pas dans cette liste.
+_VALID_AUDIO_LAYOUTS = frozenset({"1.0", "2.0", "2.1", "4.0", "5.1", "6.1", "7.1"})
+
+
 def _check_audio_channels(release_name: str, audio_tracks: list[dict]) -> list[ComplianceIssue]:
     """Verifie le layout audio (5.1 / 7.1 / etc.) dans le nom vs MediaInfo.
 
-    Sprint 8 hotfix v16 : refonte de la detection + check apres 3 faux positifs
-    rapportes par Louis (Edge of Tomorrow, Elemental, Everythings).
+    Sprint 8 hotfix v16+v17 : refonte apres 4 faux positifs rapportes par
+    Louis (Edge of Tomorrow, Elemental, Everythings, Emilia Perez).
 
-    Fix 1 (regex) : avant on utilisait deux regex separes —
-      - `\\b\\d\\.\\d\\b` (rate les formats colles `AC35.1`/`DDP5.1`)
-      - `[A-Z]\\d\\.\\d` (faux positif `F2.2` dans `VF2.2160p`)
-    Maintenant : `\\d\\.\\d(?!\\d)` (digit-point-digit non suivi de digit).
-    Match `5.1`, `7.1`, `2.0` partout (y compris colles `AC35.1`), evite `2.2`
-    de `VF2.2160p` (suivi de `1` -> lookahead negatif fail).
+    Fix 1 (extraction des layouts) : le piege est que les codecs finissant
+    par un chiffre (AC3, E-AC3, MP3) colles a un layout produisent une fausse
+    sequence digit.digit. Exemples :
+      - `E-AC3.5.1` -> findall non-overlap matche `3.5` (le 3 de AC3 + .5)
+        et rate le vrai `5.1`.
+      - `VF2.2160p` -> `2.2` (le 2 de VF2 + .2160).
+    Solution : on capture TOUS les `\\d\\.\\d` EN CHEVAUCHEMENT (lookahead),
+    puis on FILTRE sur les layouts audio reellement valides (_VALID_AUDIO_LAYOUTS).
+    Ainsi `E-AC3.5.1` -> candidats {3.5, 5.1} -> filtre -> {5.1}. Correct.
+    Et `VF2.2160p` -> candidat {2.2} -> filtre -> {} (2.2 invalide). Pas de
+    faux positif.
 
-    Fix 2 (check) : avant on comparait uniquement avec `audio_tracks[0]`
-    (piste principale). Si le release contient 2 pistes (ex: une 7.1 default
-    + une 5.1 alternative) et l'user a tagge la 5.1 dans le nom, on faussait
-    le warning. Maintenant : on accepte le nom si N'IMPORTE QUELLE piste
-    match. Le warning ne se declenche que si AUCUNE piste ne match.
+    Fix 2 (check multi-pistes) : on accepte le nom si N'IMPORTE QUELLE piste
+    MediaInfo match un layout valide du nom. Le warning ne se declenche que
+    si AUCUNE piste ne correspond (cas d'une vraie incoherence).
     """
     if not audio_tracks:
         return []
@@ -174,25 +184,23 @@ def _check_audio_channels(release_name: str, audio_tracks: list[dict]) -> list[C
     if not all_channels:
         return []
 
-    # Extraction des layouts dans le nom : digit.digit non suivi d'un digit.
-    # Exclut donc `2.2160` (resolution `2160p`) qui aurait matche le pattern
-    # `2.2` avec les regex precedents.
-    name = release_name
-    found = re.findall(r"\d\.\d(?!\d)", name)
+    # Capture overlappante de tous les digit.digit, puis filtre layouts valides.
+    # Le `(?=(...))` permet de matcher des sequences chevauchantes (sinon
+    # findall consomme `3.5` et rate `5.1` dans `AC3.5.1`).
+    raw_candidates = re.findall(r"(?=(\d\.\d))", release_name)
+    found = [c for c in raw_candidates if c in _VALID_AUDIO_LAYOUTS]
 
     if not found:
-        # Pour le message : on indique la piste principale comme reference
-        # (mais on accepterait n'importe quelle piste si elle etait dans le nom).
         main_channels = (audio_tracks[0].get("channels") or "").strip()
         return [ComplianceIssue(
             Severity.WARN, "audio_channels",
             f"Piste principale est {main_channels} mais aucun layout dans le nom"
         )]
-    # Au moins UNE piste audio doit matcher au moins UN layout dans le nom.
+    # Au moins UNE piste audio doit matcher au moins UN layout valide du nom.
     if not (set(found) & all_channels):
         return [ComplianceIssue(
             Severity.WARN, "audio_channels",
-            f"Nom dit {found} mais MediaInfo detecte uniquement "
+            f"Nom dit {sorted(set(found))} mais MediaInfo detecte uniquement "
             f"{sorted(all_channels)} (aucune piste ne correspond)"
         )]
     return []
