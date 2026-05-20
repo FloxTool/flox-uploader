@@ -15,6 +15,23 @@ _Aucun changement non publié pour le moment._
 
 ## [0.3.13] — 2026-05-19
 
+### Corrigé
+
+- **🔴 Lien "Voir sur Gemini" invisible sur la page détail d'un upload réussi** :
+  cas observé sur ton upload `Elio.2025...` (log : `torrent ID None`, `Page tracker:` vide).
+  Cause : `_parse_torrent_id_from_url` ne matchait pas le format d'URL réellement
+  renvoyé par Gemini → `torrent_id` toujours `None` → `uploaded_torrent_url` vide
+  → la condition `{% if state == 'uploaded' and uploaded_torrent_url %}` du
+  template échouait → pas de lien affiché.
+
+  Fix : stratégie en 3 passes (pattern spécifique `/torrents/<id>` en priorité,
+  puis fallback `/(\d+)` générique avec le dernier match, puis log explicite si
+  rien ne match). 10 nouveaux tests `_parse_torrent_id_from_url`.
+
+  **Limitation** : les packages déjà uploadés (avant ce fix) garderont leur
+  `uploaded_torrent_url` vide en base. Le lien réapparaîtra pour les nouveaux
+  uploads. Pour les anciens, soit ré-upload, soit éditer manuellement le state.
+
 ### Ajouté
 
 - **Bouton "Ouvrir le dossier du `.torrent` uploadé"** sur la page détail
@@ -23,12 +40,6 @@ _Aucun changement non publié pour le moment._
   dans `.env`) puis tombe sur le parent de `final_torrent_path` (= le
   `.torrent` final avec passkey dans le `package_dir`).
 - Nouvel endpoint `POST /api/packages/{name}/open-torrent-folder`.
-
-### Notes
-
-- Le lien "Voir sur Gemini" existait déjà dans l'en-tête de la page détail
-  (badge vert "Voir sur Gemini" à droite des métadonnées, ligne 88-96 du
-  template). Aucun changement nécessaire de ce côté.
 
 ---
 
