@@ -13,6 +13,34 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.14] — 2026-05-20
+
+### Corrigé
+
+- **🔴 Lien "Voir sur Gemini" toujours invisible après v0.3.13** : le fix v0.3.13
+  acceptait `/torrents/` (pluriel) avec `[/?#$]` après l'ID. Mais Gemini renvoie
+  en pratique `/torrent/download/19394.d289e42ad96d9089142351b9761e3655`
+  (**singulier** `torrent` + `.` puis passkey 32 chars). La regex ne matchait pas.
+
+  Capture du log d'upload récent (Les Trois Mousquetaires) :
+  ```
+  [WARN] _parse_torrent_id_from_url : aucun id parsable dans le path
+  '/torrent/download/19394.d289e42ad96d9089142351b9761e3655'
+  ```
+
+  Fix : la regex accepte maintenant `torrent[s]?` + n'importe quel non-digit
+  comme séparateur post-ID. +2 tests pour ce format spécifique.
+
+### Ajouté
+
+- **Section "Log d'upload" sur la page détail** : pour les packages en état
+  `uploaded`, `failed` ou `aborted_duplicate`, un bouton "Afficher" charge
+  le log complet de l'upload dans un `<pre>` collapsible. Permet de
+  consulter le log après coup (le SSE stream ne marchait qu'en live).
+  Nouvel endpoint `GET /api/uploads/{name}/log`.
+
+---
+
 ## [0.3.13] — 2026-05-19
 
 ### Corrigé

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flox-uploader"
-version = "0.3.13"
+version = "0.3.14"
 description = "Création de packages d'upload (NFO, .torrent, fiche BBCode) pour trackers de torrents francophones."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1146,6 +1146,26 @@
 </section>
 {% endif %}
 
+{# Sprint 8 hotfix v14 : log d'upload accessible apres coup. Visible sur
+   les packages uploaded ou failed (= ceux qui ont passe par la phase upload).
+   Fetch lazy au click pour ne pas charger inutilement. #}
+{% if state in ('uploaded', 'failed', 'aborted_duplicate') %}
+<section class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-6">
+    <header class="flex items-center justify-between gap-3 mb-2">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon('scroll-text', size='md') }}
+            Log d'upload
+        </h3>
+        <button id="btn-load-upload-log" type="button"
+                class="inline-flex items-center gap-1.5 px-3 h-7 text-xs rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+            {{ icon('eye', size='sm') }}
+            <span id="btn-load-upload-log-label">Afficher</span>
+        </button>
+    </header>
+    <pre id="upload-log-content" class="hidden text-xs font-mono bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-md p-3 max-h-96 overflow-auto whitespace-pre-wrap break-all"></pre>
+</section>
+{% endif %}
+
 {# Sprint 8 hotfix v11 : suppression autorisee meme pour les packages
    uploaded (avec warning specifique). Le confirm-name tape par l'user
    reste le garde-fou principal. #}
@@ -1416,6 +1436,42 @@
                 tu.toast({ title: 'Chemin copié', tone: 'success', duration: 1500 });
             } catch (e) {
                 tu.toast({ title: 'Échec de la copie', message: e.message, tone: 'danger' });
+            }
+        });
+    }
+
+    // Sprint 8 hotfix v14 : bouton "Afficher" le log d'upload. Fetch lazy
+    // au 1er click. Le bouton bascule "Afficher" / "Masquer". On rafraichit
+    // le contenu a chaque "Afficher" pour avoir la derniere version.
+    const btnLoadLog = document.getElementById('btn-load-upload-log');
+    const btnLoadLogLabel = document.getElementById('btn-load-upload-log-label');
+    const logContentEl = document.getElementById('upload-log-content');
+    if (btnLoadLog && logContentEl) {
+        btnLoadLog.addEventListener('click', async () => {
+            // Si deja affiche : on masque
+            if (!logContentEl.classList.contains('hidden')) {
+                logContentEl.classList.add('hidden');
+                btnLoadLogLabel.textContent = 'Afficher';
+                return;
+            }
+            btnLoadLog.disabled = true;
+            const originalLabel = btnLoadLogLabel.textContent;
+            btnLoadLogLabel.textContent = 'Chargement…';
+            try {
+                const resp = await fetch(apiBase.replace('/packages/', '/uploads/') + '/log');
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                const data = await resp.json();
+                logContentEl.textContent = data.content || '(log vide)';
+                logContentEl.classList.remove('hidden');
+                btnLoadLogLabel.textContent = 'Masquer';
+            } catch (e) {
+                tu.toast({ title: 'Impossible de charger le log', message: e.message, tone: 'danger' });
+                btnLoadLogLabel.textContent = originalLabel;
+            } finally {
+                btnLoadLog.disabled = false;
             }
         });
     }

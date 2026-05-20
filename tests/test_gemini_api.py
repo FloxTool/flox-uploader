@@ -43,6 +43,10 @@ responses = pytest.importorskip("responses")
     ("https://gemini-tracker.org/torrents/12345/", 12345),
     # Avec fragment
     ("https://gemini-tracker.org/torrents/12345#description", 12345),
+    # Sprint 8 hotfix v14 : format REEL observe sur Gemini en v0.3.13.
+    # Singulier "torrent" + passkey collee a l'id par un "."
+    ("https://gemini-tracker.org/torrent/download/19394.d289e42ad96d9089142351b9761e3655", 19394),
+    ("https://gemini-tracker.org/torrent/download/1.abc123", 1),
 ])
 def test_parse_torrent_id_valid_formats(url, expected_id):
     assert _parse_torrent_id_from_url(url) == expected_id
