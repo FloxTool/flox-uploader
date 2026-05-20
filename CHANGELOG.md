@@ -13,6 +13,24 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.3.15] — 2026-05-20
+
+### Modifié
+
+- **Message d'erreur explicite pour le rate limit GitHub** : avant on affichait
+  juste `"HTTP 403"` quand le bouton "Vérifier les mises à jour" frappait la
+  limite GitHub (60 req/h pour les IPs non-authentifiées). Maintenant on
+  détecte le rate limit (HTTP 403 + body contenant "rate limit") et on parse
+  le header `X-RateLimit-Reset` pour donner un message du genre :
+
+  > Limite GitHub atteinte (60 requêtes par heure pour une IP non-authentifiée)
+  > — réinitialisé dans ~30 min (vers 02:15 heure locale). C'est normal après
+  > plusieurs installations / clics 'Vérifier' rapprochés.
+
+  Les autres codes HTTP (404, 5xx, etc.) gardent le message générique.
+
+---
+
 ## [0.3.14] — 2026-05-20
 
 ### Corrigé
