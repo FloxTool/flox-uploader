@@ -199,7 +199,12 @@ def _fetch_latest_release() -> "tuple[dict | None, str]":
             },
         )
         if resp.status_code != 200:
-            return None, f"GitHub a répondu HTTP {resp.status_code} (attendu 200)"
+            # Sprint 8 hotfix v15 : message specifique pour le rate limit
+            # (HTTP 403 + body "rate limit"). GitHub limite a 60 req/h pour
+            # les requetes non-authentifiees par IP. Le header X-RateLimit-Reset
+            # contient l'epoch UTC du reset — on le formate en heure locale
+            # pour l'user.
+            return None, _format_http_error(resp)
         try:
             return resp.json(), ""
         except ValueError as e:
@@ -210,6 +215,49 @@ def _fetch_latest_release() -> "tuple[dict | None, str]":
         return None, f"Connexion impossible à GitHub (offline / firewall ?) : {e}"
     except Exception as e:
         return None, f"Erreur inattendue : {type(e).__name__} : {e}"
+
+
+def _format_http_error(resp: "requests.Response") -> str:
+    """Sprint 8 hotfix v15 : formate un message d'erreur lisible pour les
+    HTTP errors GitHub. Cas special pour le rate limit (403 + body 'rate limit'
+    + header X-RateLimit-Reset) pour donner l'heure exacte du reset."""
+    status = resp.status_code
+
+    # Detection rate limit (HTTP 403 + body contient "rate limit").
+    # Doc GitHub : https://docs.github.com/en/rest/overview/rate-limits-for-the-rest-api
+    body_text = ""
+    try:
+        body = resp.json()
+        if isinstance(body, dict):
+            body_text = (body.get("message") or "").lower()
+    except (ValueError, Exception):
+        body_text = (resp.text or "").lower()
+
+    if status == 403 and "rate limit" in body_text:
+        # Tente de parser X-RateLimit-Reset (epoch UTC en secondes)
+        reset_epoch_str = resp.headers.get("X-RateLimit-Reset", "")
+        reset_info = ""
+        try:
+            reset_epoch = int(reset_epoch_str)
+            now_epoch = int(time.time())
+            mins_until_reset = max(1, (reset_epoch - now_epoch) // 60 + 1)
+            # Heure locale au format HH:MM
+            reset_dt = datetime.fromtimestamp(reset_epoch)
+            reset_hhmm = reset_dt.strftime("%H:%M")
+            reset_info = (
+                f" — réinitialisé dans ~{mins_until_reset} min "
+                f"(vers {reset_hhmm} heure locale)"
+            )
+        except (ValueError, OSError):
+            pass
+        return (
+            f"Limite GitHub atteinte (60 requêtes par heure pour une IP "
+            f"non-authentifiée){reset_info}. C'est normal après plusieurs "
+            f"installations / clics 'Vérifier' rapprochés."
+        )
+
+    # Autres codes HTTP
+    return f"GitHub a répondu HTTP {status} (attendu 200)"
 
 
 # ============================================================================

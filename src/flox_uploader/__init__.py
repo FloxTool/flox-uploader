@@ -37,6 +37,11 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.15 : Sprint 8 hotfix v15 — message rate limit GitHub explicite.
+#           Quand l'API renvoyait 403 + 'rate limit' (60 req/h IP non-auth),
+#           le user voyait juste 'HTTP 403'. Maintenant : message specifique
+#           "Limite GitHub atteinte ... reinitialise dans ~X min (vers HH:MM
+#           heure locale)" en parsant le header X-RateLimit-Reset.
 #   0.3.14 : Sprint 8 hotfix v14 — fix critique parser URL Gemini (suite v13).
 #           Le format reel observe sur Gemini est /torrent/download/<id>.<passkey>
 #           (singulier 'torrent' + '.' suivi de la passkey 32 chars). v13
@@ -92,4 +97,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.14"
+__version__ = "0.3.15"

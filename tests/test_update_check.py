@@ -191,8 +191,29 @@ def test_fetch_returns_error_on_5xx():
 
 
 def test_fetch_returns_error_on_403_rate_limit():
+    """Sprint 8 hotfix v15 : 403 + body 'rate limit' -> message specifique
+    (pas juste 'HTTP 403') + heure de reset si dispo dans X-RateLimit-Reset."""
+    import time as _t
+    reset_epoch = int(_t.time()) + 30 * 60  # reset dans 30 min
     with patch.object(uc.requests, "get") as mock_get:
         mock_get.return_value.status_code = 403
+        mock_get.return_value.json.return_value = {
+            "message": "API rate limit exceeded for 1.2.3.4. (But here's the good news: ...)"
+        }
+        mock_get.return_value.headers = {"X-RateLimit-Reset": str(reset_epoch)}
+        data, err = uc._fetch_latest_release()
+        assert data is None
+        # Le message doit etre explicite sur le rate limit + indiquer le temps de reset
+        assert "Limite GitHub" in err or "rate" in err.lower()
+        assert "min" in err  # temps de reset present
+
+
+def test_fetch_403_without_rate_limit_message():
+    """403 sans 'rate limit' dans le body -> message HTTP generique."""
+    with patch.object(uc.requests, "get") as mock_get:
+        mock_get.return_value.status_code = 403
+        mock_get.return_value.json.return_value = {"message": "Forbidden"}
+        mock_get.return_value.headers = {}
         data, err = uc._fetch_latest_release()
         assert data is None
         assert "403" in err
