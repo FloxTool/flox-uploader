@@ -37,6 +37,13 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.14 : Sprint 8 hotfix v14 — fix critique parser URL Gemini (suite v13).
+#           Le format reel observe sur Gemini est /torrent/download/<id>.<passkey>
+#           (singulier 'torrent' + '.' suivi de la passkey 32 chars). v13
+#           matchait /torrents/ (pluriel) et exigeait [/?#$] apres l'id —
+#           ne matchait donc PAS ce format. Fix : regex acceptent torrent[s]?
+#           + tout non-digit comme separateur post-id. Plus bouton "Afficher
+#           log d'upload" sur la page detail (endpoint /api/uploads/{name}/log).
 #   0.3.13 : Sprint 8 hotfix v12+v13 — bouton "Ouvrir le dossier du .torrent
 #           uploade" sur la page detail. Priorise TORRENT_FINAL_DIR (watch
 #           folder qBittorrent) puis parent de final_torrent_path en fallback.
@@ -85,4 +92,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.13"
+__version__ = "0.3.14"

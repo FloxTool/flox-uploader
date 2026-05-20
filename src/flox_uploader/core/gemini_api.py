@@ -374,16 +374,18 @@ class UploadResult:
 def _parse_torrent_id_from_url(url: str) -> int | None:
     """Extrait le torrent_id depuis une URL de download Unit3D.
 
-    Formats observes :
-    - https://gemini-tracker.org/torrents/download/12345.torrent?passkey=...
-    - https://gemini-tracker.org/torrents/download/12345?passkey=...
-    - https://gemini-tracker.org/torrents/12345
-    - https://gemini-tracker.org/torrents/download/12345/<passkey> (path-style)
+    Formats observes (l'API Gemini est inconstante sur singulier/pluriel
+    et sur le separateur post-id) :
+    - /torrents/download/12345.torrent?passkey=...        (pluriel + .torrent + query)
+    - /torrents/download/12345?passkey=...                (pluriel + sans .torrent)
+    - /torrents/12345                                      (page details)
+    - /torrents/download/12345/<passkey>                   (path-style passkey)
+    - /torrent/download/12345.<passkey>                    (SINGULIER + . suivi de passkey
+                                                            32-char — format observe
+                                                            chez Gemini en v0.3.13)
 
-    Sprint 8 hotfix v13 : strategie en 3 passes pour ne pas rater des
-    formats inattendus (cas Louis : torrent_id retournait None alors que
-    l'upload reussissait, faisant disparaitre le lien 'Voir sur Gemini'
-    sur la page detail).
+    Sprint 8 hotfix v14 : on accepte aussi 'torrent' singulier et le `.`
+    comme separateur post-id (cas reel Gemini). Strategie en 3 passes.
     """
     if not url:
         return None
@@ -391,30 +393,30 @@ def _parse_torrent_id_from_url(url: str) -> int | None:
     parsed = urlparse(url)
     path = parsed.path or ""
 
-    # Passe 1 : pattern "/torrents/<id>" ou "/torrents/download/<id>"
+    # Passe 1 : pattern "/torrent[s]/<id>" ou "/torrent[s]/download/<id>"
     # (la forme la plus specifique en premier — evite de matcher d'autres
-    # nombres dans le path).
-    m = re.search(r"/torrents/(?:download/)?(\d+)(?:\.torrent)?(?=[/?#]|$)", path)
+    # nombres dans le path). Accepte le pluriel ET le singulier.
+    # Apres l'id, on accepte n'importe quoi qui n'est pas un digit
+    # (`.passkey`, `.torrent`, `/passkey`, `?query`, `#frag`, fin).
+    m = re.search(r"/torrents?/(?:download/)?(\d+)(?=\D|$)", path)
     if m:
         try:
             return int(m.group(1))
         except ValueError:
             pass
 
-    # Passe 2 : pattern generique "/<id>" (avec ou sans .torrent, suivi de
-    # n'importe quel separateur ou fin de chaine). Utilise findall + le dernier
-    # match pour gerer les paths qui contiennent plusieurs nombres
-    # (ex: /api/v2/torrents/12345 — on veut 12345, pas 2).
-    matches = re.findall(r"/(\d+)(?:\.torrent)?(?=[/?#]|$)", path)
+    # Passe 2 : pattern generique "/<id>" (id suivi de n'importe quel
+    # non-digit ou fin). Utilise findall + le dernier match pour gerer
+    # les paths qui contiennent plusieurs nombres (ex: /api/v2/torrents/12345
+    # — on veut 12345, pas 2).
+    matches = re.findall(r"/(\d+)(?=\D|$)", path)
     if matches:
         try:
             return int(matches[-1])
         except ValueError:
             pass
 
-    # Passe 3 : echec — on log pour debug et on retourne None. Le caller
-    # affichera "torrent ID None" dans le log d'upload, ce qui permet de
-    # corriger la regex la prochaine fois.
+    # Passe 3 : echec — on log pour debug et on retourne None.
     print(
         f"[WARN] _parse_torrent_id_from_url : aucun id parsable dans le path "
         f"'{path}' (URL complete : '{url}'). Le lien 'Voir sur Gemini' ne "

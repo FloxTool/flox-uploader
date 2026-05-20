@@ -2284,6 +2284,27 @@ def create_app() -> FastAPI:
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    @app.get("/api/uploads/{name}/log")
+    def api_upload_log(name: str):
+        """Sprint 8 hotfix v14 : retourne le contenu COMPLET du log d'upload
+        d'un package (pas le SSE stream, qui ne marche que pendant l'upload
+        live). Utilise par la page detail pour permettre a l'user de
+        consulter le log apres coup."""
+        from .jobs_runner import get_upload_status
+
+        target = _resolve_package_dir(name)
+        status = get_upload_status(str(target))
+        if status is None or not status.get("log_path"):
+            raise HTTPException(404, "Aucun log d'upload pour ce package")
+        log_path = Path(status["log_path"])
+        if not log_path.exists():
+            raise HTTPException(404, f"Fichier log introuvable : {log_path}")
+        try:
+            content = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            raise HTTPException(500, f"Echec lecture log : {e}")
+        return {"content": content, "path": str(log_path), "size": len(content)}
+
     @app.get("/api/uploads/{name}/stream")
     def api_upload_stream(name: str):
         """SSE : stream live du log d'un upload."""
