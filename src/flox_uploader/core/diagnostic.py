@@ -22,9 +22,19 @@ from __future__ import annotations
 import platform
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 
 from .. import __version__
+
+
+# Sprint 8 hotfix v16 : cache module-level du resultat de _detect_mediainfo().
+# La version de MediaInfo CLI ne change pas pendant que le serveur tourne, donc
+# on n'a aucune raison d'invoquer le subprocess a chaque page render. Avant
+# (bug Louis bundle Windows), chaque navigation provoquait un flash de console
+# mediainfo --Version + glitch du curseur. Cache + CREATE_NO_WINDOW = silence.
+# Type : None = pas encore detecte, tuple = resultat cache.
+_MEDIAINFO_CACHE: "tuple[bool, str] | None" = None
 
 
 @dataclass(frozen=True)
@@ -69,26 +79,49 @@ def _detect_mediainfo() -> tuple[bool, str]:
     """Verifie que MediaInfo CLI est dispo et recupere sa version.
 
     Retourne (available, version_string). Version vide si non dispo.
-    On limite a 3s pour eviter de bloquer le rendu de page si MediaInfo
-    est tres lent (cas pathologique)."""
+
+    Sprint 8 hotfix v16 : resultat CACHE module-level. La version MediaInfo
+    ne change pas pendant la vie du serveur, et cette fonction etait appelee
+    a chaque page render via collect_diagnostic() -> sur Windows bundle,
+    chaque navigation provoquait un flash de console (subprocess) qui
+    glitchait le curseur + interrompait la frappe. Le cache evite tout
+    appel apres le premier.
+
+    Sur Windows, on passe CREATE_NO_WINDOW comme dans jobs_runner.py (fix
+    v0.3.12) pour cacher la console meme au premier appel (cas du tout
+    premier render apres boot serveur)."""
+    global _MEDIAINFO_CACHE
+    if _MEDIAINFO_CACHE is not None:
+        return _MEDIAINFO_CACHE
+
     if shutil.which("mediainfo") is None:
-        return False, ""
+        _MEDIAINFO_CACHE = (False, "")
+        return _MEDIAINFO_CACHE
+
+    popen_kwargs: dict = {}
+    if sys.platform == "win32":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
     try:
         result = subprocess.run(
             ["mediainfo", "--Version"],
             capture_output=True,
             text=True,
             timeout=3,
+            **popen_kwargs,
         )
         if result.returncode != 0:
-            return False, ""
+            _MEDIAINFO_CACHE = (False, "")
+            return _MEDIAINFO_CACHE
         # Output typique : "MediaInfoLib - v24.06"
         out = (result.stdout or result.stderr or "").strip()
         # On retourne la 1ere ligne, max 80 chars
         first_line = out.splitlines()[0] if out else ""
-        return True, first_line[:80]
+        _MEDIAINFO_CACHE = (True, first_line[:80])
+        return _MEDIAINFO_CACHE
     except (subprocess.TimeoutExpired, OSError):
-        return False, ""
+        _MEDIAINFO_CACHE = (False, "")
+        return _MEDIAINFO_CACHE
 
 
 def collect_diagnostic() -> Diagnostic:

@@ -351,6 +351,96 @@
         </div>
     </div>
 </section>
+{% elif state == 'uploaded' %}
+{# Sprint 8 hotfix v16 : section "Upload vers le tracker" en mode 'uploaded' —
+   recap centralise demande par Louis (note Feature). Regroupe statut + lien
+   Gemini + lien dossier .torrent + log d'upload, plus de redondance avec
+   la section "Log d'upload" separee. #}
+<section id="toc-upload" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 flex-wrap">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+            {{ icon('upload', size='md') }}
+            Upload vers le tracker
+        </h3>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 ring-1 ring-inset ring-success-200 dark:ring-success-800">
+            {{ icon('check-circle', size='sm') }}
+            Uploadé{% if updated_at %} · {{ updated_at | fmt_date }}{% endif %}
+        </span>
+    </header>
+    <div class="p-4 space-y-4">
+        {# Ligne 1 : Voir sur Gemini (lien prominent — le truc le plus utile) #}
+        {% if uploaded_torrent_url %}
+        <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-primary-50 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400">
+                {{ icon('external-link', size='sm') }}
+            </span>
+            <div class="flex-1 min-w-0">
+                <div class="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Page release sur le tracker</div>
+                <a href="{{ uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer"
+                   class="text-sm font-medium text-primary-700 dark:text-primary-400 hover:underline break-all inline-flex items-center gap-1">
+                    {{ uploaded_torrent_url }}
+                    {% if uploaded_torrent_id %}
+                    <span class="text-xs text-slate-500 dark:text-slate-500 font-normal">(ID {{ uploaded_torrent_id }})</span>
+                    {% endif %}
+                </a>
+            </div>
+        </div>
+        {% else %}
+        <div class="flex items-start gap-3 text-xs text-warning-700 dark:text-warning-300">
+            <span class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-warning-50 dark:bg-warning-900/40 text-warning-600 dark:text-warning-400">
+                {{ icon('alert-triangle', size='sm') }}
+            </span>
+            <div class="flex-1 min-w-0">
+                <div class="font-medium mb-0.5">Lien tracker non disponible</div>
+                <p class="text-slate-600 dark:text-slate-400">
+                    Le parser n'a pas réussi à extraire l'URL au moment de l'upload (cas connu pour les packages uploadés avant v0.3.14). Re-prépare et re-upload pour récupérer le lien.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
+        {# Ligne 2 : Dossier .torrent final #}
+        {% if torrent_final_dir or final_torrent_path %}
+        <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-warning-50 dark:bg-warning-900/40 text-warning-600 dark:text-warning-400">
+                {{ icon('folder-open', size='sm') }}
+            </span>
+            <div class="flex-1 min-w-0">
+                <div class="text-xs text-slate-500 dark:text-slate-400 mb-0.5">
+                    Dossier du .torrent final
+                    {% if torrent_final_dir %}<span class="text-[10px] text-slate-400">(watch folder)</span>{% endif %}
+                </div>
+                <div class="flex items-center gap-2">
+                    <code class="text-xs font-mono text-slate-700 dark:text-slate-300 break-all flex-1">{{ torrent_final_dir or final_torrent_path }}</code>
+                    <button id="btn-open-torrent-folder-upload" type="button"
+                            class="interactive inline-flex items-center gap-1.5 px-2.5 h-7 text-xs rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex-shrink-0">
+                        {{ icon('folder-open', size='sm') }}
+                        Ouvrir
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {# Ligne 3 : Log d'upload (collapsible) #}
+        <div class="flex items-start gap-3">
+            <span class="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                {{ icon('scroll-text', size='sm') }}
+            </span>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <div class="text-xs text-slate-500 dark:text-slate-400">Log d'upload (trace complète)</div>
+                    <button id="btn-load-upload-log-v2" type="button"
+                            class="inline-flex items-center gap-1.5 px-2.5 h-7 text-xs rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        {{ icon('eye', size='sm') }}
+                        <span id="btn-load-upload-log-v2-label">Afficher</span>
+                    </button>
+                </div>
+                <pre id="upload-log-content-v2" class="hidden text-xs font-mono bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-md p-3 max-h-96 overflow-auto whitespace-pre-wrap break-all"></pre>
+            </div>
+        </div>
+    </div>
+</section>
 {% endif %}
 
 <!-- Lot U.1 : Cartes Media + Technique repensees. Cote-a-cote en desktop,
@@ -1146,10 +1236,12 @@
 </section>
 {% endif %}
 
-{# Sprint 8 hotfix v14 : log d'upload accessible apres coup. Visible sur
-   les packages uploaded ou failed (= ceux qui ont passe par la phase upload).
-   Fetch lazy au click pour ne pas charger inutilement. #}
-{% if state in ('uploaded', 'failed', 'aborted_duplicate') %}
+{# Sprint 8 hotfix v16 : section "Log d'upload" separee retiree car
+   consolidee dans la section "Upload vers le tracker" pour state='uploaded'.
+   Pour state='failed' et 'aborted_duplicate', on garde ici une version
+   minimale (la section "Upload vers le tracker" n'est rendue que pour
+   prepared/validated/failed/uploaded). #}
+{% if state in ('failed', 'aborted_duplicate') %}
 <section class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-6">
     <header class="flex items-center justify-between gap-3 mb-2">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
@@ -1440,23 +1532,24 @@
         });
     }
 
-    // Sprint 8 hotfix v14 : bouton "Afficher" le log d'upload. Fetch lazy
-    // au 1er click. Le bouton bascule "Afficher" / "Masquer". On rafraichit
-    // le contenu a chaque "Afficher" pour avoir la derniere version.
-    const btnLoadLog = document.getElementById('btn-load-upload-log');
-    const btnLoadLogLabel = document.getElementById('btn-load-upload-log-label');
-    const logContentEl = document.getElementById('upload-log-content');
-    if (btnLoadLog && logContentEl) {
-        btnLoadLog.addEventListener('click', async () => {
-            // Si deja affiche : on masque
-            if (!logContentEl.classList.contains('hidden')) {
-                logContentEl.classList.add('hidden');
-                btnLoadLogLabel.textContent = 'Afficher';
+    // Sprint 8 hotfix v14 + v16 : bouton "Afficher" le log d'upload.
+    // Wire-up generique pour les 2 instances DOM (section principale
+    // "Upload vers le tracker" pour state=uploaded, ET section secondaire
+    // pour state=failed/aborted_duplicate). Memes IDs partagent un comportement.
+    function _wireUploadLogButton(btnId, labelId, preId) {
+        const btn = document.getElementById(btnId);
+        const label = document.getElementById(labelId);
+        const pre = document.getElementById(preId);
+        if (!btn || !label || !pre) return;
+        btn.addEventListener('click', async () => {
+            if (!pre.classList.contains('hidden')) {
+                pre.classList.add('hidden');
+                label.textContent = 'Afficher';
                 return;
             }
-            btnLoadLog.disabled = true;
-            const originalLabel = btnLoadLogLabel.textContent;
-            btnLoadLogLabel.textContent = 'Chargement…';
+            btn.disabled = true;
+            const originalLabel = label.textContent;
+            label.textContent = 'Chargement…';
             try {
                 const resp = await fetch(apiBase.replace('/packages/', '/uploads/') + '/log');
                 if (!resp.ok) {
@@ -1464,14 +1557,40 @@
                     throw new Error(data.detail || resp.statusText);
                 }
                 const data = await resp.json();
-                logContentEl.textContent = data.content || '(log vide)';
-                logContentEl.classList.remove('hidden');
-                btnLoadLogLabel.textContent = 'Masquer';
+                pre.textContent = data.content || '(log vide)';
+                pre.classList.remove('hidden');
+                label.textContent = 'Masquer';
             } catch (e) {
                 tu.toast({ title: 'Impossible de charger le log', message: e.message, tone: 'danger' });
-                btnLoadLogLabel.textContent = originalLabel;
+                label.textContent = originalLabel;
             } finally {
-                btnLoadLog.disabled = false;
+                btn.disabled = false;
+            }
+        });
+    }
+    // Section principale "Upload vers le tracker" (state=uploaded)
+    _wireUploadLogButton('btn-load-upload-log-v2', 'btn-load-upload-log-v2-label', 'upload-log-content-v2');
+    // Section secondaire (state=failed / aborted_duplicate)
+    _wireUploadLogButton('btn-load-upload-log', 'btn-load-upload-log-label', 'upload-log-content');
+
+    // Sprint 8 hotfix v16 : bouton "Ouvrir" le dossier du .torrent dans la
+    // section Upload (duplicate du btn-open-torrent-folder de la carte
+    // Source/Package, meme handler).
+    const btnOpenTorrentUpload = document.getElementById('btn-open-torrent-folder-upload');
+    if (btnOpenTorrentUpload) {
+        btnOpenTorrentUpload.addEventListener('click', async () => {
+            btnOpenTorrentUpload.disabled = true;
+            try {
+                const resp = await fetch(apiBase + '/open-torrent-folder', {method: 'POST'});
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || resp.statusText);
+                }
+                tu.toast({title: 'Dossier ouvert dans l\'explorateur', tone: 'success', duration: 2000});
+            } catch (e) {
+                tu.toast({title: 'Impossible d\'ouvrir le dossier', message: e.message, tone: 'danger'});
+            } finally {
+                btnOpenTorrentUpload.disabled = false;
             }
         });
     }

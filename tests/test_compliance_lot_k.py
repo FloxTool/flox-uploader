@@ -548,3 +548,67 @@ def test_m1_crf_x265_2160p_in_range():
         _mi(video=video),
     )
     assert not any(i.field == "crf" for i in issues)
+
+
+# ============================================================
+# Sprint 8 hotfix v16 : 3 faux positifs compliance audio (Louis)
+# ============================================================
+# Cas 1 : VF2.2160p contenait `2.2` qui faisait croire qu'il y avait
+#         un layout 2.2 dans le nom -> warning "Nom dit ['2.2']".
+# Cas 2 : 2 pistes audio (7.1 + 5.1), le nom dit 5.1, mais on comparait
+#         uniquement avec la piste principale (7.1) -> warning faux.
+# Cas 3 : AC35.1 (codec colle au layout) n'etait pas detecte comme
+#         contenant "5.1" -> warning "aucun layout dans le nom".
+
+
+def test_audio_channels_no_false_positive_from_resolution_in_vf2_2160p():
+    """Cas 1 : `VF2.2160p` ne doit PAS etre interprete comme layout '2.2'.
+    Le release dit AC3 5.1, MediaInfo aussi 5.1 -> aucun warning."""
+    audio = [{"codec": "AC3", "channels": "5.1"}]
+    issues = check_compliance(
+        "Edge.Of.Tomorrow.2014.MULTi.VF2.2160p.HDR10.BluRay.AC35.1.x265-Portos",
+        _mi(audio=audio),
+    )
+    # Pas de warning audio_channels (avant : warning "Nom dit ['2.2']")
+    assert not any(i.field == "audio_channels" for i in issues)
+
+
+def test_audio_channels_accepts_multiple_tracks_5_1_or_7_1():
+    """Cas 2 : 2 pistes (7.1 + 5.1). Le nom tagge 5.1 -> doit etre OK
+    meme si la piste principale est 7.1."""
+    audio = [
+        {"codec": "DDP", "channels": "7.1"},  # piste principale
+        {"codec": "DDP", "channels": "5.1"},  # piste alternative
+    ]
+    issues = check_compliance(
+        "Elemental.2023.MULTi.VFF.2160p.DV.HDR.BluRay.DDP5.1.x265-QTZ",
+        _mi(audio=audio),
+    )
+    assert not any(i.field == "audio_channels" for i in issues)
+
+
+def test_audio_channels_detects_glued_layout_AC35_1():
+    """Cas 3 : `AC35.1` (codec colle au layout, sans separateur) doit
+    etre reconnu comme contenant 5.1."""
+    audio = [{"codec": "AC3", "channels": "5.1"}]
+    issues = check_compliance(
+        "Everythings.Going.To.Be.Great.2025.MULTi.VFF.2160p.HDR10P.WEBRip.AC35.1.x265-Amen",
+        _mi(audio=audio),
+    )
+    # Pas de warning "aucun layout dans le nom" (avant : warning faux)
+    assert not any(i.field == "audio_channels" for i in issues)
+
+
+def test_audio_channels_still_warns_when_truly_mismatched():
+    """Sanity check : le warning doit toujours se declencher quand
+    le nom dit X.Y mais aucune piste MediaInfo ne match."""
+    audio = [{"codec": "DDP", "channels": "5.1"}]
+    issues = check_compliance(
+        # Nom dit 7.1 mais MediaInfo dit 5.1 -> warning legitime
+        "Movie.2024.MULTi.VFF.1080p.BluRay.DDP7.1.x265-TEAM",
+        _mi(audio=audio),
+    )
+    audio_warnings = [i for i in issues if i.field == "audio_channels"]
+    assert len(audio_warnings) == 1
+    assert "7.1" in audio_warnings[0].message
+    assert "5.1" in audio_warnings[0].message

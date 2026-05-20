@@ -37,6 +37,19 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.3.16 : Sprint 8 hotfix v16 — batch UX/compliance/feature :
+#           (1) Console mediainfo qui flashait a chaque page render fix via
+#           cache module-level + CREATE_NO_WINDOW (cause des bugs curseur
+#           glitch + terminal pop signales par Louis sur v0.3.14 bundle) ;
+#           (2) Polling queue ne se bloque plus eternellement si l'user
+#           ouvre la modal log au moment d'un job qui finit ;
+#           (3) Compliance audio_channels refactore : nouveau regex
+#           \\d\\.\\d(?!\\d) evite faux positifs `2.2` de `VF2.2160p` +
+#           detecte les formats colles `AC35.1`/`DDP5.1` + accepte
+#           N'IMPORTE QUELLE piste audio (pas juste la principale) ;
+#           (4) Section 'Upload vers le tracker' visible aussi en
+#           state=uploaded, recap centralise : badge + lien Gemini gros
+#           + lien dossier .torrent + log d'upload collapsible.
 #   0.3.15 : Sprint 8 hotfix v15 — message rate limit GitHub explicite.
 #           Quand l'API renvoyait 403 + 'rate limit' (60 req/h IP non-auth),
 #           le user voyait juste 'HTTP 403'. Maintenant : message specifique
@@ -97,4 +110,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.15"
+__version__ = "0.3.16"

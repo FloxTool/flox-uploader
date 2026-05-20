@@ -763,12 +763,24 @@
     async function pollSnapshot() {
         try {
             const resp = await fetch('/api/queue/snapshot', {cache: 'no-store'});
-            if (!resp.ok) return;
+            if (!resp.ok) {
+                // HTTP error : on retry quand meme (peut etre transient)
+                pollTimer = setTimeout(pollSnapshot, 5000);
+                return;
+            }
             const data = await resp.json();
             if (initialSig === null) {
                 initialSig = data.sig;
             } else if (data.sig !== initialSig) {
-                if (isModalOpen()) return;
+                if (isModalOpen()) {
+                    // Sprint 8 hotfix v16 : la modal log est ouverte → on
+                    // skip le reload (pour pas couper l'user en pleine lecture)
+                    // MAIS on reschedule un poll, sinon le polling s'arrete
+                    // pour toujours et le user doit refresh manuellement pour
+                    // voir la fin du job. On retry quand la modal sera fermee.
+                    pollTimer = setTimeout(pollSnapshot, 2000);
+                    return;
+                }
                 window.location.reload();
                 return;
             }
