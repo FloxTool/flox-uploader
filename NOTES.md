@@ -60,7 +60,7 @@ Bref : sois un collaborateur qui pense, pas un exécutant qui transcrit.
 
 
 #  UX/UI : truc moche, pas évident, manque, friction
-
+- j'aimerai changer la facon dont les filtres de la page queue ( package prepars) fonctinne. presentement quand on ouvre la petite fenetre filtre les element sont tous coché et affiche leur contenu, j'aimerai que ce soit l'invers quand on en selectione un on isole ce dernier. et si j,en selectionne un deuxieme j'isole les 2. c'est comme inversé le processus mais c'est plus intuitif. sur une autre conversation claude code on a fait un tool et les filtre etait comme ca par defaut j'ai trouvé ca plus fluide.
 
 # Feature : envie de quelque chose qui n'existe pas
 
