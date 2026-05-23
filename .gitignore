@@ -95,6 +95,12 @@ scripts/windows/uninstall_context_menu.bat
 notes/
 docs_externes/
 
+# Exception : PDFs sources officielles Gemini (charte upload, naming, API, teams interdites...)
+# Conserves dans gemini/ comme sources de verite pour le projet et les futures sessions Claude.
+!gemini/*.pdf
+# Artefacts d'extraction PDF -> texte (reproductibles via pypdf, ne pas commiter)
+gemini/_extracted/
+
 # ============================================================
 # Runtime web UI (Phase 3)
 # ============================================================

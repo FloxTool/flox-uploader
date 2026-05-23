@@ -21,16 +21,24 @@ d'un fichier vidéo en entrée, il génère :
 **Stack** : Python 3.10+, FastAPI + Jinja2 + Tailwind pour la web UI, SQLite pour la
 queue de jobs, `torf` pour les torrents, MediaInfo CLI pour les métadonnées vidéo.
 
-**Statut actuel** : Phase 3c livrée (web UI complète Inbox/Queue/Détail/Config + scoring
-nuancé 5 buckets + signaux de fallback). 292/292 tests verts.
+**Statut actuel (2026-05-22)** :
+- **Code v0.3.17** sur `main` (mergé), **772 tests verts** en local.
+- **Release v0.4.0** : prête côté code, build CI **bloqué** car GitHub Actions
+  est désactivé sur le compte `fremontlouis` (anti-abus déclenché par burst
+  de builds). Ticket de réintégration envoyé GitHub Support.
+- **v0.5.0 en planification** : extension multi-catégorie (livres, jeux,
+  sport, émission TV, logiciels, formations) via dégradation gracieuse.
+  **→ Plan canonique : [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md).**
 
-**Cible produit** : application web UI packagée user-friendly (Docker + PyInstaller)
-pour uploadeurs amateurs francophones. Tout passe par l'UI. Le terminal est un
-détail d'implémentation (power-user / scripting / CI seulement). Cf. `AUDIT.md`
-section "📦 Distribution & first-run UX" pour la roadmap.
+**Cible produit (court terme)** : application web UI packagée user-friendly
+(Windows .exe, Docker à venir) pour uploadeurs amateurs francophones. Tout
+passe par l'UI. Le terminal est un détail d'implémentation (power-user /
+scripting / CI seulement). Cf. [`PLAN-V1.md`](PLAN-V1.md) pour la roadmap
+v0.4.0 et [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) pour v0.5.0+.
 
-**Philosophie** : 100% déterministe (jamais d'appel LLM), human-in-the-loop (signale les
-ambiguïtés au lieu de deviner silencieusement), atomic file writes partout.
+**Philosophie** : 100% déterministe (jamais d'appel LLM), human-in-the-loop
+(signale les ambiguïtés au lieu de deviner silencieusement), atomic file
+writes partout, dégradation gracieuse (jamais de mur sur un type de contenu).
 
 ---
 
@@ -62,7 +70,12 @@ ambiguïtés au lieu de deviner silencieusement), atomic file writes partout.
 - **Communauté** : francophone, charte de naming stricte calquée sur la scene
 - **User** : Louis (`fremontlouis@gmail.com`), uploadeur amateur qui veut industrialiser
   son workflow personnel sans uploader de la merde au tracker
-- **Repo** : <https://github.com/fremontlouis/flox-uploader>
+- **Repo** : <https://github.com/FloxTool/flox-uploader> (organisation publique FloxTool)
+- **Sources Gemini officielles** : `gemini/*.pdf` (commités dans le repo) — 7 PDFs :
+  TORRENT API (IDs catégories/types/résolutions), RÈGLES DE NOMMAGE, RÈGLES
+  D'UPLOAD (général + ebook), Règle d'encodage, TEAMS INTERDITES, glossaire
+  sources (FULL/REMUX/BDRIP/WEB...). **C'est la VÉRITÉ TERRAIN** — relire
+  avant toute décision contestée.
 
 Le projet est né en réécrivant from-scratch un fork existant (`Unit3Dup-G3MINI` de
 Roger-Almeida) jugé trop fragile — voir
@@ -582,10 +595,18 @@ flox-uploader upload <package_dir> --force-upload --i-know-this-is-a-duplicate=1
 
 ## 13. Roadmap restante
 
-> **Cf. `AUDIT.md` (rev 2)** pour le détail complet, prioritisé par P0/P1/P2/P3,
-> avec sections "🗑 À déprécier / retirer" (déjà partiellement faite, cf. §13.1
-> ci-dessous) et "📦 Distribution & first-run UX" (le morceau le plus
-> stratégique pour rapprocher le produit du final).
+> **Référence canonique pour la roadmap actuelle :**
+> - **v0.4.0 (release publique vidéo)** : [`PLAN-V1.md`](PLAN-V1.md) — Sprints 1
+>   à 9. Sprints 1-8 livrés ; Sprint 9 (release v0.4.0 publique) bloqué sur
+>   réintégration GitHub Actions.
+> - **v0.5.0+ (multi-catégorie : livres, jeux, sport, émission TV,
+>   logiciels, formations)** : [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) —
+>   Sprints A à I, ~6-8 semaines homme. Dégradation gracieuse 4 barreaux.
+> - **`AUDIT.md` (rev 2.2)** : audit historique du codebase (95% des findings
+>   P0/P1 livrés), conservé pour traçabilité des références §X.Y.
+>
+> La section §13 ci-dessous reste pour la mémoire des bugs résolus et de
+> quelques items long terme. Les détails actifs sont dans les deux PLAN-*.md.
 
 ### 13.1 Déjà fait depuis CLAUDE.md précédent (commit après 5023907)
 
@@ -707,12 +728,18 @@ flox-uploader upload <package_dir> --force-upload --i-know-this-is-a-duplicate=1
 
 ## 15. Références externes
 
-- **Repo principal** : <https://github.com/fremontlouis/flox-uploader>
-- **Doc officielle G3MINI TR4CK3R** : PDF transmis par Louis (2026-05-07),
-  non commit dans le repo. **C'est la VERITE TERRAIN pour les IDs Unit3D**
-  (category_id, type_id, resolution_id) — plus fiable que Unit3Dup-G3MINI
-  qui contenait plusieurs IDs faux (BDRip=25 → vraiment 3, DVDRip=24 →
-  vraiment 13, types WEBMux/DLMux/BDMux/3D inexistants).
+- **Repo principal** : <https://github.com/FloxTool/flox-uploader>
+- **Doc officielle G3MINI TR4CK3R** : 7 PDFs **commités dans `gemini/`**
+  (depuis 2026-05-22) — `TORRENT API.pdf`, `RÈGLES DE NOMMAGE.pdf`, `RÈGLES
+  D'UPLOAD.pdf` (général), `RÈGLES D'UPLOAD EBOOK.pdf`, `Regle d'encodage.pdf`,
+  `TEAMS INTERDITES.pdf`, `FULL, REMUX, BDRIP, WEB, WEBRIP, COMMENT CHOISIR.pdf`.
+  **C'est la VÉRITÉ TERRAIN pour les IDs Unit3D** (category_id, type_id,
+  resolution_id) — plus fiable que Unit3Dup-G3MINI qui contenait plusieurs
+  IDs faux (BDRip=25 → vraiment 3, DVDRip=24 → vraiment 13, types
+  WEBMux/DLMux/BDMux/3D inexistants). **Découverte 2026-05-22** :
+  `unit3d_mapping.py` actuel n'a pas les TYPE_IDs 16-37 (Jeux\Windows,
+  Livres\BD, Logiciels\Linux, etc.) — à compléter en Sprint A v0.5.0
+  (cf. PLAN-MULTICAT §8.1).
 - **Fork de référence** : <https://github.com/lantiumBot/Unit3Dup-G3MINI> —
   utile pour la logique d'upload, mais croiser les IDs avec le PDF officiel.
 - **TMDB API** : <https://developer.themoviedb.org/reference/intro/getting-started>
@@ -727,10 +754,28 @@ flox-uploader upload <package_dir> --force-upload --i-know-this-is-a-duplicate=1
 
 ## 16. Workflow git
 
-### Branche unique : `main`
+### Workflow PR → squash-merge sur `main` (depuis Sprint 1 PLAN-V1)
 
-Pas de feature branches pour l'instant — c'est un projet solo, on push direct sur
-`main`. Si on commence à recevoir des contributions, on switchera sur un workflow PR.
+Le push direct sur `main` est **bloqué par le classifier Claude Code**
+(décision validée avec Louis). Workflow standard :
+
+```cmd
+cd "C:\Users\Louis\Documents\Claude\Projects\Tracker Uploder"
+git checkout main && git pull origin main
+git checkout -b <feature-branch-name>
+git add <fichiers>
+git commit -m "..." -m "..."
+git push -u origin <feature-branch-name>
+gh pr create --title "..." --body "..."
+```
+
+Puis Louis merge via GitHub UI (squash + delete branch). Le tag (`vX.Y.Z`)
+déclenche le build CI (Build Windows .exe → installeur Inno Setup) qui
+attache l'installeur à la release.
+
+**Important** : GitHub Actions est actuellement désactivé sur le compte
+`fremontlouis` (cf. statut TL;DR). En attendant la réintégration, les PRs
+peuvent être mergées mais les builds CI ne tournent pas.
 
 ### Format des commits préféré (calé avec Louis)
 
@@ -744,22 +789,25 @@ Pas de feature branches pour l'instant — c'est un projet solo, on push direct 
 Tests : N/N verts
 ```
 
-### Commande de push standard (CMD Windows)
+### Commande de push standard (CMD Windows, workflow PR)
 
-À la fin de chaque itération significative, fournir un bloc CMD complet à Louis :
+À la fin de chaque itération significative, créer une PR (le push direct
+sur `main` est bloqué) :
 
 ```cmd
 cd "C:\Users\Louis\Documents\Claude\Projects\Tracker Uploder"
-
+git checkout main && git pull origin main
+git checkout -b feature-<sujet>
 git add <fichiers ciblés, pas "git add .">
-
-git commit -m "Sujet" -m "Body multi-lignes (-m répété pour body)"
-
-git push origin main
+git commit -m "Sujet" -m "Body multi-lignes (-m répété pour body)" -m "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+git push -u origin feature-<sujet>
+gh pr create --title "..." --body "..."
 ```
 
-**À ne JAMAIS commit** : `data/`, `jobs.db`, `jobs/`, `.claude/`, `.env`, `__pycache__/`,
-`.tmdb_cache.json`. Cf. `.gitignore`.
+**À ne JAMAIS commit** : `data/`, `jobs.db`, `jobs/`, `.claude/`, `.env`,
+`__pycache__/`, `.tmdb_cache.json`, `gemini/_extracted/` (artefact PDF→text).
+Les **PDFs Gemini** dans `gemini/` SONT commités (sources officielles, cf.
+`.gitignore` exception `!gemini/*.pdf`). Cf. `.gitignore`.
 
 ---
 
@@ -805,14 +853,18 @@ conversations.
 
 ---
 
-*Dernière mise à jour : 2026-05-07 par Claude (Lots K + L + M + N + O + P + Q + R + S).*
-*Tests à cette date : 490/490 verts (+124 tests Lots K/L/M/N/O/P/Q). Sprint NOTES.md
-round 3 livré : bugs durs (Furiosa S01E265, TMDB ranking, drop MAX/streaming),
-enrichissement nom auto (codec audio/video/layout), champs upload Gemini complets
-(saison/épisode/distributeur/région/IDs externes/mots-clés), refonte UX/UI (collapse
-uniformes, code couleur warnings, bucket parfait à 100), BBCode parser fixé. Cible
-produit : web UI packagée user-friendly (PyInstaller + Docker). Roadmap dirigée par
-`AUDIT.md` (rev 2.7 ajoutée 2026-05-07).*
+*Dernière mise à jour : 2026-05-22 par Claude — bilan post-v0.3.17 + planification
+v0.5.0 multi-catégorie. Tests à cette date : 772/772 verts. Sprints v0.4.0 (PLAN-V1.md
+Sprints 1-8) livrés, release v0.4.0 bloquée par GitHub Actions désactivé (ticket
+réintégration envoyé). v0.5.0 planifiée dans [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) :
+extension multi-catégorie (livres BnF/Google Books, jeux IGDB/Steam, émissions TV
+TVmaze, sport TheSportsDB, logiciels/formations manuel+enrichissement opt-in) via
+dégradation gracieuse 4 barreaux. 7 PDFs Gemini officiels commités dans `gemini/`
+(sources de vérité). Découverte critique : TYPE_IDs 16-37 manquants dans
+`unit3d_mapping.py` (Jeux\*, Livres\*, Logiciels\*) — à compléter en Sprint A v0.5.0.*
+
+*Historique antérieur : 2026-05-07 (Lots K-S, web UI Phase 3c + bugs durs + auto-enrich
++ champs upload complets + UX/UI buckets 6 niveaux + BBCode parser).*
 
 ### Lot O (bugs durs) — points clés
 
