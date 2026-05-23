@@ -1149,12 +1149,14 @@
     };
     // Classes communes pour les chips INACTIVES (toutes les tones decochees
     // partagent le meme look slate "filtre OFF").
+    // NOTES round 9 : retire 'line-through' (visuellement trop fort avec la
+    // nouvelle logique inversee ou TOUS les chips sont decoches par defaut).
+    // Garde juste le grise (text-slate-400 + opacity-60).
     const _CHIP_OFF_CLASSES = [
         'bg-white', 'dark:bg-slate-800/50',
         'text-slate-400', 'dark:text-slate-500',
         'border-slate-200', 'dark:border-slate-700',
-        'line-through', 'opacity-60',
-        'hover:opacity-100', 'hover:line-through',
+        'opacity-60', 'hover:opacity-100',
     ];
 
     function _renderChips() {
