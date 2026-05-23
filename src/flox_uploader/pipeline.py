@@ -20,7 +20,8 @@ from .core.mediainfo_parser import (
 from .core.nfo import generate_nfo, find_companion_nfo
 from .core.omdb import fetch_omdb_data, pick_best_poster_url
 from .core.package_state import init_state
-from .core.release_name import build_release_name
+from .core.naming.strategy import get_strategy
+from .core.release_name import build_release_name  # re-export historique conserve
 from .core.tmdb import (
     make_tmdb_resolver,
     make_tv_resolver,
@@ -183,7 +184,16 @@ def process_one(
         else:
             tmdb_resolver = make_tmdb_resolver(tmdb_api_key, config.tmdb_cache_path())
 
-    release_name, tmdb_context = build_release_name(
+    # Sprint B.4 v0.5.0 (PLAN-MULTICAT §5.5) : on passe par la NamingStrategy
+    # adaptee a la categorie au lieu d'appeler build_release_name() directement.
+    # Pour les cats video (= les seules atteignables ici car la Brique 1 PR-3
+    # a deja early-return les cats non-video plus haut), get_strategy retourne
+    # VideoNamingStrategy qui wrap build_release_name() — comportement
+    # strictement identique a l'appel direct (verifie par
+    # test_video_strategy_build_release_name_equals_direct_call).
+    naming_strategy = get_strategy(category_id_early)
+    debug.set("naming_strategy", naming_strategy.name)
+    release_name, tmdb_context = naming_strategy.build_release_name(
         video_path, tracker, nfo_text, debug,
         force_fr=force_fr, tmdb_resolver=tmdb_resolver,
         media_info=media_info,
