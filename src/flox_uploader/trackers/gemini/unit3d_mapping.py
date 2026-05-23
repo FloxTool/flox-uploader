@@ -663,6 +663,224 @@ def category_label(category_id: int) -> str:
     return f"? (id={category_id})"
 
 
+# ============================================================
+# UI METADATA (Sprint C v0.5.0)
+# ============================================================
+# Source de verite des metadonnees UI par categorie : libelle, icone Lucide,
+# couleur Tailwind, extensions associees. Consomme par :
+# - L'endpoint /api/categories (modal selecteur Inbox)
+# - Les badges couleur sur Queue / Page detail / History (Sprint C.2)
+# - L'auto-detection cote frontend (mapping extension -> suggestion)
+#
+# Charte UI : pas d'emoji (CHARTE.md §15) -> icones Lucide SVG.
+# https://lucide.dev/icons/
+#
+# Couleurs : palette Tailwind standard. primary = couleur historique de l'app
+# pour les categories video (Films/Series/Doc/Anime), autres palettes pour
+# differencier visuellement les nouvelles categories.
+
+# SVG paths inline pour chaque icone Lucide utilisee par les categories.
+# Source : https://lucide.dev (MIT license). Format = innerHTML d'un <svg
+# viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"
+# stroke-linecap="round" stroke-linejoin="round">. Consomme par l'endpoint
+# /api/categories pour que le frontend puisse injecter les SVG dans la modal
+# sans dependre du sprite Jinja (qui n'expose pas les icones cote JS).
+_CATEGORY_ICON_SVG: dict[str, str] = {
+    "clapperboard": (
+        '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/>'
+        '<path d="m6.2 5.3 3.1 3.9"/>'
+        '<path d="m12.4 3.4 3.1 4"/>'
+        '<path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>'
+    ),
+    "tv": (
+        '<rect width="20" height="15" x="2" y="7" rx="2" ry="2"/>'
+        '<polyline points="17 2 12 7 7 2"/>'
+    ),
+    "sparkles": (
+        '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>'
+        '<path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>'
+    ),
+    "radio-tower": (
+        '<path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9"/>'
+        '<path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5"/>'
+        '<circle cx="12" cy="9" r="2"/>'
+        '<path d="M16.2 4.8c2 2 2.26 5.11.8 7.47"/>'
+        '<path d="M19.1 1.9a9.96 9.96 0 0 1 0 14.1"/>'
+        '<path d="M9.5 18h5"/>'
+        '<path d="m8 22 4-11 4 11"/>'
+    ),
+    "mic-vocal": (
+        '<path d="M16 8.99V5a3 3 0 0 0-6 0v6a3 3 0 0 0 4.18 2.76"/>'
+        '<path d="M11.7 13.99a8 8 0 0 0 8.3 8.85"/>'
+        '<path d="M16 14a4 4 0 0 1-4-4"/>'
+        '<path d="M22 14h-4"/>'
+    ),
+    "trophy": (
+        '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>'
+        '<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>'
+        '<path d="M4 22h16"/>'
+        '<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>'
+        '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>'
+        '<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>'
+    ),
+    "book-open": (
+        '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>'
+        '<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'
+    ),
+    "gamepad-2": (
+        '<line x1="6" x2="10" y1="11" y2="11"/>'
+        '<line x1="8" x2="8" y1="9" y2="13"/>'
+        '<line x1="15" x2="15.01" y1="12" y2="12"/>'
+        '<line x1="18" x2="18.01" y1="10" y2="10"/>'
+        '<path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"/>'
+    ),
+    "monitor-cog": (
+        '<path d="M12 17v4"/>'
+        '<path d="m15.2 4.9-.9-.4"/>'
+        '<path d="m15.2 7.1-.9.4"/>'
+        '<path d="m16.9 3.2-.4-.9"/>'
+        '<path d="m16.9 8.8-.4.9"/>'
+        '<path d="m19.5 2.3-.4.9"/>'
+        '<path d="m19.5 9.7-.4-.9"/>'
+        '<path d="m21.7 4.5-.9.4"/>'
+        '<path d="m21.7 7.5-.9-.4"/>'
+        '<path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>'
+        '<path d="M8 21h8"/>'
+        '<circle cx="18" cy="6" r="3"/>'
+    ),
+    "graduation-cap": (
+        '<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/>'
+        '<path d="M22 10v6"/>'
+        '<path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>'
+    ),
+    "layers": (
+        '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/>'
+        '<path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/>'
+        '<path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'
+    ),
+}
+
+
+CATEGORY_UI_METADATA: list[dict] = [
+    {
+        "id": CATEGORY_MOVIE,
+        "label": "Film",
+        "icon": "clapperboard",
+        "icon_svg_path": _CATEGORY_ICON_SVG["clapperboard"],
+        "color": "primary",  # violet/indigo (couleur historique)
+        "extensions": [".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".mov", ".iso", ".wmv", ".flv"],
+        "hint": "Films cinéma, films TV (1 fichier vidéo principal)",
+    },
+    {
+        "id": CATEGORY_TV,
+        "label": "Série",
+        "icon": "tv",
+        "icon_svg_path": _CATEGORY_ICON_SVG["tv"],
+        "color": "primary",
+        "extensions": [],  # heuristique S01E01 plus parlante que extension
+        "hint": "Séries TV (1 épisode, 1 saison, ou intégrale)",
+    },
+    {
+        "id": CATEGORY_MOVIE_ANIME,
+        "label": "Film d'animation",
+        "icon": "sparkles",
+        "icon_svg_path": _CATEGORY_ICON_SVG["sparkles"],
+        "color": "primary",
+        "extensions": [],
+        "hint": "Films d'animation (auto-détecté si TMDB genre = Animation)",
+    },
+    {
+        "id": CATEGORY_TV_ANIME,
+        "label": "Série d'animation",
+        "icon": "sparkles",
+        "icon_svg_path": _CATEGORY_ICON_SVG["sparkles"],
+        "color": "primary",
+        "extensions": [],
+        "hint": "Séries d'animation",
+    },
+    {
+        "id": CATEGORY_MOVIE_DOC,
+        "label": "Film documentaire",
+        "icon": "radio-tower",
+        "icon_svg_path": _CATEGORY_ICON_SVG["radio-tower"],
+        "color": "primary",
+        "extensions": [],
+        "hint": "Documentaires (auto-détecté si TMDB genre = Documentary)",
+    },
+    {
+        "id": CATEGORY_TV_DOC,
+        "label": "Série documentaire",
+        "icon": "radio-tower",
+        "icon_svg_path": _CATEGORY_ICON_SVG["radio-tower"],
+        "color": "primary",
+        "extensions": [],
+        "hint": "Séries documentaires",
+    },
+    {
+        "id": CATEGORY_TV_SHOW,
+        "label": "Émission TV",
+        "icon": "mic-vocal",
+        "icon_svg_path": _CATEGORY_ICON_SVG["mic-vocal"],
+        "color": "pink",
+        "extensions": [],
+        "hint": "Talk-show, jeu télé, télé-réalité (Quotidien, TPMP, Koh-Lanta...)",
+    },
+    {
+        "id": CATEGORY_SPORTS,
+        "label": "Sport",
+        "icon": "trophy",
+        "icon_svg_path": _CATEGORY_ICON_SVG["trophy"],
+        "color": "warning",  # orange
+        "extensions": [],
+        "hint": "Sport en direct ou différé (UFC, F1, Tour de France...)",
+    },
+    {
+        "id": CATEGORY_BOOKS,
+        "label": "Livre / BD / Manga",
+        "icon": "book-open",
+        "icon_svg_path": _CATEGORY_ICON_SVG["book-open"],
+        "color": "success",  # emeraude
+        "extensions": [".epub", ".pdf", ".mobi", ".azw3", ".azw", ".djvu", ".cbr", ".cbz", ".m4b"],
+        "hint": "Livres numériques, BD, comics, mangas, livres audio",
+    },
+    {
+        "id": CATEGORY_GAME,
+        "label": "Jeu vidéo",
+        "icon": "gamepad-2",
+        "icon_svg_path": _CATEGORY_ICON_SVG["gamepad-2"],
+        "color": "cyan",
+        "extensions": [],  # extensions trop variees (.iso PS3, .bin/.cue, dossiers PC)
+        "hint": "Jeux PC, consoles, mobile",
+    },
+    {
+        "id": CATEGORY_SOFTWARE,
+        "label": "Logiciel",
+        "icon": "monitor-cog",
+        "icon_svg_path": _CATEGORY_ICON_SVG["monitor-cog"],
+        "color": "slate",
+        "extensions": [".exe", ".msi", ".dmg", ".pkg", ".deb", ".rpm", ".appimage"],
+        "hint": "Logiciels Windows / macOS / Linux",
+    },
+    {
+        "id": CATEGORY_TRAINING,
+        "label": "Formation",
+        "icon": "graduation-cap",
+        "icon_svg_path": _CATEGORY_ICON_SVG["graduation-cap"],
+        "color": "amber",  # jaune
+        "extensions": [],
+        "hint": "Tutoriels, cours vidéo, MOOC (Udemy, OpenClassrooms...)",
+    },
+]
+
+
+def category_ui_metadata(category_id: int) -> dict | None:
+    """Retourne le dict metadata UI pour une categorie, ou None si inconnue."""
+    for meta in CATEGORY_UI_METADATA:
+        if meta["id"] == category_id:
+            return meta
+    return None
+
+
 def type_label(type_id: int) -> str:
     """Retourne le libelle humain d'un type_id, ou '?' si inconnu.
 

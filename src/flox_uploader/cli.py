@@ -114,6 +114,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         manual_release_name=(
             getattr(args, "manual_release_name", None) or None
         ),
+        category_hint=(
+            int(getattr(args, "category_hint", 0) or 0) or None
+        ),
     )
 
     # Si --upload demande, on enchaine la boucle upload
@@ -396,6 +399,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_prepare.add_argument(
         "--release-name", dest="manual_release_name", default="",
         help="Force le release_name au lieu de celui derive par le pipeline.",
+    )
+    # Sprint C.1 v0.5.0 : hint categorie passe par le subprocess depuis la modal
+    # Inbox (cf. web/jobs_runner.py). Court-circuite early_category_guess.
+    p_prepare.add_argument(
+        "--category-hint", dest="category_hint", type=int, default=0,
+        help=(
+            "Force la categorie Gemini (1=Films, 2=Series, 3=Jeux, 12=Livres, "
+            "17=Logiciels, etc. — voir trackers/gemini/unit3d_mapping.py). "
+            "0 = auto-detect via extension."
+        ),
     )
     _add_upload_options(p_prepare, default_dry_run=True)
     p_prepare.set_defaults(func=cmd_prepare)

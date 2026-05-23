@@ -443,6 +443,9 @@ def _run_prepare_job(job_id: int) -> None:
         cmd.extend(["--tmdb-id", str(job.tmdb_id_override)])
     if job.manual_release_name:
         cmd.extend(["--release-name", job.manual_release_name])
+    # Sprint C.1 : hint categorie choisi par l'user dans la modal Inbox.
+    if job.category_id_hint:
+        cmd.extend(["--category-hint", str(job.category_id_hint)])
 
     # Env override : APPEND_FR_TITLE_TO_RELEASE_NAME passe au subprocess
     subprocess_env = dict(os.environ)

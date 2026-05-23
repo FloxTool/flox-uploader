@@ -1495,6 +1495,36 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/api/categories")
+    def api_categories():
+        """Sprint C.1 v0.5.0 — metadonnees UI des 12 categories Gemini.
+
+        Source : `unit3d_mapping.CATEGORY_UI_METADATA`. Consomme par la modal
+        selecteur sur Inbox (auto-detection extension -> suggestion), les
+        badges couleur sur Queue / Page detail, et toute UI multi-categorie.
+
+        Aucun secret, aucune donnee user. Pure metadata produit.
+
+        Returns:
+            {
+              "categories": [
+                {"id": 1, "label": "Film", "icon": "clapperboard",
+                 "color": "primary", "extensions": [".mkv", ...], "hint": "..."},
+                ...
+              ],
+              "extension_to_category": {".epub": 12, ".pdf": 12, ".exe": 17, ...}
+            }
+        """
+        from ..trackers.gemini.unit3d_mapping import CATEGORY_UI_METADATA
+        ext_to_cat: dict[str, int] = {}
+        for meta in CATEGORY_UI_METADATA:
+            for ext in meta.get("extensions") or []:
+                ext_to_cat[ext.lower()] = meta["id"]
+        return {
+            "categories": CATEGORY_UI_METADATA,
+            "extension_to_category": ext_to_cat,
+        }
+
     @app.get("/api/diagnostic")
     def api_diagnostic():
         """Sprint 8 PLAN-V1 — diagnostic systeme pour rapport de bug.
@@ -1657,6 +1687,12 @@ def create_app() -> FastAPI:
 
         paths = payload.get("paths") or []
         force_fr = (payload.get("force_fr") or "").strip().upper()
+        # Sprint C.1 v0.5.0 : hint categorie depuis la modal Inbox.
+        # 0 / absent / non-int -> auto-detect via early_category_guess.
+        try:
+            category_id_hint = int(payload.get("category_id_hint") or 0)
+        except (TypeError, ValueError):
+            category_id_hint = 0
         if not paths:
             raise HTTPException(400, "Aucun path fourni.")
         # Sanity check : null-bytes / patterns suspects ; resolution absolue.
@@ -1668,7 +1704,10 @@ def create_app() -> FastAPI:
             resolved.append(target)
         created_ids: list[int] = []
         for target in resolved:
-            job = jobs_db.add_job(str(target), force_fr=force_fr)
+            job = jobs_db.add_job(
+                str(target), force_fr=force_fr,
+                category_id_hint=category_id_hint,
+            )
             submit_prepare_job(job.id)
             created_ids.append(job.id)
         return {
@@ -1757,7 +1796,15 @@ def create_app() -> FastAPI:
             raise HTTPException(500, f"Erreur creation bundle : {e}")
 
         # Lance le job sur le dossier bundle
-        job = jobs_db.add_job(str(bundle_root))
+        # Sprint C.1 : propage le category_id_hint si present dans le payload.
+        try:
+            category_id_hint = int(payload.get("category_id_hint") or 0)
+        except (TypeError, ValueError):
+            category_id_hint = 0
+        job = jobs_db.add_job(
+            str(bundle_root),
+            category_id_hint=category_id_hint,
+        )
         submit_prepare_job(job.id)
         return {
             "ok": True,

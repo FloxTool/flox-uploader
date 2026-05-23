@@ -201,6 +201,56 @@
         </div>
     </div>
 
+    {# === Sprint C.1 v0.5.0 : Modal selecteur de categorie =================
+       S'ouvre quand l'user clique "Ajouter a la queue" depuis Inbox. Detecte
+       automatiquement la categorie probable selon les extensions, l'user peut
+       confirmer ou changer. Garde-fou si extensions mixtes (banner warning).
+       Les metadata 12 categories sont fetchees depuis /api/categories au load. #}
+    <div id="category-modal" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+        <div class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 w-full max-w-2xl">
+            <header class="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('folder-open', size='md', classes='text-primary-600 dark:text-primary-400') }}
+                    Catégorie de l'upload
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Choisis la catégorie Gemini pour <span id="cat-modal-count">0</span> fichier<span id="cat-modal-plural"></span>. La sélection automatique est basée sur l'extension.
+                </p>
+            </header>
+
+            {# Banner suggestion : visible quand on a detecte une cat automatiquement #}
+            <div id="cat-modal-suggestion-banner" class="hidden mx-5 mt-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-md p-3 inline-flex items-start gap-2 w-[calc(100%-2.5rem)]">
+                <span class="text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0">{{ icon('sparkles', size='sm') }}</span>
+                <div class="text-xs text-primary-800 dark:text-primary-300">
+                    Détection automatique : <strong id="cat-modal-suggestion-label">…</strong>
+                </div>
+            </div>
+
+            {# Banner garde-fou : visible si on detecte des extensions mixtes #}
+            <div id="cat-modal-mixed-banner" class="hidden mx-5 mt-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-md p-3 inline-flex items-start gap-2 w-[calc(100%-2.5rem)]">
+                <span class="text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='sm') }}</span>
+                <div class="text-xs text-warning-800 dark:text-warning-300">
+                    <strong>Sélection mixte détectée :</strong> tu as choisi des fichiers de natures différentes (<span id="cat-modal-mixed-list">…</span>). Si tu valides, tous seront traités avec la même catégorie. Mieux vaut faire deux sélections distinctes.
+                </div>
+            </div>
+
+            <div class="p-5">
+                {# Grille 12 categories. Le contenu est rendu dynamiquement par le JS
+                   apres fetch /api/categories. Permet de garder une seule source
+                   de verite cote backend (CATEGORY_UI_METADATA). #}
+                <div id="cat-modal-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+            </div>
+
+            <footer class="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button id="cat-modal-cancel" type="button" class="h-9 px-3.5 text-sm font-medium rounded-md text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Annuler</button>
+                <button id="cat-modal-confirm" type="button" disabled class="h-9 px-3.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5">
+                    {{ icon('arrow-right', size='sm') }}
+                    Ajouter à la queue
+                </button>
+            </footer>
+        </div>
+    </div>
+
     {# === Contenu : table OU erreur OU empty === #}
     {% if error %}
         <div class="p-4 m-4 rounded-md bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 flex items-start gap-2.5 text-sm text-danger-800 dark:text-danger-200">
@@ -560,13 +610,222 @@
         }
     }
 
+    // ============================================================
+    // Sprint C.1 v0.5.0 : Modal selecteur de categorie
+    // ============================================================
+    // Au lieu d'ajouter direct a la queue (= toujours categorie auto via
+    // extension), on ouvre une modal qui demande la categorie a l'user.
+    // L'extension est utilisee pour pre-selectionner la cat probable, mais
+    // l'user a le dernier mot.
+
+    let _categoriesData = null;  // {categories: [...], extension_to_category: {...}}
+    let _categoryModalSelectedId = 0;
+    let _categoryModalPaths = [];
+
+    async function _loadCategoriesMetadata() {
+        if (_categoriesData) return _categoriesData;
+        try {
+            const resp = await fetch('/api/categories');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            _categoriesData = await resp.json();
+            return _categoriesData;
+        } catch (e) {
+            console.error('Erreur chargement /api/categories :', e);
+            return null;
+        }
+    }
+
+    function _extensionOf(path) {
+        // Extension en minuscule, avec le point. "" si pas d'extension.
+        const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const basename = slash >= 0 ? path.slice(slash + 1) : path;
+        const dot = basename.lastIndexOf('.');
+        if (dot <= 0) return '';
+        return basename.slice(dot).toLowerCase();
+    }
+
+    function _suggestCategoryForPaths(paths, extMap) {
+        // Retourne {suggestedId, isMixed, categoryCounts}
+        // categoryCounts = {catId: count} pour diagnostic UI mixte.
+        const counts = {};
+        for (const p of paths) {
+            const ext = _extensionOf(p);
+            const catId = extMap[ext] || 0;
+            if (catId) counts[catId] = (counts[catId] || 0) + 1;
+        }
+        const uniqueCats = Object.keys(counts);
+        if (uniqueCats.length === 0) {
+            // Aucune extension reconnue -> fallback Film (consistent avec early_category_guess)
+            return { suggestedId: 1, isMixed: false, categoryCounts: counts };
+        }
+        if (uniqueCats.length === 1) {
+            return { suggestedId: parseInt(uniqueCats[0]), isMixed: false, categoryCounts: counts };
+        }
+        // Plusieurs categories detectees -> on prend la plus frequente comme suggestion
+        // mais on signale le mix.
+        const sorted = uniqueCats.sort((a, b) => counts[b] - counts[a]);
+        return { suggestedId: parseInt(sorted[0]), isMixed: true, categoryCounts: counts };
+    }
+
+    function _buildCategoryGrid(categories, selectedId) {
+        // Rend les 12 boutons categorie dans la grille modale.
+        const grid = document.getElementById('cat-modal-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        // Mapping couleur Tailwind -> classes (selected vs unselected).
+        const colorClasses = {
+            primary: { sel: 'bg-primary-50 dark:bg-primary-900/30 border-primary-500 text-primary-900 dark:text-primary-100',
+                       icon: 'text-primary-600 dark:text-primary-400' },
+            success: { sel: 'bg-success-50 dark:bg-success-900/30 border-success-500 text-success-900 dark:text-success-100',
+                       icon: 'text-success-600 dark:text-success-400' },
+            warning: { sel: 'bg-warning-50 dark:bg-warning-900/30 border-warning-500 text-warning-900 dark:text-warning-100',
+                       icon: 'text-warning-600 dark:text-warning-400' },
+            pink:    { sel: 'bg-pink-50 dark:bg-pink-900/30 border-pink-500 text-pink-900 dark:text-pink-100',
+                       icon: 'text-pink-600 dark:text-pink-400' },
+            cyan:    { sel: 'bg-cyan-50 dark:bg-cyan-900/30 border-cyan-500 text-cyan-900 dark:text-cyan-100',
+                       icon: 'text-cyan-600 dark:text-cyan-400' },
+            amber:   { sel: 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-900 dark:text-amber-100',
+                       icon: 'text-amber-600 dark:text-amber-400' },
+            slate:   { sel: 'bg-slate-100 dark:bg-slate-700/50 border-slate-500 text-slate-900 dark:text-slate-100',
+                       icon: 'text-slate-600 dark:text-slate-300' },
+        };
+        const unselectedBase = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500';
+
+        for (const cat of categories) {
+            const isSelected = cat.id === selectedId;
+            const colors = colorClasses[cat.color] || colorClasses.primary;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.dataset.catId = String(cat.id);
+            btn.className = 'cat-modal-option flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-colors text-left ' +
+                            (isSelected ? colors.sel : unselectedBase);
+            btn.setAttribute('data-tu-tooltip', cat.hint || cat.label);
+            // SVG inline depuis CATEGORY_UI_METADATA.icon_svg_path (cf. unit3d_mapping.py)
+            btn.innerHTML = `
+                <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} mb-0.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        ${cat.icon_svg_path || ''}
+                    </svg>
+                </span>
+                <span class="text-xs font-medium text-center leading-tight">${cat.label}</span>
+            `;
+            btn.addEventListener('click', () => {
+                _categoryModalSelectedId = cat.id;
+                _buildCategoryGrid(categories, cat.id);  // re-render avec nouvelle selection
+                const confirmBtn = document.getElementById('cat-modal-confirm');
+                if (confirmBtn) confirmBtn.disabled = false;
+            });
+            grid.appendChild(btn);
+        }
+    }
+
+    async function openCategoryModal(paths) {
+        // Charge les metadata si pas deja fait
+        const data = await _loadCategoriesMetadata();
+        if (!data) {
+            // Fallback : si l'API echoue, on bypass la modal et on envoie sans hint
+            // (= comportement v0.3.x : auto-detect via early_category_guess).
+            await _addToQueueCore(0);
+            return;
+        }
+
+        // Suggestion automatique selon les extensions des paths selectionnes
+        const suggestion = _suggestCategoryForPaths(paths, data.extension_to_category);
+        _categoryModalSelectedId = suggestion.suggestedId;
+        _categoryModalPaths = paths;
+
+        // Render grille
+        _buildCategoryGrid(data.categories, suggestion.suggestedId);
+
+        // Header : count
+        const countEl = document.getElementById('cat-modal-count');
+        const pluralEl = document.getElementById('cat-modal-plural');
+        if (countEl) countEl.textContent = paths.length;
+        if (pluralEl) pluralEl.textContent = paths.length > 1 ? 's' : '';
+
+        // Banner suggestion
+        const suggestionBanner = document.getElementById('cat-modal-suggestion-banner');
+        const suggestionLabel = document.getElementById('cat-modal-suggestion-label');
+        const suggestedCat = data.categories.find(c => c.id === suggestion.suggestedId);
+        if (suggestionBanner && suggestionLabel && suggestedCat) {
+            suggestionLabel.textContent = suggestedCat.label;
+            suggestionBanner.classList.remove('hidden');
+        }
+
+        // Banner garde-fou mixte
+        const mixedBanner = document.getElementById('cat-modal-mixed-banner');
+        const mixedList = document.getElementById('cat-modal-mixed-list');
+        if (mixedBanner && mixedList) {
+            if (suggestion.isMixed) {
+                const labels = Object.entries(suggestion.categoryCounts).map(([catId, n]) => {
+                    const cat = data.categories.find(c => c.id === parseInt(catId));
+                    return `${n} ${cat ? cat.label : 'Inconnu'}`;
+                });
+                mixedList.textContent = labels.join(', ');
+                mixedBanner.classList.remove('hidden');
+            } else {
+                mixedBanner.classList.add('hidden');
+            }
+        }
+
+        // Active le bouton Valider (une cat est toujours pre-selectionnee)
+        const confirmBtn = document.getElementById('cat-modal-confirm');
+        if (confirmBtn) confirmBtn.disabled = false;
+
+        // Ouvre la modal
+        const modal = document.getElementById('category-modal');
+        if (modal) modal.classList.remove('hidden');
+
+        // Reparse les SVG Lucide si tuParseLucide existe
+        if (typeof window.tuParseLucide === 'function') {
+            window.tuParseLucide(modal);
+        }
+    }
+
+    function closeCategoryModal() {
+        const modal = document.getElementById('category-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    // Handlers boutons modal
+    const catCancelBtn = document.getElementById('cat-modal-cancel');
+    if (catCancelBtn) {
+        catCancelBtn.addEventListener('click', closeCategoryModal);
+    }
+    const catConfirmBtn = document.getElementById('cat-modal-confirm');
+    if (catConfirmBtn) {
+        catConfirmBtn.addEventListener('click', async () => {
+            const catId = _categoryModalSelectedId;
+            closeCategoryModal();
+            await _addToQueueCore(catId);
+        });
+    }
+    // Close on backdrop click (mais pas sur le dialog lui-meme)
+    const catModalBg = document.getElementById('category-modal');
+    if (catModalBg) {
+        catModalBg.addEventListener('click', (e) => {
+            if (e.target === catModalBg) closeCategoryModal();
+        });
+    }
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && catModalBg && !catModalBg.classList.contains('hidden')) {
+            closeCategoryModal();
+        }
+    });
+
     async function doAddDefault() {
-        await _addToQueueCore();
+        const paths = Array.from(checkboxes())
+            .filter(cb => cb.checked)
+            .map(cb => cb.dataset.path);
+        if (paths.length === 0) return;
+        // Sprint C.1 : on ouvre la modal categorie au lieu d'appeler direct.
+        await openCategoryModal(paths);
     }
 
     addBtn.addEventListener('click', () => doAddDefault());
 
-    async function _addToQueueCore() {
+    async function _addToQueueCore(categoryIdHint) {
         const paths = Array.from(checkboxes())
             .filter(cb => cb.checked)
             .map(cb => cb.dataset.path);
@@ -576,10 +835,15 @@
         const originalLabel = labelSpan ? labelSpan.textContent : 'Ajouter à la queue';
         if (labelSpan) labelSpan.textContent = 'En cours…';
         try {
+            // Sprint C.1 : on envoie category_id_hint au backend.
+            const body = { paths };
+            if (categoryIdHint && categoryIdHint > 0) {
+                body.category_id_hint = categoryIdHint;
+            }
             const resp = await fetch('/api/queue/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ paths }),
+                body: JSON.stringify(body),
             });
             const data = await resp.json();
             if (resp.ok) {
