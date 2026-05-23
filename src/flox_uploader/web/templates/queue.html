@@ -292,7 +292,7 @@
             </button>
             <div id="queue-filter-popover" class="hidden absolute right-0 top-full mt-1 z-30 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden">
                 <div class="px-3 py-2 border-b border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
-                    <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Filtrer l'affichage</span>
+                    <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Isoler par</span>
                     <button type="button" id="queue-filter-reset"
                             class="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors duration-fast">
                         {{ icon('rotate-ccw', size='sm') }}
@@ -315,7 +315,7 @@
                             ] %}
                             <button type="button" data-filter-state="{{ code }}" data-tone="{{ tone }}"
                                     class="filter-chip interactive inline-flex items-center px-2 h-6 rounded-md text-[11px] font-medium border"
-                                    aria-pressed="true">
+                                    aria-pressed="false">
                                 {{ label }}
                             </button>
                             {% endfor %}
@@ -335,7 +335,7 @@
                             ] %}
                             <button type="button" data-filter-bucket="{{ code }}" data-tone="{{ tone }}"
                                     class="filter-chip interactive inline-flex items-center px-2 h-6 rounded-md text-[11px] font-medium border"
-                                    aria-pressed="true">
+                                    aria-pressed="false">
                                 {{ label }}
                             </button>
                             {% endfor %}
@@ -1075,10 +1075,19 @@
 
     // NOTES round 7+ : systeme de filtres en chips toggle, MAIS regroupes
     // dans un dropdown discret integre au header de la table (a cote de la
-    // recherche). Plus de filtre Issues (peu utile), plus de boutons
-    // "Selectionner les visibles" / "Tout decocher" (deja accessibles via
-    // la checkbox header de la table).
-    const FILTERS_KEY = 'tu_queue_filters_v2';  // bump : new schema sans 'issues'
+    // recherche).
+    //
+    // NOTES round 9 (note UX Louis) : LOGIQUE INVERSEE.
+    // Avant : tous coches par defaut, cocher = retirer (filtre OUT).
+    // Apres : tous DEcoches par defaut, cocher = ISOLER (filtre IN).
+    //   - filtres vides       -> tout est affiche (rien d'isole)
+    //   - 1+ chip selectionne -> seuls les packages matchant s'affichent
+    //   - selectionner plusieurs chips d'une meme section = OR (any-of)
+    //   - les 2 sections (etat ET score) combinent en AND
+    // Plus intuitif : on declare ce qu'on VEUT VOIR, pas ce qu'on veut cacher.
+    // Bump localStorage key v2->v3 pour ne pas appliquer les sauvegardes
+    // de l'ancien schema (qui auraient l'effet inverse : tout cache).
+    const FILTERS_KEY = 'tu_queue_filters_v3';  // bump v3 : sets vides par defaut, cocher = isoler
     const filterChips = document.querySelectorAll('.filter-chip');
     const filterCountEl = document.getElementById('queue-filter-count');
     const filterActiveDot = document.getElementById('queue-filter-active-dot');
@@ -1087,15 +1096,16 @@
     const btnFilterReset = document.getElementById('queue-filter-reset');
 
     function _defaultFilters() {
+        // Sets vides = rien d'isole = tout affiche
         return {
-            state: new Set(['prepared', 'validated', 'uploaded', 'aborted-duplicate', 'failed']),
-            bucket: new Set(['parfait', 'perfect', 'ready', 'good', 'review', 'blocked']),
+            state: new Set(),
+            bucket: new Set(),
         };
     }
     let filters = _defaultFilters();
     try {
         const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null');
-        if (saved && saved.state && saved.bucket) {
+        if (saved && Array.isArray(saved.state) && Array.isArray(saved.bucket)) {
             filters = {
                 state: new Set(saved.state),
                 bucket: new Set(saved.bucket),
@@ -1113,12 +1123,8 @@
     }
 
     function _isFilterDefault() {
-        const d = _defaultFilters();
-        if (filters.state.size !== d.state.size) return false;
-        if (filters.bucket.size !== d.bucket.size) return false;
-        for (const k of d.state) if (!filters.state.has(k)) return false;
-        for (const k of d.bucket) if (!filters.bucket.has(k)) return false;
-        return true;
+        // Default = sets vides (rien d'isole)
+        return filters.state.size === 0 && filters.bucket.size === 0;
     }
 
     // Classes Tailwind par tone, pour les chips ACTIVES (couleur saturee
@@ -1143,12 +1149,14 @@
     };
     // Classes communes pour les chips INACTIVES (toutes les tones decochees
     // partagent le meme look slate "filtre OFF").
+    // NOTES round 9 : retire 'line-through' (visuellement trop fort avec la
+    // nouvelle logique inversee ou TOUS les chips sont decoches par defaut).
+    // Garde juste le grise (text-slate-400 + opacity-60).
     const _CHIP_OFF_CLASSES = [
         'bg-white', 'dark:bg-slate-800/50',
         'text-slate-400', 'dark:text-slate-500',
         'border-slate-200', 'dark:border-slate-700',
-        'line-through', 'opacity-60',
-        'hover:opacity-100', 'hover:line-through',
+        'opacity-60', 'hover:opacity-100',
     ];
 
     function _renderChips() {
@@ -1218,15 +1226,19 @@
     };
 
     function _renderActiveFiltersBar() {
+        // NOTES round 9 (note UX Louis) : logique inversee.
+        // Avant : pills = items EXCLUS (presents dans defaults, absents de filters),
+        //         click = re-INCLURE.
+        // Apres : pills = items INCLUS (presents dans filters = ce qu'on isole),
+        //         click = RETIRER du filtre.
+        // Cas vide (= rien d'isole = tout affiche) -> barre cachee.
         const bar = document.getElementById('queue-active-filters-bar');
         const pillsContainer = document.getElementById('queue-active-filters-pills');
         if (!bar || !pillsContainer) return;
-        const defaults = _defaultFilters();
-        // Items exclus (presents dans defaults mais pas dans filters)
-        const excludedStates = Array.from(defaults.state).filter(k => !filters.state.has(k));
-        const excludedBuckets = Array.from(defaults.bucket).filter(k => !filters.bucket.has(k));
+        const includedStates = Array.from(filters.state);
+        const includedBuckets = Array.from(filters.bucket);
 
-        if (excludedStates.length === 0 && excludedBuckets.length === 0) {
+        if (includedStates.length === 0 && includedBuckets.length === 0) {
             bar.classList.add('hidden');
             pillsContainer.innerHTML = '';
             return;
@@ -1236,15 +1248,15 @@
         const escape = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const pills = [];
 
-        excludedStates.forEach(code => {
+        includedStates.forEach(code => {
             const meta = _FILTER_LABELS.state[code];
             if (!meta) return;
             const [label, tone] = meta;
             pills.push(`
                 <button type="button" data-pill-kind="state" data-pill-code="${escape(code)}"
                         class="active-filter-pill interactive inline-flex items-center gap-1 pl-2 pr-1 h-5 rounded-md text-[10px] font-medium border ${_PILL_TONE_CLASSES[tone] || _PILL_TONE_CLASSES.neutral}"
-                        data-tu-tooltip="Cliquer pour réafficher cet état">
-                    <span class="opacity-70">État ≠</span>
+                        data-tu-tooltip="Cliquer pour retirer ce filtre">
+                    <span class="opacity-70">État :</span>
                     <span>${escape(label)}</span>
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded hover:bg-black/10 dark:hover:bg-white/10 ml-0.5" aria-hidden="true">
                         <svg class="icon" style="width:10px;height:10px" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -1254,14 +1266,14 @@
         });
         // Pour les buckets, le chip 'ready' couvre 'ready'+'good' donc on les
         // regroupe pour ne pas afficher 2 pills redondants.
-        const visibleExcludedBuckets = excludedBuckets.filter(code => _FILTER_LABELS.bucket[code] !== null);
-        // Si BOTH ready et good exclus, on affiche 1 seul pill 'ready' (Prêt/Bon).
-        // Si seulement un des deux exclu (cas exotique apres upgrade), on l'affiche.
+        const visibleIncludedBuckets = includedBuckets.filter(code => _FILTER_LABELS.bucket[code] !== null);
+        // Si BOTH ready et good inclus, on affiche 1 seul pill 'ready' (Prêt/Bon).
+        // Si seulement un des deux inclus (cas exotique post-migration), on l'affiche.
         const bucketsToShow = [];
         let readyShown = false;
-        visibleExcludedBuckets.forEach(code => {
+        visibleIncludedBuckets.forEach(code => {
             if (code === 'ready' || code === 'good') {
-                if (!readyShown && excludedBuckets.includes('ready') && excludedBuckets.includes('good')) {
+                if (!readyShown && includedBuckets.includes('ready') && includedBuckets.includes('good')) {
                     bucketsToShow.push('ready');
                     readyShown = true;
                 } else if (!readyShown && _FILTER_LABELS.bucket[code]) {
@@ -1279,8 +1291,8 @@
             pills.push(`
                 <button type="button" data-pill-kind="bucket" data-pill-code="${escape(code)}"
                         class="active-filter-pill interactive inline-flex items-center gap-1 pl-2 pr-1 h-5 rounded-md text-[10px] font-medium border ${_PILL_TONE_CLASSES[tone] || _PILL_TONE_CLASSES.neutral}"
-                        data-tu-tooltip="Cliquer pour réafficher ce score">
-                    <span class="opacity-70">Score ≠</span>
+                        data-tu-tooltip="Cliquer pour retirer ce filtre">
+                    <span class="opacity-70">Score :</span>
                     <span>${escape(label)}</span>
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded hover:bg-black/10 dark:hover:bg-white/10 ml-0.5" aria-hidden="true">
                         <svg class="icon" style="width:10px;height:10px" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -1289,19 +1301,19 @@
             `);
         });
         pillsContainer.innerHTML = pills.join('');
-        // Click handler : reinclure le filtre exclu.
+        // Click handler : RETIRER le filtre actif (logique inversee).
         pillsContainer.querySelectorAll('.active-filter-pill').forEach(p => {
             p.addEventListener('click', () => {
                 const kind = p.dataset.pillKind;
                 const code = p.dataset.pillCode;
                 if (kind === 'state') {
-                    filters.state.add(code);
+                    filters.state.delete(code);
                 } else if (kind === 'bucket') {
                     if (code === 'ready') {
-                        filters.bucket.add('ready');
-                        filters.bucket.add('good');
+                        filters.bucket.delete('ready');
+                        filters.bucket.delete('good');
                     } else {
-                        filters.bucket.add(code);
+                        filters.bucket.delete(code);
                     }
                 }
                 _saveFilters();
@@ -1312,12 +1324,21 @@
     }
 
     function _applyFilters() {
+        // NOTES round 9 (note UX Louis) : logique inversee.
+        // - Si state set vide      -> aucune restriction d'etat
+        // - Si state set non-vide  -> on isole : on n'affiche QUE les codes presents
+        // - Idem pour bucket
+        // - Combinaison : AND entre les 2 sections (etat ET score)
         let visible = 0, total = 0;
+        const stateIsolating = filters.state.size > 0;
+        const bucketIsolating = filters.bucket.size > 0;
         document.querySelectorAll('tr.package-row').forEach(row => {
             total++;
             const st = row.dataset.filterState || '';
             const bk = row.dataset.filterBucket || '';
-            const ok = filters.state.has(st) && filters.bucket.has(bk);
+            const stateOk = !stateIsolating || filters.state.has(st);
+            const bucketOk = !bucketIsolating || filters.bucket.has(bk);
+            const ok = stateOk && bucketOk;
             const searchHidden = row.dataset.searchHidden === '1';
             const finalVisible = ok && !searchHidden;
             row.style.display = finalVisible ? '' : 'none';
