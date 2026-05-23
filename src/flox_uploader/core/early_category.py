@@ -79,13 +79,78 @@ _EXTENSION_TO_CATEGORY: dict[str, int] = {
 }
 
 
+# Extensions "satellites" qui ne definissent PAS la nature du contenu
+# principal d'un dossier. Typiquement : couvertures, NFOs, sous-titres,
+# checksums, metadonnees Calibre (.opf), parite, etc. On les ignore quand
+# on scanne un dossier pour deviner la categorie — sinon un "Cover.jpg"
+# (alphabetiquement avant le vrai contenu) ferait deviner faux.
+#
+# Cas reel rapporte par Louis (Sprint A test PR-3) :
+#   "X:\torrents\completed\Decoupe en tranches (10354)\" contenait
+#   cover.jpg + le .pdf. L'algo prenait .jpg en premier (ordre alpha),
+#   fallback movie, puis plantait avec un message generique.
+_SATELLITE_EXTENSIONS: frozenset[str] = frozenset({
+    # Images de couverture / posters
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff",
+    # Documents d'accompagnement
+    ".nfo", ".txt", ".md", ".rtf", ".html", ".htm",
+    # Checksums et parite
+    ".sfv", ".md5", ".sha", ".sha256", ".par2", ".par",
+    # Metadonnees ebook (Calibre, etc.)
+    ".opf", ".bib",
+    # Sous-titres externes (la charte Gemini les rejette de toute facon
+    # mais on les considere comme satellites pour la detection categorie)
+    ".srt", ".sub", ".idx", ".vtt", ".ass", ".ssa", ".sup",
+    # Divers
+    ".log", ".cue", ".m3u", ".m3u8",
+})
+
+
+def _scan_dir_for_content_extension(folder: Path) -> str:
+    """Scanne un dossier et retourne l'extension du fichier 'principal'.
+
+    Strategie :
+    1. Scanne recursivement le dossier (ordre alpha stable).
+    2. Ignore les fichiers caches (.DS_Store, .gitkeep, etc.) et les
+       fichiers d'extensions 'satellites' (cover.jpg, info.nfo, .opf
+       Calibre, sous-titres .srt, etc.).
+    3. Retourne la PREMIERE extension trouvee qui est dans notre mapping
+       connu (`_EXTENSION_TO_CATEGORY`). Ca garantit que si le dossier
+       contient un .pdf et 50 fichiers .jpg, on retourne `.pdf`.
+    4. Si aucune extension connue n'est trouvee mais qu'il y a des
+       fichiers non-satellites : retourne la premiere extension non-satellite
+       (le caller fera fallback movie).
+    5. Si tout est satellite, vide, ou erreur d'acces : retourne "".
+
+    Ne plante jamais (try/except sur les erreurs de filesystem).
+    """
+    try:
+        first_unknown_non_satellite = ""
+        for p in sorted(folder.rglob("*")):
+            if not p.is_file() or p.name.startswith("."):
+                continue
+            ext = p.suffix.lower()
+            if not ext or ext in _SATELLITE_EXTENSIONS:
+                continue
+            if ext in _EXTENSION_TO_CATEGORY:
+                # Extension connue : on retourne immediatement (priorite max).
+                return ext
+            # Extension non-satellite mais inconnue : on memorise la premiere
+            # comme fallback si on ne trouve rien de connu plus tard.
+            if not first_unknown_non_satellite:
+                first_unknown_non_satellite = ext
+        return first_unknown_non_satellite
+    except (OSError, PermissionError):
+        return ""
+
+
 def _first_file_extension(input_path: Path) -> str:
     """Retourne l'extension (en minuscule, avec le point) du fichier d'interet.
 
     - Si `input_path` est un fichier : son extension.
-    - Si `input_path` est un dossier : l'extension du premier fichier non-cache
-      trouve par ordre alphabetique (sondage simple). Si le dossier est vide
-      ou ne contient que des dossiers, retourne "".
+    - Si `input_path` est un dossier : appelle `_scan_dir_for_content_extension`
+      qui ignore les fichiers satellites (cover.jpg, .nfo, .opf, etc.) et
+      privilegie les extensions connues du mapping `_EXTENSION_TO_CATEGORY`.
 
     Ne plante jamais : si le path n'existe pas ou est inaccessible, retourne "".
     """
@@ -93,9 +158,7 @@ def _first_file_extension(input_path: Path) -> str:
         if input_path.is_file():
             return input_path.suffix.lower()
         if input_path.is_dir():
-            for child in sorted(input_path.iterdir()):
-                if child.is_file() and not child.name.startswith("."):
-                    return child.suffix.lower()
+            return _scan_dir_for_content_extension(input_path)
         return ""
     except (OSError, PermissionError):
         return ""

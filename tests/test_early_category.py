@@ -176,6 +176,88 @@ def test_empty_directory_falls_back_to_movie(tmp_path):
 
 
 # ============================================================
+# Sprint A.4 : scan dossier intelligent (ignore satellites)
+# ============================================================
+# Cas reel rapporte par Louis (test PR-3) : un dossier ebook contient
+# souvent cover.jpg + le .pdf (ou autres satellites Calibre .opf, .nfo).
+# Avant le fix, l'algo prenait .jpg en premier (ordre alpha avant .pdf),
+# fallback movie, puis plantait avec un message generique.
+
+def test_directory_with_cover_and_book_detects_book(tmp_path):
+    """Dossier ebook typique : cover.jpg + .pdf -> on detecte LIVRE."""
+    folder = tmp_path / "Decoupe en tranches (10354)"
+    folder.mkdir()
+    (folder / "Cover.jpg").write_bytes(b"")
+    (folder / "Decoupe en tranches - Zep.pdf").write_bytes(b"")
+    assert early_category_guess(folder) == CATEGORY_BOOKS, (
+        "Le .jpg satellite ne doit pas masquer le .pdf qui definit la categorie"
+    )
+
+
+def test_directory_with_calibre_metadata_detects_book(tmp_path):
+    """Calibre genere souvent metadata.opf + cover.jpg + le .epub."""
+    folder = tmp_path / "Tolkien - Hobbit"
+    folder.mkdir()
+    (folder / "cover.jpg").write_bytes(b"")
+    (folder / "metadata.opf").write_bytes(b"")
+    (folder / "Tolkien_Hobbit.epub").write_bytes(b"")
+    assert early_category_guess(folder) == CATEGORY_BOOKS
+
+
+def test_directory_with_only_satellites_falls_back_to_movie(tmp_path):
+    """Dossier ne contenant que des satellites -> fallback CATEGORY_MOVIE."""
+    folder = tmp_path / "OnlyCovers"
+    folder.mkdir()
+    (folder / "cover1.jpg").write_bytes(b"")
+    (folder / "cover2.png").write_bytes(b"")
+    (folder / "info.nfo").write_bytes(b"")
+    # Pas de fichier de contenu reel -> on tombe sur le fallback
+    assert early_category_guess(folder) == CATEGORY_MOVIE
+
+
+def test_directory_with_video_and_satellites_detects_video(tmp_path):
+    """Dossier release scene : poster.jpg + .nfo + .mkv -> VIDEO."""
+    folder = tmp_path / "Movie.2024.1080p.BluRay.x265-TEAM"
+    folder.mkdir()
+    (folder / "poster.jpg").write_bytes(b"")
+    (folder / "release.nfo").write_bytes(b"")
+    (folder / "movie.mkv").write_bytes(b"")
+    (folder / "subs.srt").write_bytes(b"")  # sous-titre externe satellite
+    assert early_category_guess(folder) == CATEGORY_MOVIE
+
+
+def test_directory_with_nested_book(tmp_path):
+    """Dossier avec sous-dossier contenant l'ebook -> scan recursif."""
+    folder = tmp_path / "Collection"
+    sub = folder / "Tome1"
+    sub.mkdir(parents=True)
+    (sub / "cover.jpg").write_bytes(b"")
+    (sub / "tome1.epub").write_bytes(b"")
+    assert early_category_guess(folder) == CATEGORY_BOOKS
+
+
+def test_directory_with_software_installer_and_readme(tmp_path):
+    """Dossier logiciel typique : readme.txt + .exe -> LOGICIEL."""
+    folder = tmp_path / "MySoft v1.0"
+    folder.mkdir()
+    (folder / "readme.txt").write_bytes(b"")  # satellite
+    (folder / "Setup.exe").write_bytes(b"")
+    assert early_category_guess(folder) == CATEGORY_SOFTWARE
+
+
+def test_directory_known_extension_wins_over_unknown(tmp_path):
+    """Si dossier contient .epub + .xyz inconnu : on retient .epub (connu)."""
+    folder = tmp_path / "Mixed"
+    folder.mkdir()
+    (folder / "aaa_weird.xyz").write_bytes(b"")    # inconnu, ordre alpha avant
+    (folder / "real_content.epub").write_bytes(b"")
+    assert early_category_guess(folder) == CATEGORY_BOOKS, (
+        "Une extension connue dans le mapping doit gagner sur une inconnue, "
+        "meme si l'inconnue vient avant en ordre alpha"
+    )
+
+
+# ============================================================
 # Helper _first_file_extension
 # ============================================================
 
@@ -186,11 +268,24 @@ def test_first_file_extension_on_file(tmp_path):
 
 
 def test_first_file_extension_on_directory(tmp_path):
+    """Sprint A.4 : scan intelligent ignore les satellites et privilegie les
+    extensions connues. .txt est satellite (info/readme) -> ignore.
+    .mkv est extension connue -> retourne .mkv meme si pas en ordre alpha.
+    """
     folder = tmp_path / "d"
     folder.mkdir()
-    (folder / "a.txt").write_bytes(b"")
-    (folder / "b.mkv").write_bytes(b"")
-    assert _first_file_extension(folder) == ".txt"  # ordre alpha
+    (folder / "a.txt").write_bytes(b"")   # satellite, ignore
+    (folder / "b.mkv").write_bytes(b"")   # extension connue, retournee
+    assert _first_file_extension(folder) == ".mkv"
+
+
+def test_first_file_extension_on_dir_only_unknown_extensions(tmp_path):
+    """Si aucune extension connue, on retourne la premiere non-satellite (ordre alpha)."""
+    folder = tmp_path / "d"
+    folder.mkdir()
+    (folder / "a.aaa").write_bytes(b"")   # non-satellite, non-connue
+    (folder / "b.bbb").write_bytes(b"")
+    assert _first_file_extension(folder) == ".aaa"
 
 
 def test_first_file_extension_empty_dir(tmp_path):
