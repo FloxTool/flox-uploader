@@ -294,6 +294,139 @@ TYPE_BLURAY = TYPE_BDRIP
 TYPE_WEB_DL = TYPE_WEB           # Anciennement 4 (idem dans la doc)
 
 
+# ============================================================
+# TYPES Jeux (16-24) — categorie 3
+# ============================================================
+# Source : doc PDF officielle G3MINI TR4CK3R - TORRENT API.
+# Sprint A v0.5.0 (PLAN-MULTICAT §8.1) : ces IDs etaient manquants en v0.3.x,
+# rendant impossible un upload jeu (l'API tracker refuse sans type_id valide).
+
+TYPE_GAME_WINDOWS = 16          # Jeux\Windows
+TYPE_GAME_OTHER = 17            # Jeux\Autre
+TYPE_GAME_LINUX = 18            # Jeux\Linux
+TYPE_GAME_MACOS = 19            # Jeux\MacOS
+TYPE_GAME_XBOX = 20             # Jeux\Xbox
+TYPE_GAME_NINTENDO = 21         # Jeux\Nintendo
+TYPE_GAME_SMARTPHONE = 22       # Jeux\Smartphone
+TYPE_GAME_SONY = 23             # Jeux\Sony
+TYPE_GAME_TABLETTE = 24         # Jeux\Tablette
+
+
+# ============================================================
+# TYPES Livres (25-33) — categorie 12
+# ============================================================
+
+TYPE_BOOK_M4B = 25              # Livres\M4B (audio M4B)
+TYPE_BOOK_MP3 = 26              # Livres\MP3 (audio MP3)
+TYPE_BOOK_EBOOK = 27            # Livres (generique EPUB/PDF/MOBI/AZW3/DJVU)
+TYPE_BOOK_BD = 28               # Livres\BD
+TYPE_BOOK_COMICS = 29           # Livres\Comics
+TYPE_BOOK_MANGAS = 30           # Livres\Mangas
+TYPE_BOOK_MAGAZINE = 31         # Livres\Magazine
+TYPE_BOOK_PRESSE = 32           # Livres\Presse
+TYPE_BOOK_AUDIO = 33            # Livres\Audio (generique audio)
+
+
+# ============================================================
+# TYPES Logiciels (34-37) — categorie 17
+# ============================================================
+
+TYPE_SOFTWARE_WINDOWS = 34      # Logiciels\Windows
+TYPE_SOFTWARE_MACOS = 35        # Logiciels\MacOS
+TYPE_SOFTWARE_LINUX = 36        # Logiciels\Linux
+TYPE_SOFTWARE_OTHER = 37        # Logiciels\Autres
+
+
+# ============================================================
+# Mappings plateforme/format -> type_id pour les strategies non-video
+# ============================================================
+# Consommes par les pipelines Sprint D (Livre), E (Jeu), H (Logiciel /
+# Formation). Exposes ici pour la coherence des sources de verite : un seul
+# fichier qui consolide les IDs Gemini officiels.
+#
+# Lookup case-insensitive : les helpers consommateurs doivent normaliser la
+# cle via `.strip().lower()` avant d'interroger ces dicts.
+
+GAME_TYPE_BY_PLATFORM: dict[str, int] = {
+    # Windows / PC
+    "windows": TYPE_GAME_WINDOWS,
+    "win": TYPE_GAME_WINDOWS,
+    "win64": TYPE_GAME_WINDOWS,
+    "pc": TYPE_GAME_WINDOWS,
+    # Linux
+    "linux": TYPE_GAME_LINUX,
+    # MacOS
+    "mac": TYPE_GAME_MACOS,
+    "macos": TYPE_GAME_MACOS,
+    "osx": TYPE_GAME_MACOS,
+    # Microsoft consoles
+    "xbox": TYPE_GAME_XBOX,
+    "xbox360": TYPE_GAME_XBOX,
+    "xboxone": TYPE_GAME_XBOX,
+    "xsx": TYPE_GAME_XBOX,
+    # Nintendo consoles & handhelds
+    "nintendo": TYPE_GAME_NINTENDO,
+    "switch": TYPE_GAME_NINTENDO,
+    "nsw": TYPE_GAME_NINTENDO,
+    "wii": TYPE_GAME_NINTENDO,
+    "wiiu": TYPE_GAME_NINTENDO,
+    "3ds": TYPE_GAME_NINTENDO,
+    "ds": TYPE_GAME_NINTENDO,
+    "n64": TYPE_GAME_NINTENDO,
+    "gba": TYPE_GAME_NINTENDO,
+    "gameboy": TYPE_GAME_NINTENDO,
+    "snes": TYPE_GAME_NINTENDO,
+    "nes": TYPE_GAME_NINTENDO,
+    # Sony consoles & handhelds
+    "ps1": TYPE_GAME_SONY,
+    "ps2": TYPE_GAME_SONY,
+    "ps3": TYPE_GAME_SONY,
+    "ps4": TYPE_GAME_SONY,
+    "ps5": TYPE_GAME_SONY,
+    "psp": TYPE_GAME_SONY,
+    "psvita": TYPE_GAME_SONY,
+    "vita": TYPE_GAME_SONY,
+    # Smartphone
+    "android": TYPE_GAME_SMARTPHONE,
+    "ios": TYPE_GAME_SMARTPHONE,
+    "iphone": TYPE_GAME_SMARTPHONE,
+    # Tablette
+    "tablet": TYPE_GAME_TABLETTE,
+    "tablette": TYPE_GAME_TABLETTE,
+    "ipad": TYPE_GAME_TABLETTE,
+}
+
+# Mapping extension -> type_id pour les livres.
+# Note : `.cbr/.cbz` -> BD par defaut. Comics/Manga sont determines par
+# heuristique additionnelle (ISBN 978-1 = comics US/UK, 978-4 = manga JP,
+# 978-2 = BD FR) qui sera implementee dans BookNamingStrategy (Sprint D).
+BOOK_TYPE_BY_FORMAT: dict[str, int] = {
+    # Ebooks generiques
+    "epub": TYPE_BOOK_EBOOK,
+    "pdf": TYPE_BOOK_EBOOK,
+    "mobi": TYPE_BOOK_EBOOK,
+    "azw3": TYPE_BOOK_EBOOK,
+    "azw": TYPE_BOOK_EBOOK,
+    "djvu": TYPE_BOOK_EBOOK,
+    # BD / Comics / Manga (defaut BD ; sous-classement Sprint D)
+    "cbr": TYPE_BOOK_BD,
+    "cbz": TYPE_BOOK_BD,
+    # Livre audio
+    "m4b": TYPE_BOOK_M4B,
+    "mp3": TYPE_BOOK_MP3,
+}
+
+SOFTWARE_TYPE_BY_PLATFORM: dict[str, int] = {
+    "windows": TYPE_SOFTWARE_WINDOWS,
+    "win": TYPE_SOFTWARE_WINDOWS,
+    "win64": TYPE_SOFTWARE_WINDOWS,
+    "macos": TYPE_SOFTWARE_MACOS,
+    "mac": TYPE_SOFTWARE_MACOS,
+    "osx": TYPE_SOFTWARE_MACOS,
+    "linux": TYPE_SOFTWARE_LINUX,
+}
+
+
 # Mapping textuel -> id pour le type_id_for(release_name)
 TYPE_ID_TABLE: dict[str, int] = {
     # Full disc / ISO
@@ -467,6 +600,47 @@ TYPE_OPTIONS: list[tuple[int, str]] = [
     (TYPE_ISO, "ISO"),
 ]
 
+# Options UI pour les categories non-video. Consommees par les templates
+# `_detail_<profile>.html` (Sprint C). Ne pas merger dans TYPE_OPTIONS : un
+# upload Film n'a aucune raison d'exposer "Jeux\Xbox" dans son select.
+GAME_TYPE_OPTIONS: list[tuple[int, str]] = [
+    (TYPE_GAME_WINDOWS, "Windows / PC"),
+    (TYPE_GAME_LINUX, "Linux"),
+    (TYPE_GAME_MACOS, "MacOS"),
+    (TYPE_GAME_XBOX, "Xbox"),
+    (TYPE_GAME_NINTENDO, "Nintendo"),
+    (TYPE_GAME_SONY, "Sony / PlayStation"),
+    (TYPE_GAME_SMARTPHONE, "Smartphone"),
+    (TYPE_GAME_TABLETTE, "Tablette"),
+    (TYPE_GAME_OTHER, "Autre"),
+]
+
+BOOK_TYPE_OPTIONS: list[tuple[int, str]] = [
+    (TYPE_BOOK_EBOOK, "Livre (EPUB/PDF/MOBI/AZW3/DJVU)"),
+    (TYPE_BOOK_BD, "BD"),
+    (TYPE_BOOK_COMICS, "Comics"),
+    (TYPE_BOOK_MANGAS, "Mangas"),
+    (TYPE_BOOK_AUDIO, "Livre audio (generique)"),
+    (TYPE_BOOK_M4B, "Livre audio M4B"),
+    (TYPE_BOOK_MP3, "Livre audio MP3"),
+    (TYPE_BOOK_MAGAZINE, "Magazine"),
+    (TYPE_BOOK_PRESSE, "Presse"),
+]
+
+SOFTWARE_TYPE_OPTIONS: list[tuple[int, str]] = [
+    (TYPE_SOFTWARE_WINDOWS, "Windows"),
+    (TYPE_SOFTWARE_MACOS, "MacOS"),
+    (TYPE_SOFTWARE_LINUX, "Linux"),
+    (TYPE_SOFTWARE_OTHER, "Autre"),
+]
+
+# Pool de tous les types Gemini connus, par categorie. Permet a
+# `type_label()` de retrouver un libelle peu importe la categorie d'origine
+# d'un type_id (pratique pour les logs et l'admin).
+_ALL_TYPE_OPTIONS: list[tuple[int, str]] = (
+    TYPE_OPTIONS + GAME_TYPE_OPTIONS + BOOK_TYPE_OPTIONS + SOFTWARE_TYPE_OPTIONS
+)
+
 RESOLUTION_OPTIONS: list[tuple[int, str]] = [
     (RESOLUTION_4320P, "4320p (8K)"),
     (RESOLUTION_2160P, "2160p (4K UHD)"),
@@ -490,8 +664,15 @@ def category_label(category_id: int) -> str:
 
 
 def type_label(type_id: int) -> str:
-    """Retourne le libelle humain d'un type_id, ou '?' si inconnu."""
-    for tid, label in TYPE_OPTIONS:
+    """Retourne le libelle humain d'un type_id, ou '?' si inconnu.
+
+    Cherche dans le pool unifie tous-types (video + jeux + livres + logiciels)
+    pour pouvoir retrouver le libelle d'un type_id non-video aussi (utile pour
+    les logs et l'admin). En cas de collision (qui ne se produit pas dans la
+    nomenclature Gemini : video 1-15, jeux 16-24, livres 25-33, logiciels
+    34-37), la premiere entree gagne (= video).
+    """
+    for tid, label in _ALL_TYPE_OPTIONS:
         if tid == type_id:
             return label
     return f"? (id={type_id})"

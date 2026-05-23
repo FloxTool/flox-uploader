@@ -53,11 +53,60 @@ class ComplianceIssue:
 # Si on detecte un de ces teams sur un release type "REMUX" ou "BluRay" raw -> BLOCKING.
 TEAMS_ENCODE_ONLY: tuple[str, ...] = ("EXTREME",)
 
-# Teams interdites par defaut (peuvent etre etendues via .env BANNED_TEAMS).
-# Source : doc PDF G3MINI TR4CK3R - TEAMS INTERDITES. Cette liste est un
-# point de depart : l'utilisateur peut la mettre a jour depuis /config car
-# elle change frequemment cote tracker.
-DEFAULT_BANNED_TEAMS: tuple[str, ...] = ("k0RE", "Slay3R")
+# Teams interdites par defaut, par profil de categorie.
+# Source : doc PDF G3MINI TR4CK3R - TEAMS INTERDITES (Sprint A v0.5.0 §8.2).
+# L'utilisateur peut etendre via la variable d'env BANNED_TEAMS (cf.
+# `config.banned_teams_list()`), la liste user S'AJOUTE a celle-ci.
+
+# Films / Series / Anime / Doc / Sport / Emission TV.
+DEFAULT_BANNED_TEAMS_VIDEO: tuple[str, ...] = ("k0RE", "Slay3R")
+
+# Jeux / Logiciels (categories 3 et 17 cote Gemini). Liste extraite
+# du PDF officiel TEAMS INTERDITES.
+DEFAULT_BANNED_TEAMS_GAMES_APPS: tuple[str, ...] = (
+    "Fenixx", "KMS.Tools.Portable", "MAXAGENT", "Seyter", "Vansik",
+)
+
+# Alias retro-compat : avant Sprint A, le code n'avait qu'une liste, qui
+# correspondait de facto a la liste video (la seule categorie supportee
+# en v0.3.x). Les callers historiques continuent de fonctionner via cet alias.
+DEFAULT_BANNED_TEAMS: tuple[str, ...] = DEFAULT_BANNED_TEAMS_VIDEO
+
+
+def banned_teams_for_category(category_id: int | None) -> tuple[str, ...]:
+    """Retourne le pool de teams interdites par defaut pour une categorie.
+
+    Source : doc PDF G3MINI TR4CK3R - TEAMS INTERDITES.
+
+    - Categories video (1, 2, 6, 7, 10, 13, 14, 15) -> DEFAULT_BANNED_TEAMS_VIDEO
+    - Jeux (3), Logiciels (17)                       -> DEFAULT_BANNED_TEAMS_GAMES_APPS
+    - Livres (12), Formations (18)                   -> () (pas de liste officielle)
+    - category_id None ou inconnu                    -> defaut video (retro-compat)
+
+    Le caller combine ce defaut avec la liste user `config.banned_teams_list()`
+    (additive, edite depuis /config). Le branchement effectif dans
+    `pipeline.process_one` est introduit en Sprint A.3 (Brique 2 compliance).
+    """
+    if category_id is None:
+        return DEFAULT_BANNED_TEAMS_VIDEO
+    # Import tardif : evite tout risque de cycle avec le module tracker.
+    from ..trackers.gemini.unit3d_mapping import (
+        CATEGORY_MOVIE, CATEGORY_TV, CATEGORY_TV_ANIME, CATEGORY_MOVIE_ANIME,
+        CATEGORY_SPORTS, CATEGORY_MOVIE_DOC, CATEGORY_TV_DOC, CATEGORY_TV_SHOW,
+        CATEGORY_GAME, CATEGORY_SOFTWARE,
+    )
+    video_cats = {
+        CATEGORY_MOVIE, CATEGORY_TV, CATEGORY_TV_ANIME, CATEGORY_MOVIE_ANIME,
+        CATEGORY_SPORTS, CATEGORY_MOVIE_DOC, CATEGORY_TV_DOC, CATEGORY_TV_SHOW,
+    }
+    games_apps_cats = {CATEGORY_GAME, CATEGORY_SOFTWARE}
+    if category_id in video_cats:
+        return DEFAULT_BANNED_TEAMS_VIDEO
+    if category_id in games_apps_cats:
+        return DEFAULT_BANNED_TEAMS_GAMES_APPS
+    # Livres (12), Formations (18) : pas de liste officielle. L'user peut
+    # toujours en ajouter via BANNED_TEAMS dans .env.
+    return ()
 
 
 # ============================================================

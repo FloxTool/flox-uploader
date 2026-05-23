@@ -9,6 +9,52 @@ from pathlib import Path
 from torf import Torrent
 
 
+# Bareme officiel des tailles de pieces .torrent recommandees par Gemini.
+# Source : doc PDF G3MINI TR4CK3R - RÈGLES D'UPLOAD, page 5 (Sprint A v0.5.0
+# §8.3). torf auto-calcule une piece_size raisonnable mais pas toujours
+# strictement conforme au bareme Gemini, qui privilegie des valeurs
+# conservatrices : on force donc manuellement avant generate().
+#
+#   < 500 Mo  -> 256 Ko
+#   > 500 Mo  -> 512 Ko
+#   > 1 Go    -> 1 Mo
+#   > 2 Go    -> 2 Mo
+#   > 4 Go    -> 4 Mo
+#   > 8 Go    -> 8 Mo
+#   > 20 Go   -> 16 Mo (max compat clients BitTorrent classiques)
+
+_KB = 1024
+_MB = 1024 * 1024
+_GB = 1024 * _MB
+
+
+def _recommended_piece_size(total_bytes: int) -> int:
+    """Retourne la piece size .torrent conforme au bareme Gemini.
+
+    Garantit la conformite avec les RÈGLES D'UPLOAD officielles. Toujours une
+    puissance de 2 (requis par le format .torrent).
+
+    Args:
+        total_bytes : taille totale du contenu (fichier seul ou somme dossier).
+
+    Returns:
+        Piece size en bytes (256 KB a 16 MB).
+    """
+    if total_bytes < 500 * _MB:
+        return 256 * _KB
+    if total_bytes < 1 * _GB:
+        return 512 * _KB
+    if total_bytes < 2 * _GB:
+        return 1 * _MB
+    if total_bytes < 4 * _GB:
+        return 2 * _MB
+    if total_bytes < 8 * _GB:
+        return 4 * _MB
+    if total_bytes < 20 * _GB:
+        return 8 * _MB
+    return 16 * _MB
+
+
 def _link_or_copy(src: Path, dst: Path) -> None:
     """Hardlink si possible (rapide, zero-copy), sinon copie."""
     try:
@@ -78,6 +124,9 @@ def create_torrent(
             torrent.trackers = [[announce_url]]
             torrent.source = source
             torrent.comment = f"Created for {source}"
+            # Sprint A v0.5.0 §8.3 : on force la piece_size conformement au
+            # bareme Gemini officiel (vs auto-calcul torf parfois divergent).
+            torrent.piece_size = _recommended_piece_size(torrent.size)
             torrent.generate()
             torrent.write(str(output_torrent))
         finally:
@@ -88,6 +137,9 @@ def create_torrent(
         torrent.trackers = [[announce_url]]
         torrent.source = source
         torrent.comment = f"Created for {source}"
+        # Sprint A v0.5.0 §8.3 : on force la piece_size conformement au
+        # bareme Gemini officiel (vs auto-calcul torf parfois divergent).
+        torrent.piece_size = _recommended_piece_size(torrent.size)
         torrent.generate()
         torrent.write(str(output_torrent))
 
