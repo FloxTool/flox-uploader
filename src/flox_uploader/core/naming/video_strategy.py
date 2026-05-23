@@ -67,3 +67,14 @@ class VideoNamingStrategy:
         pour les cats 1, 2, 6, 7, 10, 13, 14, 15.
         """
         return "video"
+
+    def build_extra_payload(self, state_data: Any) -> dict:
+        """Pas de champ extra video-specifique gere par la strategy en Sprint B.
+
+        Les champs video Full Disc (distributor_id, region_id, keywords) sont
+        encore geres inline dans `upload_orchestrator.build_upload_payload`.
+        Ils pourront migrer ici si besoin lors des Sprints D-E (pour aligner
+        avec les strategies non-video). Pour l'instant, on retourne dict vide
+        : strictement NO-OP cote payload.
+        """
+        return {}
