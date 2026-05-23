@@ -10,6 +10,7 @@ from pathlib import Path
 from . import config
 from .core.bbcode_renderer import render_bbcode
 from .core.debug import Debug
+from .core.early_category import early_category_guess
 from .core.errors import die
 from .core.media_type import MediaType, detect_media_type
 from .core.mediainfo_parser import (
@@ -74,10 +75,18 @@ def process_one(
     explicit_companion_nfo: Path | None = None,
     tmdb_id_override: int | None = None,
     manual_release_name: str | None = None,
+    category_hint: int | None = None,
 ) -> Path:
     config.load_env()
     announce_url = config.get_required_env("TRACKER_ANNOUNCE")
     tracker: Tracker = get_tracker(tracker_key, announce_url)
+
+    # Sprint A v0.5.0 Etape 0 (PLAN-MULTICAT §5.1) : on devine la categorie
+    # Gemini TRES TOT, juste a partir du path + d'un hint user optionnel.
+    # PR-2 : on STOCKE juste le signal dans debug. Aucun comportement n'est
+    # encore modifie — c'est PR-3 (Brique 1) qui consommera category_id_early
+    # pour skip MediaInfo sur les fichiers non-video.
+    category_id_early = early_category_guess(input_path, category_hint=category_hint)
 
     # Detection du type de media (film / episode / saison / integrale)
     media_info = detect_media_type(input_path)
@@ -94,6 +103,11 @@ def process_one(
     temp_debug_dir = config.temp_dir() / "debug"
     temp_debug_dir.mkdir(parents=True, exist_ok=True)
     debug = Debug(temp_debug_dir)
+    # Sprint A v0.5.0 : persist du signal Etape 0. Utilise par PR-3 pour
+    # router le pipeline (skip MediaInfo / naming non-video). Visible dans
+    # le debug.json du package pour traçabilité.
+    debug.set("category_id_early", category_id_early)
+    debug.set("category_hint_user", category_hint)
     debug.set("media_type", media_info.media_type.value)
     debug.set("torrent_target", str(media_info.torrent_target))
 
