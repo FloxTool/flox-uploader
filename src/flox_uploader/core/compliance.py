@@ -710,6 +710,78 @@ def _check_separate_subs(torrent_target: Path | None) -> list[ComplianceIssue]:
 
 
 # ============================================================
+# PROFILS DE COMPLIANCE (Sprint A.3 PR-3 - Brique 2)
+# ============================================================
+
+# Liste documentaire des profils. Chaque profil correspond a un ensemble de
+# checks adapte a sa categorie. Le routing concret se fait dans
+# `check_compliance` ci-dessous via `_profile_for_category`.
+#
+# - 'video'  : Films, Series, Anime, Documentaires, Sport, Emission TV
+#              (cat 1, 2, 6, 7, 10, 13, 14, 15). Liste complete des 21 checks
+#              v0.3.x — strictement identique au comportement historique.
+# - 'book'   : Livres (cat 12). Sprint D ajoutera _check_book_format
+#              (CBR/CBZ/EPUB/PDF/MOBI/AZW3/DJVU), _check_book_archives
+#              (rejet RAR/ZIP/7Z), _check_book_nfo_present. Pour l'instant,
+#              checks minimaux universels.
+# - 'game'   : Jeux (cat 3). Sprint E ajoutera _check_game_platform_token
+#              (plateforme dans le release_name), _check_game_archive (zip/rar
+#              OK). Pour l'instant, checks minimaux universels.
+# - 'manual' : Logiciels (cat 17) + Formations (cat 18). Pas de pattern
+#              officiel — checks minimaux universels uniquement.
+#
+# En Sprint A.3, le pipeline early-return AVANT compliance pour les categories
+# non-video (cf. pipeline.process_one Brique 1). Donc en pratique, seul le
+# profil 'video' est appele aujourd'hui. Le registre est expose ici pour la
+# coherence du futur Sprint D-H.
+
+CHECKS_BY_PROFILE: dict[str, str] = {
+    "video":  "21 checks complets (cf. v0.3.x)",
+    "book":   "Sprint D : format ebook + rejet archives + nfo present",
+    "game":   "Sprint E : plateforme + archive jeu",
+    "manual": "Logiciels/Formations : checks universels uniquement",
+}
+
+
+def _profile_for_category(category_id: int | None) -> str:
+    """Retourne le nom du profil de checks pour un category_id Gemini.
+
+    - category_id None ou inconnu       -> 'video' (retro-compat v0.3.x)
+    - Categories video (1,2,6,7,10,13,14,15) -> 'video'
+    - Cat Livres (12)                    -> 'book'
+    - Cat Jeux (3)                       -> 'game'
+    - Cat Logiciels (17), Formations (18) -> 'manual'
+
+    En Sprint A.3 les sous-profils 'show' (cat 15) et 'sport' (cat 10) sont
+    alias vers 'video' pour preserver la compat v0.4.x stricte. Sprints F/G
+    affineront leurs checks specifiques.
+    """
+    if category_id is None:
+        return "video"
+    # Import tardif : evite tout cycle avec le module tracker.
+    from ..trackers.gemini.unit3d_mapping import (
+        CATEGORY_MOVIE, CATEGORY_TV, CATEGORY_TV_ANIME, CATEGORY_MOVIE_ANIME,
+        CATEGORY_SPORTS, CATEGORY_MOVIE_DOC, CATEGORY_TV_DOC, CATEGORY_TV_SHOW,
+        CATEGORY_GAME, CATEGORY_BOOKS, CATEGORY_SOFTWARE, CATEGORY_TRAINING,
+    )
+    video_cats = {
+        CATEGORY_MOVIE, CATEGORY_TV, CATEGORY_TV_ANIME, CATEGORY_MOVIE_ANIME,
+        CATEGORY_SPORTS, CATEGORY_MOVIE_DOC, CATEGORY_TV_DOC, CATEGORY_TV_SHOW,
+    }
+    if category_id in video_cats:
+        return "video"
+    if category_id == CATEGORY_BOOKS:
+        return "book"
+    if category_id == CATEGORY_GAME:
+        return "game"
+    if category_id in (CATEGORY_SOFTWARE, CATEGORY_TRAINING):
+        return "manual"
+    # Fallback retro-compat : categorie inconnue -> profile video
+    # (le pipeline aurait deja die() avant si vraiment hors scope).
+    return "video"
+
+
+# ============================================================
 # ENTREE PUBLIQUE
 # ============================================================
 
@@ -720,56 +792,76 @@ def check_compliance(
     *,
     torrent_target: Path | None = None,
     banned_teams: list[str] | None = None,
+    category_id: int | None = None,
 ) -> list[ComplianceIssue]:
-    """Lance tous les checks et retourne la liste des issues triees par severite.
+    """Lance les checks adaptes au profil de la categorie et retourne les issues.
 
     Args:
         release_name : nom de release final (ex: "Foo.2024.MULTi.VFF.1080p...")
         mediainfo_data : dict produit par parse_mediainfo_json (container,
-            video, audio_tracks, subtitle_tracks).
+            video, audio_tracks, subtitle_tracks). Peut etre vide / partiel
+            pour les profils non-video.
         media_info : optionnel — l'objet MediaInfo (type detecte, all_videos,
             torrent_target). Permet les checks media_type, season_complete,
-            multi_team_in_pack.
+            multi_team_in_pack. Ignore pour les profils non-video.
         torrent_target : optionnel — le path qui sera mis dans le .torrent
-            (fichier ou dossier). Permet le check separate_subs.
+            (fichier ou dossier). Permet le check separate_subs (video uniquement).
         banned_teams : optionnel — liste supplementaire de teams interdites
             (en plus de DEFAULT_BANNED_TEAMS), provient de la config user.
+        category_id : Sprint A.3 PR-3 — category_id Gemini pour router vers
+            le bon profil de checks. None ou cat video -> profile 'video'
+            (comportement v0.3.x strictement identique). Cat non-video ->
+            profil minimal (team_present + banned_team uniquement, en
+            attendant Sprint D-H).
 
     Returns:
         Liste d'issues triees BLOCKING > ERROR > WARN. Vide si tout est OK.
     """
+    profile = _profile_for_category(category_id)
+
     issues: list[ComplianceIssue] = []
     video = mediainfo_data.get("video", {}) or {}
     audio = mediainfo_data.get("audio_tracks", []) or []
     subs = mediainfo_data.get("subtitle_tracks", []) or []
 
-    # --- Divergence nom <-> mediainfo (legacy) ---
-    issues.extend(_check_resolution(release_name, video))
-    issues.extend(_check_video_codec(release_name, video))
-    issues.extend(_check_audio_codec(release_name, audio))
-    issues.extend(_check_audio_channels(release_name, audio))
-    issues.extend(_check_hdr(release_name, video))
-    issues.extend(_check_french_audio_in_name(release_name, audio))
-    issues.extend(_check_vfi_not_present(release_name))
-    issues.extend(_check_multi_has_variant(release_name))
-    issues.extend(_check_team_present(release_name))
-    issues.extend(_check_media_type_tag(release_name, media_info))
+    if profile == "video":
+        # === Profil video : 21 checks complets (= comportement v0.3.x exact) ===
+        # --- Divergence nom <-> mediainfo (legacy) ---
+        issues.extend(_check_resolution(release_name, video))
+        issues.extend(_check_video_codec(release_name, video))
+        issues.extend(_check_audio_codec(release_name, audio))
+        issues.extend(_check_audio_channels(release_name, audio))
+        issues.extend(_check_hdr(release_name, video))
+        issues.extend(_check_french_audio_in_name(release_name, audio))
+        issues.extend(_check_vfi_not_present(release_name))
+        issues.extend(_check_multi_has_variant(release_name))
+        issues.extend(_check_team_present(release_name))
+        issues.extend(_check_media_type_tag(release_name, media_info))
 
-    # --- Lot K : regles dures G3MINI ---
-    issues.extend(_check_container_mkv(mediainfo_data))
-    issues.extend(_check_audio_codec_allowed(audio))
-    issues.extend(_check_pgs_in_encode(subs, release_name))
-    issues.extend(_check_season_complete(media_info))
-    issues.extend(_check_multi_team_in_pack(media_info, release_name))
-    issues.extend(_check_russian_audio(audio))
-    issues.extend(_check_banned_team(release_name, banned_teams))
-    issues.extend(_check_extreme_team_only_encodes(release_name))
-    issues.extend(_check_separate_subs(torrent_target))
+        # --- Lot K : regles dures G3MINI ---
+        issues.extend(_check_container_mkv(mediainfo_data))
+        issues.extend(_check_audio_codec_allowed(audio))
+        issues.extend(_check_pgs_in_encode(subs, release_name))
+        issues.extend(_check_season_complete(media_info))
+        issues.extend(_check_multi_team_in_pack(media_info, release_name))
+        issues.extend(_check_russian_audio(audio))
+        issues.extend(_check_banned_team(release_name, banned_teams))
+        issues.extend(_check_extreme_team_only_encodes(release_name))
+        issues.extend(_check_separate_subs(torrent_target))
 
-    # --- Lot M : CRF hors plage (WARN uniquement, silence si absent) ---
-    issues.extend(_check_crf_in_range(video))
+        # --- Lot M : CRF hors plage (WARN uniquement, silence si absent) ---
+        issues.extend(_check_crf_in_range(video))
+    else:
+        # === Profils non-video (book / game / manual) ===
+        # Sprint A.3 PR-3 : en attendant les checks specifiques des Sprints
+        # D (ebook), E (jeu), H (logiciel/formation), on applique uniquement
+        # les checks universels (team presente + team non bannie).
+        # En pratique non atteint en PR-3 car le pipeline early-return en
+        # non-video avant d'appeler check_compliance, mais l'API est prete.
+        issues.extend(_check_team_present(release_name))
+        issues.extend(_check_banned_team(release_name, banned_teams))
 
-    # Tri : BLOCKING > ERROR > WARN
+    # Tri identique pour tous les profils : BLOCKING > ERROR > WARN
     severity_order = {Severity.BLOCKING: 0, Severity.ERROR: 1, Severity.WARN: 2}
     issues.sort(key=lambda i: severity_order[i.severity])
     return issues

@@ -83,10 +83,29 @@ def process_one(
 
     # Sprint A v0.5.0 Etape 0 (PLAN-MULTICAT §5.1) : on devine la categorie
     # Gemini TRES TOT, juste a partir du path + d'un hint user optionnel.
-    # PR-2 : on STOCKE juste le signal dans debug. Aucun comportement n'est
-    # encore modifie — c'est PR-3 (Brique 1) qui consommera category_id_early
-    # pour skip MediaInfo sur les fichiers non-video.
+    # Le signal est utilise immediatement par la Brique 1 ci-dessous pour
+    # router le pipeline.
     category_id_early = early_category_guess(input_path, category_hint=category_hint)
+
+    # Sprint A.3 PR-3 — Brique 1 : MediaInfo conditionnel.
+    # Si la categorie n'est pas video (Livres, Jeux, Logiciels, Formations),
+    # le pipeline naming + MediaInfo + BBCode + .torrent video n'est pas
+    # encore implemente (prevu Sprints D/E/H de PLAN-MULTICAT.md).
+    # On arrete proprement AVANT detect_media_type qui leverait sur l'absence
+    # de fichier video.
+    from .trackers.gemini.unit3d_mapping import (
+        MEDIAINFO_REQUIRED_CATEGORIES, category_label,
+    )
+    if category_id_early not in MEDIAINFO_REQUIRED_CATEGORIES:
+        cat_name = category_label(category_id_early)
+        die(
+            f"Categorie '{cat_name}' (id={category_id_early}) pas encore "
+            f"supportee. Pipeline disponible aujourd'hui : Films, Series, "
+            f"Anime, Documentaires, Sport, Emission TV. Multi-categorie "
+            f"(Livres, Jeux, Logiciels, Formations) prevu en v0.5.0 "
+            f"(PLAN-MULTICAT.md sprints D-H). Glisse un fichier video "
+            f"(.mkv / .mp4 / .avi) pour preparer un upload."
+        )
 
     # Detection du type de media (film / episode / saison / integrale)
     media_info = detect_media_type(input_path)
@@ -466,11 +485,15 @@ def process_one(
     release_name_path.write_text(display_name + "\n", encoding="utf-8")
 
     # Verification de conformite (NFO <-> release_name + regles Gemini)
+    # Sprint A.3 PR-3 : on passe category_id pour router vers le bon profil
+    # de checks. Pour la video (= categories actuellement supportees), le
+    # profil 'video' reproduit a l'identique le comportement v0.3.x.
     from .core.compliance import check_compliance, format_report, has_blocking, Severity
     issues = check_compliance(
         release_name, mediainfo_data, media_info,
         torrent_target=media_info.torrent_target,
         banned_teams=config.banned_teams_list(),
+        category_id=category_id_early,
     )
     debug.set("compliance_issues", [str(i) for i in issues])
 
