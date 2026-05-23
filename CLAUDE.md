@@ -6,6 +6,28 @@
 
 ---
 
+## 🧭 Index de navigation rapide
+
+Pour trouver l'info en < 30 s, sache où chercher :
+
+| Je veux... | Aller lire... |
+|---|---|
+| **Onboarder une nouvelle session Claude** (5 min) | [`docs/ONBOARDING.md`](docs/ONBOARDING.md) |
+| **Comprendre le projet, l'architecture, les conventions** | Ce fichier (CLAUDE.md), TL;DR + §1-§17 |
+| **Travailler concrètement (install, tests, PR, release)** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
+| **Éviter un piège connu** avant de modifier une zone | [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) |
+| **Comprendre un terme métier ou un acronyme** | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) |
+| **Comprendre la roadmap v0.4.0** (release vidéo en cours) | [`PLAN-V1.md`](PLAN-V1.md) |
+| **Comprendre la roadmap v0.5.0+** (multi-catégorie) | [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) |
+| **Lire les sources de vérité officielles Gemini** | `gemini/*.pdf` (7 PDFs) |
+| **Voir l'historique des versions** | [`CHANGELOG.md`](CHANGELOG.md) |
+| **Voir les notes à la volée de Louis** | [`NOTES.md`](NOTES.md) |
+| **Charte design UI** | [`CHARTE.md`](CHARTE.md) |
+| **Audit historique du codebase** | [`AUDIT.md`](AUDIT.md) (rev 2.2 archivée) |
+| **Comprendre ce qu'il ne faut JAMAIS modifier** | §18 ci-dessous |
+
+---
+
 ## TL;DR (30 secondes de lecture)
 
 **`flox-uploader`** est un outil Python qui automatise la préparation et l'upload de
@@ -61,6 +83,7 @@ writes partout, dégradation gracieuse (jamais de mur sur un type de contenu).
 15. [Références externes](#15-références-externes)
 16. [Workflow git](#16-workflow-git)
 17. [Conseils pour les sessions Claude Code](#17-conseils-pour-les-sessions-claude-code)
+18. [🚫 Zones intouchables](#18--zones-intouchables-à-ne-jamais-modifier-sans-validation-explicite)
 
 ---
 
@@ -850,6 +873,89 @@ pour le format.
 Toutes les décisions et apprentissages des sessions Claude Cowork (jusqu'au
 2026-05-06) sont reportés dans ce fichier. Pas besoin de retrouver les anciennes
 conversations.
+
+---
+
+## 18. 🚫 Zones intouchables (à ne JAMAIS modifier sans validation explicite)
+
+> Liste consolidée des fichiers / décisions / zones où une modification doit
+> être **explicitement validée par Louis** avant toute action. En cas de
+> doute, demande avant d'agir.
+
+### 18.1 Sources de vérité externes (ne JAMAIS modifier)
+
+- **`gemini/*.pdf`** (7 fichiers) : sources officielles Gemini. En cas de
+  désaccord entre le code et un PDF Gemini, **on relit le PDF avant de
+  coder**. Modifier un PDF = perdre la source de vérité.
+- **Référence Unit3D source** (https://github.com/HDInnovations/UNIT3D) :
+  pour comprendre l'API tracker, on lit le code Unit3D upstream avant
+  d'inventer.
+
+### 18.2 Plans stratégiques (modifs nécessitent validation Louis)
+
+- **[`PLAN-V1.md`](PLAN-V1.md)** : roadmap v0.4.0 (release publique vidéo).
+  Décisions D1-D18 figées. Si une décision doit être révisée, **amender
+  d'abord ce doc**, puis le code.
+- **[`PLAN-MULTICAT.md`](PLAN-MULTICAT.md)** : roadmap v0.5.0+
+  (multi-catégorie). Décisions D-MC1-15 figées. Idem.
+- **[`AUDIT.md`](AUDIT.md)** : historique archivé. Ne pas modifier (refs
+  utilisées par CLAUDE.md, README, code, tests).
+- **[`CHARTE.md`](CHARTE.md)** : design system. Si une nouvelle convention
+  UI est nécessaire, **l'ajouter d'abord à la charte**, puis l'implémenter.
+
+### 18.3 Décisions figées (ne JAMAIS contredire silencieusement)
+
+- **Aucun appel LLM** dans le pipeline (cf. §4 + D10 + ONBOARDING §3.1).
+  C'est une décision produit fondamentale. Si tu vois une opportunité
+  d'introduire un LLM, **la signaler à Louis avant**, jamais l'ajouter
+  silencieusement.
+- **`team.upper()` interdit** (cf. §14 + ONBOARDING §3.4). Casse signature
+  des teams préservée.
+- **Pas de télémétrie** (cf. D10). Aucune donnée ne quitte la machine sans
+  appel API explicite de l'user.
+- **Pas de push direct sur `main`** (cf. §16 + ONBOARDING §3.2). PR
+  workflow obligatoire. Le classifier bloque de toute façon.
+- **`tests/test_release_name_real_cases.py`** : 21 cas réels Louis = gold
+  standard. **Ne JAMAIS amender** un de ces tests sans qu'il y ait une
+  raison documentée (décision écrite dans un PLAN-*.md).
+
+### 18.4 Infra / configuration (modifs valider Louis)
+
+- **`.github/workflows/*.yml`** : modifs impactent les builds CI et la
+  génération des installeurs. Valider Louis avant.
+- **`pyproject.toml`** : changements de dépendances ou de version. Impact
+  paquet. Valider.
+- **`.gitignore`** : règles existantes (notamment exception
+  `!gemini/*.pdf`). Ne pas casser.
+- **`src/flox_uploader/trackers/gemini/unit3d_mapping.py`** : IDs API
+  Gemini. Source = PDFs Gemini. Toute modif doit être justifiée par une
+  ligne précise d'un PDF.
+
+### 18.5 Workflow opérationnel (sprints en cours)
+
+- **Sprint en cours d'exécution** : ne pas modifier un sprint marqué
+  "en cours" dans PLAN-V1.md ou PLAN-MULTICAT.md sans amender le plan
+  d'abord.
+- **Branches feature actives** : ne pas force-push ni rebase brutal sur
+  une branche partagée sans valider.
+- **Tags `v*` poussés** : ne JAMAIS supprimer ni déplacer un tag publié
+  (déclenche/a déclenché la CI). Pour corriger, créer un nouveau tag
+  (v0.4.1 plutôt que re-tag v0.4.0).
+
+### 18.6 Données utilisateur (jamais commit)
+
+Cf. `.gitignore` + [`docs/WORKFLOW.md`](docs/WORKFLOW.md) §8 :
+- `data/`, `jobs.db`, `.tmdb_cache.json` (runtime utilisateur)
+- `.env`, `.env.local`, `*.passkey` (secrets)
+- `.claude/` (sessions Claude Code locales)
+- `gemini/_extracted/` (artefact d'extraction PDF, reproductible)
+
+### 18.7 Et pour le reste ?
+
+Pour les modifs **dans le scope d'un sprint actif** ou pour des
+**améliorations chirurgicales bien documentées** : workflow PR standard,
+pas besoin de demander avant chaque commit. Le filet de sécurité = la PR
++ la review.
 
 ---
 
