@@ -119,6 +119,17 @@ def test_get_strategy_unknown_id_returns_video():
 # a un appel direct de `release_name.build_release_name`. C'est la garantie
 # critique du Sprint B (refactor strictement NO-OP).
 
+def test_video_strategy_build_extra_payload_returns_empty_dict():
+    """Sprint B.5 : VideoNamingStrategy.build_extra_payload() retourne {}
+    par defaut (les champs video extra restent inline dans build_upload_payload).
+    """
+    strategy = VideoNamingStrategy()
+    # state_data peut etre n'importe quoi : None ou un mock — la video strategy
+    # n'utilise pas state_data en Sprint B.
+    assert strategy.build_extra_payload(None) == {}
+    assert strategy.build_extra_payload(object()) == {}
+
+
 def test_video_strategy_build_release_name_equals_direct_call(tmp_path, monkeypatch):
     """Le wrap doit produire EXACTEMENT le meme resultat que l'appel direct."""
     # On evite tout appel reseau TMDB en passant un resolver mock qui retourne

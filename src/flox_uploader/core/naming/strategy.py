@@ -74,6 +74,27 @@ class NamingStrategy(Protocol):
         """
         ...
 
+    def build_extra_payload(self, state_data: Any) -> dict:
+        """Retourne les champs supplementaires Gemini specifiques a la categorie.
+
+        Sera consomme par `upload_orchestrator.build_upload_payload()` pour
+        injecter les champs propres a chaque categorie (igdb_id pour les jeux,
+        isbn_13 pour les livres, distributor/region/keywords pour les Full
+        Disc video, etc.).
+
+        Sprint B.5 : c'est un point d'extension. VideoNamingStrategy retourne
+        `{}` pour rester strictement NO-OP (les champs video specifiques
+        comme distributor_id sont encore geres inline dans build_upload_payload
+        et le seront jusqu'a leur migration progressive en Sprint D-E).
+
+        Args:
+            state_data : objet PackageStateData (manual_*, overrides user).
+
+        Returns:
+            Dict des champs additionnels a injecter dans `UploadPayload.extra`.
+        """
+        ...
+
 
 def get_strategy(category_id: int | None) -> NamingStrategy:
     """Retourne la `NamingStrategy` adaptee a la categorie demandee.
