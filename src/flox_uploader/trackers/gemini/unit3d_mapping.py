@@ -59,6 +59,15 @@ MEDIAINFO_REQUIRED_CATEGORIES = (
 # Categories ou resolution_id est REQUIS (Film ou Serie TMDB)
 RESOLUTION_REQUIRED_CATEGORIES = TMDB_MOVIE_CATEGORIES | TMDB_TV_CATEGORIES
 
+# Categories non-video supportees par le pipeline (Sprint D.4 v0.5.0 et au-dela).
+# Le pipeline.process_one early-return die() pour les categories qui ne sont
+# NI video (MEDIAINFO_REQUIRED_CATEGORIES) NI dans cette liste. A chaque
+# nouveau Sprint qui livre un pipeline non-video, on ajoute sa cat ici :
+# - Sprint D : CATEGORY_BOOKS (Livres) → fait
+# - Sprint E : CATEGORY_GAME (Jeux)
+# - Sprint H : CATEGORY_SOFTWARE, CATEGORY_TRAINING
+SUPPORTED_NON_VIDEO_CATEGORIES = frozenset({CATEGORY_BOOKS})
+
 
 # ============================================================
 # Lot N.1 : keywords pour detecter les uploads Sports.

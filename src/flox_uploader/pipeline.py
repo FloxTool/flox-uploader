@@ -89,23 +89,32 @@ def process_one(
     category_id_early = early_category_guess(input_path, category_hint=category_hint)
 
     # Sprint A.3 PR-3 — Brique 1 : MediaInfo conditionnel.
-    # Si la categorie n'est pas video (Livres, Jeux, Logiciels, Formations),
-    # le pipeline naming + MediaInfo + BBCode + .torrent video n'est pas
-    # encore implemente (prevu Sprints D/E/H de PLAN-MULTICAT.md).
-    # On arrete proprement AVANT detect_media_type qui leverait sur l'absence
-    # de fichier video.
+    # Sprint D.4 v0.5.0 : on supporte maintenant la categorie Livres (cat 12).
+    # Pour les autres categories non-video (Jeux, Logiciels, Formations), on
+    # arrete toujours proprement avec un message clair (la roadmap Sprint E/H
+    # les ajoutera a SUPPORTED_NON_VIDEO_CATEGORIES en temps voulu).
     from .trackers.gemini.unit3d_mapping import (
-        MEDIAINFO_REQUIRED_CATEGORIES, category_label,
+        CATEGORY_BOOKS, MEDIAINFO_REQUIRED_CATEGORIES,
+        SUPPORTED_NON_VIDEO_CATEGORIES, category_label,
     )
-    if category_id_early not in MEDIAINFO_REQUIRED_CATEGORIES:
+    if category_id_early == CATEGORY_BOOKS:
+        # Sprint D.4 : pipeline Livre dedie (pas de MediaInfo ni TMDB).
+        return _process_book(
+            input_path, tracker,
+            category_id_early=category_id_early,
+            category_hint=category_hint,
+        )
+    if (category_id_early not in MEDIAINFO_REQUIRED_CATEGORIES
+            and category_id_early not in SUPPORTED_NON_VIDEO_CATEGORIES):
         cat_name = category_label(category_id_early)
         die(
             f"Categorie '{cat_name}' (id={category_id_early}) pas encore "
             f"supportee. Pipeline disponible aujourd'hui : Films, Series, "
-            f"Anime, Documentaires, Sport, Emission TV. Multi-categorie "
-            f"(Livres, Jeux, Logiciels, Formations) prevu en v0.5.0 "
-            f"(PLAN-MULTICAT.md sprints D-H). Glisse un fichier video "
-            f"(.mkv / .mp4 / .avi) pour preparer un upload."
+            f"Anime, Documentaires, Sport, Emission TV, Livres. Categories "
+            f"restantes (Jeux, Logiciels, Formations) prevues en v0.5.0 "
+            f"(PLAN-MULTICAT.md sprints E + H). Glisse un fichier video "
+            f"(.mkv / .mp4 / .avi) ou un livre (.epub / .pdf / .cbz) pour "
+            f"preparer un upload."
         )
 
     # Detection du type de media (film / episode / saison / integrale)
@@ -607,4 +616,173 @@ def process_one(
         print(f"Affichage    : {display_name}")
     print(f"Force FR : {force_fr if force_fr else 'Aucun'}")
     print(f"TMDB : {'Oui' if tmdb_context else 'Non'}")
+    return package_dir
+
+
+# ============================================================
+# Sprint D.4 v0.5.0 — Pipeline Livre dedie
+# ============================================================
+# Court-circuite tout le pipeline video (detect_media_type, MediaInfo, TMDB,
+# BBCode video) et utilise BookNamingStrategy + providers livre. Genere un
+# package minimaliste avec release_name + state PREPARED + .torrent + NFO
+# minimaliste + compliance ebook. La page detail enrichie (couverture,
+# resume, formulaire override) viendra en Sprint D.5.
+
+def _process_book(
+    input_path: Path,
+    tracker: Tracker,
+    *,
+    category_id_early: int,
+    category_hint: int | None = None,
+) -> Path:
+    """Traite un upload livre (cat 12). Pipeline simplifie sans MediaInfo / TMDB.
+
+    Etapes :
+    1. BookNamingStrategy.build_release_name() -> release_name + book_metadata
+    2. Cree le package_dir base sur release_name
+    3. Genere un NFO minimaliste (texte simple avec les metadata livre)
+    4. Cree le .torrent
+    5. Verifie compliance avec profile='book'
+    6. State PREPARED (ou FAILED si compliance bloquant)
+
+    Args:
+        input_path : path du fichier livre (.epub, .pdf, .cbz, etc.) ou dossier.
+        tracker : Tracker (gemini par defaut).
+        category_id_early : doit etre CATEGORY_BOOKS (12).
+        category_hint : hint user depuis modal Inbox (pour state.manual_category_id).
+
+    Returns:
+        Path du package_dir cree.
+    """
+    print(f"[INFO] Type detecte : ebook ({input_path.suffix.lower() or 'dossier'})")
+
+    # ---- Setup debug ----
+    temp_debug_dir = config.temp_dir() / "debug"
+    temp_debug_dir.mkdir(parents=True, exist_ok=True)
+    debug = Debug(temp_debug_dir)
+    debug.set("category_id_early", category_id_early)
+    debug.set("category_hint_user", category_hint)
+    debug.set("media_type", "book")
+    debug.set("torrent_target", str(input_path))
+
+    # ---- Naming livre ----
+    from .core.naming.strategy import get_strategy
+    naming_strategy = get_strategy(category_id_early)
+    debug.set("naming_strategy", naming_strategy.name)
+    release_name, _ = naming_strategy.build_release_name(
+        input_path, tracker, nfo_text="", debug=debug,
+    )
+    print(f"[INFO] Release name : {release_name}")
+
+    # ---- Creation du package_dir ----
+    package_dir = config.packages_dir() / release_name
+    # Protection : ne pas ecraser un package UPLOADED
+    if package_dir.is_dir():
+        from .core.package_state import read_state, PackageState
+        existing_state = read_state(package_dir)
+        if existing_state and existing_state.state == PackageState.UPLOADED:
+            tid = existing_state.uploaded_torrent_id
+            die(
+                f"Deja uploade au tracker"
+                f"{f' (ID {tid})' if tid else ''}. "
+                f"Supprime le package via la page detail si tu veux recommencer."
+            )
+    package_dir.mkdir(parents=True, exist_ok=True)
+    final_debug_dir = package_dir / "_debug"
+    final_debug_dir.mkdir(parents=True, exist_ok=True)
+
+    # ---- NFO minimaliste pour livre (Sprint D.5 ameliorera) ----
+    book_meta = debug.data.get("book_metadata") or {}
+    nfo_lines = [
+        f"Release name : {release_name}",
+        f"Categorie    : Livre / BD / Manga",
+        "",
+        f"Titre        : {book_meta.get('title', 'N/A')}",
+        f"Auteur(s)    : {', '.join(book_meta.get('authors', []) or ['N/A'])}",
+        f"Editeur      : {book_meta.get('publisher', 'N/A')}",
+        f"Annee        : {book_meta.get('publication_year', 'N/A')}",
+        f"Langue       : {book_meta.get('language', 'N/A')}",
+        f"Format       : {book_meta.get('file_format', '').upper() or 'N/A'}",
+        f"Pages        : {book_meta.get('page_count', 'N/A')}",
+    ]
+    if book_meta.get("isbn_13") or book_meta.get("isbn_10"):
+        isbn = book_meta.get("isbn_13") or book_meta.get("isbn_10")
+        nfo_lines.append(f"ISBN         : {isbn}")
+    if book_meta.get("series"):
+        idx = book_meta.get("series_index") or 0
+        series_str = book_meta["series"]
+        if idx:
+            series_str += f" (tome {idx:g})"
+        nfo_lines.append(f"Serie        : {series_str}")
+    if book_meta.get("description"):
+        nfo_lines.extend(["", "Resume :", book_meta["description"][:500]])
+    sources = book_meta.get("sources") or []
+    if sources:
+        nfo_lines.append("")
+        nfo_lines.append(f"Metadata fournies par : {', '.join(sources)}")
+
+    nfo_path = package_dir / f"{release_name}.nfo"
+    nfo_path.write_text("\n".join(nfo_lines), encoding="utf-8")
+    print(f"[OK] NFO ebook genere : {nfo_path.name}")
+
+    # ---- release_name.txt ----
+    (package_dir / "release_name.txt").write_text(release_name + "\n", encoding="utf-8")
+
+    # ---- .torrent ----
+    torrent_path = package_dir / f"{release_name}.torrent"
+    create_torrent(
+        input_path, torrent_path,
+        announce_url=tracker.announce_url,
+        source=tracker.torrent_source,
+        private=tracker.private,
+    )
+
+    # ---- Compliance ebook ----
+    from .core.compliance import (
+        check_compliance, format_report, has_blocking, Severity,
+    )
+    issues = check_compliance(
+        release_name, mediainfo_data={}, media_info=None,
+        torrent_target=input_path,
+        banned_teams=config.banned_teams_list(),
+        category_id=category_id_early,
+        package_dir=package_dir,
+    )
+    debug.set("compliance_issues", [str(i) for i in issues])
+    if issues:
+        print()
+        print(format_report(issues))
+
+    # ---- State init ----
+    debug.output_dir = final_debug_dir
+    debug.save()
+    from .core.package_state import init_state, transition, PackageState
+    init_state(package_dir, release_name, tracker.key)
+
+    # Persist le hint user dans manual_category_id (Sprint C.1bis fix)
+    if category_hint is not None and category_hint > 0:
+        from .core.package_state import read_state, write_state
+        _state_data = read_state(package_dir)
+        if _state_data is not None and _state_data.manual_category_id != int(category_hint):
+            _state_data.manual_category_id = int(category_hint)
+            write_state(package_dir, _state_data)
+
+    # Si compliance bloquante -> state FAILED
+    if issues and has_blocking(issues):
+        blocking_msgs = [i.message for i in issues if i.severity == Severity.BLOCKING]
+        transition(
+            package_dir, PackageState.FAILED,
+            note="Conformite ebook : " + " | ".join(blocking_msgs[:3])
+                 + ("…" if len(blocking_msgs) > 3 else ""),
+        )
+        print(
+            f"[FAILED] {len(blocking_msgs)} violation(s) dure(s) de la charte "
+            "Gemini ebook — package marque en echec."
+        )
+
+    print("\n[TERMINE]")
+    print(f"Tracker : {tracker.display_name}")
+    print(f"Type media : ebook")
+    print(f"Dossier package : {package_dir}")
+    print(f"Release name : {release_name}")
     return package_dir

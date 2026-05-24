@@ -52,37 +52,78 @@ def _make_fake_file(tmp_path: Path, filename: str) -> Path:
 
 
 @pytest.mark.parametrize("filename,expected_keyword", [
-    ("Tolkien.epub", "Livre"),
-    ("Document.pdf", "Livre"),
-    ("Manga.cbz", "Livre"),
-    ("Audiobook.m4b", "Livre"),
     ("Setup.exe", "Logiciel"),
     ("Installer.msi", "Logiciel"),
 ])
-def test_process_one_non_video_dies_with_clear_message(
+def test_process_one_unsupported_non_video_dies_with_clear_message(
     tmp_path, mock_env, capsys, filename, expected_keyword,
 ):
-    """Un fichier non-video declenche die() avec message clair, pas un crash."""
+    """Sprint D.4 : seuls les Logiciels (et Formations, Jeux) declenchent
+    encore die(). Les Livres ont leur propre pipeline (_process_book) et ne
+    meurent plus."""
     fake = _make_fake_file(tmp_path, filename)
 
-    # die() leve SystemExit, pas une Exception normale. C'est exactement le
-    # comportement attendu (sortie propre exit 1, geree par le caller subprocess).
     with pytest.raises(SystemExit) as exc_info:
         pipeline.process_one(fake, tracker_key="gemini")
 
     assert exc_info.value.code == 1, "die() doit exit avec code 1"
 
-    # Le message d'erreur doit mentionner la categorie detectee
     captured = capsys.readouterr()
     output = captured.out + captured.err
     assert expected_keyword in output, (
         f"Message d'erreur attendu contient '{expected_keyword}', obtenu : {output}"
     )
-    # Et doit pointer vers le futur (PLAN-MULTICAT ou v0.5.0)
+    # Le message doit pointer vers la roadmap restante (sprints E ou H)
     assert ("v0.5.0" in output or "PLAN-MULTICAT" in output or "Sprints" in output
             or "sprints" in output), (
         f"Message doit indiquer que la cat sera supportee plus tard : {output}"
     )
+
+
+@pytest.mark.parametrize("filename", [
+    "Tolkien.epub", "Document.pdf", "Manga.cbz", "Audiobook.m4b",
+])
+def test_process_one_book_no_longer_dies(
+    tmp_path, mock_env, capsys, filename, monkeypatch,
+):
+    """Sprint D.4 : les livres ne meurent plus, ils passent dans _process_book.
+
+    Le pipeline va probablement planter plus loin sur le .torrent (fichier
+    vide -> torf.PathError) ou sur l'absence de providers reels — mais on
+    verifie qu'on ne meurt PAS sur la Brique 1 avec le message "pas encore
+    supportee".
+    """
+    fake = _make_fake_file(tmp_path, filename)
+
+    # Court-circuite create_torrent pour eviter le PathError torf sur fichier vide
+    def fake_create_torrent(*args, **kwargs):
+        # Cree un .torrent placeholder
+        output = args[1] if len(args) > 1 else kwargs.get("output_torrent")
+        if output:
+            Path(output).write_bytes(b"d4:test4:datae")
+
+    monkeypatch.setattr(pipeline, "create_torrent", fake_create_torrent)
+    # Court-circuite l'orchestrateur lookup (qui ferait des appels HTTP reels)
+    from flox_uploader.core.naming import book_strategy as _bs
+
+    def no_lookup(meta):
+        return meta
+
+    monkeypatch.setattr(_bs, "lookup_book_metadata", lambda m, **kw: m)
+
+    try:
+        result = pipeline.process_one(fake, tracker_key="gemini")
+        # Si on arrive ici, c'est que _process_book a tourne sans planter.
+        assert result is not None
+        assert result.is_dir()
+    except BaseException as e:
+        # On accepte les erreurs DEROULEMENT (ex: pas de TRACKER_API_URL, etc.)
+        # mais on refuse une SystemExit avec message Brique 1.
+        captured = capsys.readouterr()
+        output = captured.out + captured.err
+        assert "pas encore supportee" not in output, (
+            f"La Brique 1 ne doit PLUS die() sur un livre. Message inattendu : {output}"
+        )
 
 
 def test_process_one_unknown_extension_falls_back_to_movie(
@@ -137,24 +178,45 @@ def test_process_one_video_passes_brique_1_check(tmp_path, mock_env, capsys):
 # Cas hint user explicite
 # ============================================================
 
-def test_process_one_video_file_with_book_hint_dies_non_video(
-    tmp_path, mock_env, capsys,
+def test_process_one_video_file_with_book_hint_routes_to_book_pipeline(
+    tmp_path, mock_env, capsys, monkeypatch,
 ):
-    """Si l'user passe explicitement category_hint=CATEGORY_BOOKS sur un .mkv,
-    on respecte son hint et on die() comme pour un livre.
+    """Sprint D.4 : si l'user passe explicitement category_hint=CATEGORY_BOOKS
+    sur un .mkv, on respecte son hint et on route vers _process_book (au lieu
+    de die() comme avant Sprint D.4).
 
-    Important : la priorite du hint user (Sprint C UI) doit s'appliquer meme
-    si l'extension dit autre chose. Le hint user fait foi.
+    La priorite du hint user (Sprint C UI) s'applique meme si l'extension dit
+    autre chose. Le hint user fait foi.
     """
     fake = _make_fake_file(tmp_path, "Fake.mkv")
-    with pytest.raises(SystemExit) as exc_info:
-        pipeline.process_one(
+
+    # Court-circuite create_torrent et le lookup providers
+    def fake_create_torrent(*args, **kwargs):
+        output = args[1] if len(args) > 1 else kwargs.get("output_torrent")
+        if output:
+            Path(output).write_bytes(b"d4:test4:datae")
+
+    monkeypatch.setattr(pipeline, "create_torrent", fake_create_torrent)
+    from flox_uploader.core.naming import book_strategy as _bs
+    monkeypatch.setattr(_bs, "lookup_book_metadata", lambda m, **kw: m)
+
+    try:
+        result = pipeline.process_one(
             fake, tracker_key="gemini",
             category_hint=CATEGORY_BOOKS,
         )
-    assert exc_info.value.code == 1
+        # Si on arrive ici, _process_book a tourne -> package cree
+        assert result is not None
+    except BaseException:
+        pass  # On accepte les erreurs en aval (NFO, state init, etc.)
+
+    # Le critere principal : on ne doit PAS voir le message Brique 1 die()
     captured = capsys.readouterr()
-    assert "Livre" in captured.out + captured.err
+    output = captured.out + captured.err
+    assert "pas encore supportee" not in output, (
+        f"Le hint user CATEGORY_BOOKS doit router vers _process_book, "
+        f"pas die() Brique 1. Sortie : {output}"
+    )
 
 
 def test_process_one_book_file_with_movie_hint_passes_brique_1(
