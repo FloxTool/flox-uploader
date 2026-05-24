@@ -269,24 +269,32 @@ def test_bbcode_book_renders_full(monkeypatch):
     assert "Français" in bbcode  # mapping lang
     assert "EPUB" in bbcode
     assert "Pocket Jeunesse" in bbcode
-    assert "[img]https://example.com/hobbit.jpg[/img]" in bbcode
+    # Sprint D.8 v0.5.0 : la cover est rendue via [img=300]...[/img]
+    # (harmonisation avec template_movie.bbcode qui utilise aussi [img=N]).
+    assert "https://example.com/hobbit.jpg" in bbcode
+    assert "[img=300]" in bbcode or "[img]" in bbcode
     assert "Bilbo Sacquet" in bbcode
     assert "Fantasy" in bbcode
-    # BBCode tags presents
+    # BBCode tags presents (alignes avec template film)
     assert "[center]" in bbcode
-    assert "[hr]" in bbcode
-    assert "[quote]" in bbcode
+    # Sprint D.8 : nouveaux marqueurs harmonises avec template_movie
+    assert "Informations sur le livre" in bbcode
+    assert "Informations sur la release" in bbcode
+    assert "Résumé" in bbcode
 
 
 def test_bbcode_book_handles_missing_cover(monkeypatch):
-    """Pas de cover_url -> pas de [img] dans le BBCode."""
+    """Pas de cover_url -> pas de [img=300] pour la couverture (mais le
+    template peut contenir des [img=500]...imgur.com pour les separateurs)."""
     monkeypatch.setenv("TRACKER_ANNOUNCE", "https://test.tracker/announce/passkey")
     tracker = get_tracker("gemini", "https://test.tracker/announce/passkey")
     meta = BookMetadata(
         title="Sans Cover", authors=["Author"], language="fr", file_format="pdf",
     )
     bbcode = render_book_bbcode(meta, "Author.Sans.Cover.FRENCH.PDF-Flox", tracker)
-    assert "[img]" not in bbcode
+    # Sprint D.8 : sans cover_url, pas de [img=300] (taille reservee a la cover)
+    # mais les separateurs visuels [img=500]...imgur restent presents.
+    assert "[img=300]" not in bbcode
     assert "Sans Cover" in bbcode
 
 
