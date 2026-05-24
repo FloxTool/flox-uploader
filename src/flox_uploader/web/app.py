@@ -2204,6 +2204,10 @@ def create_app() -> FastAPI:
             category_id_hint = int(payload.get("category_id_hint") or 0)
         except (TypeError, ValueError):
             category_id_hint = 0
+        # Sprint D.9 v0.5.0 : overrides livre (ISBN/auteur/titre).
+        manual_isbn = (payload.get("manual_isbn") or "").strip()
+        manual_author = (payload.get("manual_author") or "").strip()
+        manual_book_title = (payload.get("manual_book_title") or "").strip()
         # Supprime l'ancien package + l'ancien job pour laisser place au nouveau.
         jobs_db.delete_job(source_job.id)
         try:
@@ -2217,6 +2221,9 @@ def create_app() -> FastAPI:
             tmdb_id_override=tmdb_id_override,
             manual_release_name=manual_release_name,
             category_id_hint=category_id_hint,
+            manual_isbn=manual_isbn,
+            manual_author=manual_author,
+            manual_book_title=manual_book_title,
         )
         submit_prepare_job(new_job.id)
         return {

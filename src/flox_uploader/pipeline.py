@@ -77,6 +77,9 @@ def process_one(
     tmdb_id_override: int | None = None,
     manual_release_name: str | None = None,
     category_hint: int | None = None,
+    manual_isbn: str | None = None,
+    manual_author: str | None = None,
+    manual_book_title: str | None = None,
 ) -> Path:
     config.load_env()
     announce_url = config.get_required_env("TRACKER_ANNOUNCE")
@@ -99,10 +102,14 @@ def process_one(
     )
     if category_id_early == CATEGORY_BOOKS:
         # Sprint D.4 : pipeline Livre dedie (pas de MediaInfo ni TMDB).
+        # Sprint D.9 : forward des overrides livre (ISBN/auteur/titre).
         return _process_book(
             input_path, tracker,
             category_id_early=category_id_early,
             category_hint=category_hint,
+            manual_isbn=manual_isbn or "",
+            manual_author=manual_author or "",
+            manual_book_title=manual_book_title or "",
         )
     if (category_id_early not in MEDIAINFO_REQUIRED_CATEGORIES
             and category_id_early not in SUPPORTED_NON_VIDEO_CATEGORIES):
@@ -634,6 +641,9 @@ def _process_book(
     *,
     category_id_early: int,
     category_hint: int | None = None,
+    manual_isbn: str = "",
+    manual_author: str = "",
+    manual_book_title: str = "",
 ) -> Path:
     """Traite un upload livre (cat 12). Pipeline simplifie sans MediaInfo / TMDB.
 
@@ -669,8 +679,40 @@ def _process_book(
     from .core.naming.strategy import get_strategy
     naming_strategy = get_strategy(category_id_early)
     debug.set("naming_strategy", naming_strategy.name)
+    # Sprint D.9 v0.5.0 : on injecte les overrides livre via un closure
+    # `_book_lookup` qui pre-remplit le meta AVANT le lookup en ligne.
+    # Si manual_isbn fourni, le lookup BnF/Google va l'utiliser direct
+    # (au lieu de chercher par titre). Si manual_author/title fournis,
+    # ils ecrasent l'extraction locale du fichier.
+    _strategy_kwargs = {}
+    if manual_isbn or manual_author or manual_book_title:
+        from .core.providers.book_lookup import lookup_book_metadata
+
+        def _book_lookup_with_overrides(meta):
+            # Surcharge les champs livre AVANT le lookup en ligne.
+            if manual_isbn:
+                isbn_clean = manual_isbn.strip().replace("-", "").replace(" ", "")
+                if len(isbn_clean) == 13 and isbn_clean.isdigit():
+                    meta.isbn_13 = isbn_clean
+                elif len(isbn_clean) == 10:
+                    meta.isbn_10 = isbn_clean.upper()
+            if manual_author:
+                meta.authors = [manual_author.strip()]
+            if manual_book_title:
+                meta.title = manual_book_title.strip()
+            # Cache + Google API key depuis la config
+            google_key = config.get_optional_env("GOOGLE_BOOKS_API_KEY", "")
+            return lookup_book_metadata(
+                meta,
+                cache_dir=config.data_dir(),
+                google_api_key=google_key,
+            )
+
+        _strategy_kwargs["_book_lookup"] = _book_lookup_with_overrides
+
     release_name, _ = naming_strategy.build_release_name(
         input_path, tracker, nfo_text="", debug=debug,
+        **_strategy_kwargs,
     )
     print(f"[INFO] Release name : {release_name}")
 

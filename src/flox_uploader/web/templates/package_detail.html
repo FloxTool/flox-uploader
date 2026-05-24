@@ -843,46 +843,95 @@
             </p>
         </div>
 
-        <!-- Force FR (re-prepare) -->
-        <div>
-            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Variante FR forcée</label>
-            <div class="flex flex-wrap gap-2">
-                {% set fr_labels = {'': 'Auto', 'VFF': 'MULTi.VFF', 'VFQ': 'MULTi.VFQ', 'VFB': 'MULTi.VFB', 'VOF': 'VOF', 'VOQ': 'VOQ', 'VOB': 'VOB'} %}
-                {% for v in ['', 'VFF', 'VFQ', 'VFB', 'VOF', 'VOQ', 'VOB'] %}
-                <label class="inline-flex items-center gap-1 px-3 h-8 border rounded-md text-sm cursor-pointer transition-colors duration-fast
-                    {% if (source_force_fr or '') == v %}bg-primary-50 dark:bg-primary-900/40 border-primary-400 dark:border-primary-700 text-primary-800 dark:text-primary-200{% else %}bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/40{% endif %}">
-                    <input type="radio" name="force_fr" value="{{ v }}" {% if (source_force_fr or '') == v %}checked{% endif %} class="sr-only">
-                    <span>{{ fr_labels[v] }}</span>
-                </label>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- TMDB ID manuel : bypass la recherche par titre, lookup direct -->
-        <div>
-            <label for="manual_tmdb_id" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TMDB ID forcé</label>
-            <div class="flex items-center gap-2">
-                <input type="number" id="manual_tmdb_id" value="{{ manual_tmdb_id or '' }}" placeholder="Auto"
-                       class="w-32 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {% if tmdb_id %}
-                <span class="text-xs text-slate-500 dark:text-slate-400">Auto-detecté : <a href="https://www.themoviedb.org/{% if media_type == 'movie' %}movie{% else %}tv{% endif %}/{{ tmdb_id }}" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">{{ tmdb_id }}</a></span>
-                {% else %}
-                <span class="text-xs text-slate-500 dark:text-slate-400">Recherche le bon ID sur <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">themoviedb.org</a> et colle-le ici.</span>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Suffixe FR : ajout (Titre français) au nom de release -->
-        <div>
-            <label class="flex items-start gap-2 text-sm cursor-pointer">
-                <input type="checkbox" id="opt-append-fr" class="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
-                <div>
-                    <span class="font-medium text-slate-700 dark:text-slate-300">Ajouter le titre français entre parenthèses au nom de release</span>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Off par défaut. Quand activé : <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Foo.2024.x265-TEAM (Titre français)</code>
-                    </p>
+        {# Sprint D.9 v0.5.0 : sections specifiques au profil video. Cachees
+           dynamiquement par JS quand l'user passe la cat sur Livre/Jeu/etc. #}
+        <div data-profile-section="video" {% if _profile == 'book' %}class="hidden"{% endif %}>
+            <!-- Force FR (re-prepare) -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Variante FR forcée</label>
+                <div class="flex flex-wrap gap-2">
+                    {% set fr_labels = {'': 'Auto', 'VFF': 'MULTi.VFF', 'VFQ': 'MULTi.VFQ', 'VFB': 'MULTi.VFB', 'VOF': 'VOF', 'VOQ': 'VOQ', 'VOB': 'VOB'} %}
+                    {% for v in ['', 'VFF', 'VFQ', 'VFB', 'VOF', 'VOQ', 'VOB'] %}
+                    <label class="inline-flex items-center gap-1 px-3 h-8 border rounded-md text-sm cursor-pointer transition-colors duration-fast
+                        {% if (source_force_fr or '') == v %}bg-primary-50 dark:bg-primary-900/40 border-primary-400 dark:border-primary-700 text-primary-800 dark:text-primary-200{% else %}bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/40{% endif %}">
+                        <input type="radio" name="force_fr" value="{{ v }}" {% if (source_force_fr or '') == v %}checked{% endif %} class="sr-only">
+                        <span>{{ fr_labels[v] }}</span>
+                    </label>
+                    {% endfor %}
                 </div>
-            </label>
+            </div>
+
+            <!-- TMDB ID manuel : bypass la recherche par titre, lookup direct -->
+            <div class="mb-4">
+                <label for="manual_tmdb_id" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TMDB ID forcé</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" id="manual_tmdb_id" value="{{ manual_tmdb_id or '' }}" placeholder="Auto"
+                           class="w-32 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {% if tmdb_id %}
+                    <span class="text-xs text-slate-500 dark:text-slate-400">Auto-detecté : <a href="https://www.themoviedb.org/{% if media_type == 'movie' %}movie{% else %}tv{% endif %}/{{ tmdb_id }}" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">{{ tmdb_id }}</a></span>
+                    {% else %}
+                    <span class="text-xs text-slate-500 dark:text-slate-400">Recherche le bon ID sur <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">themoviedb.org</a> et colle-le ici.</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Suffixe FR : ajout (Titre français) au nom de release -->
+            <div>
+                <label class="flex items-start gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" id="opt-append-fr" class="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
+                    <div>
+                        <span class="font-medium text-slate-700 dark:text-slate-300">Ajouter le titre français entre parenthèses au nom de release</span>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Off par défaut. Quand activé : <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Foo.2024.x265-TEAM (Titre français)</code>
+                        </p>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        {# Sprint D.9 v0.5.0 : sections specifiques au profil livre. Visibles
+           dynamiquement par JS quand l'user passe la cat sur Livre. #}
+        <div data-profile-section="book" {% if _profile != 'book' %}class="hidden"{% endif %}>
+            {%- set _bm = book_metadata or {} -%}
+            <!-- ISBN manuel -->
+            <div class="mb-4">
+                <label for="manual_isbn" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN forcé</label>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <input type="text" id="manual_isbn" value="{{ _bm.isbn_13 or _bm.isbn_10 or '' }}" placeholder="9782266154116"
+                           class="w-44 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <span class="text-xs text-slate-500 dark:text-slate-400">
+                        Permet le lookup direct BnF / Google Books / OpenLibrary (saute la recherche par titre).
+                    </span>
+                </div>
+            </div>
+
+            <!-- Auteur manuel -->
+            <div class="mb-4">
+                <label for="manual_author" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Auteur principal forcé</label>
+                <input type="text" id="manual_author"
+                       value="{{ _bm.authors[0] if _bm.authors else '' }}"
+                       placeholder="J.R.R. Tolkien"
+                       class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Utilisé en tête du release_name (<code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Auteur.Titre.Date.FRENCH.EPUB-TEAM</code>).
+                </p>
+            </div>
+
+            <!-- Titre manuel -->
+            <div class="mb-4">
+                <label for="manual_book_title" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titre forcé</label>
+                <input type="text" id="manual_book_title"
+                       value="{{ _bm.title or '' }}"
+                       placeholder="Le Seigneur des Anneaux"
+                       class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <p class="text-xs text-slate-500 dark:text-slate-400 inline-flex items-start gap-1.5 mt-2">
+                <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
+                <span>
+                    Ces champs surchargent l'extraction locale (EPUB/PDF/CBZ) et alimentent le release_name. ISBN active aussi le lookup BnF/Google Books.
+                </span>
+            </p>
         </div>
 
         <!-- Edition manuelle du release_name (verrouillee par defaut) -->
@@ -1759,6 +1808,36 @@
     }
     document.querySelectorAll('input[name="force_fr"]').forEach(r => r.addEventListener('change', refreshRadioStyles));
 
+    // === Sprint D.9 v0.5.0 : toggle dynamique des sections selon le profil ===
+    // Quand l'user change la cat dans le dropdown Re-preparer (ou Options upload),
+    // on affiche/cache les sections marquees data-profile-section="video"|"book".
+    // Cat -> profil :
+    //   - 12 (Livres) -> 'book'
+    //   - tout le reste -> 'video' (films/series/anime/doc + autres pour
+    //     l'instant ; quand E/H sortiront on ajoutera 'game'/'manual').
+    function _profileForCat(catId) {
+        if (catId === 12) return 'book';
+        return 'video';
+    }
+    function _applyProfileSections(catId) {
+        const profile = _profileForCat(catId);
+        document.querySelectorAll('[data-profile-section]').forEach(el => {
+            const target = el.dataset.profileSection;
+            if (target === profile) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        });
+    }
+    const _catSelectReprepare = document.getElementById('reprepare-category');
+    if (_catSelectReprepare) {
+        _catSelectReprepare.addEventListener('change', (e) => {
+            const newCatId = parseInt(e.target.value, 10) || 0;
+            _applyProfileSections(newCatId);
+        });
+    }
+
     // === Re-prepare ===
     const btnRe = document.getElementById('btn-reprepare');
     if (btnRe) {
@@ -1786,6 +1865,16 @@
                     category_id_hint = selectedCatId;
                 }
             }
+            // Sprint D.9 v0.5.0 : champs livre (ISBN/auteur/titre). Envoyes
+            // seulement si non-vides ; backend les utilise pour surcharger
+            // l'extraction locale dans BookNamingStrategy.
+            const isbnInput = document.getElementById('manual_isbn');
+            const authorInput = document.getElementById('manual_author');
+            const bookTitleInput = document.getElementById('manual_book_title');
+            const manual_isbn = (isbnInput && isbnInput.value || '').trim();
+            const manual_author = (authorInput && authorInput.value || '').trim();
+            const manual_book_title = (bookTitleInput && bookTitleInput.value || '').trim();
+
             btnRe.disabled = true;
             const reLabel = btnRe.querySelector('span');
             if (reLabel) reLabel.textContent = 'Création du job…';
@@ -1794,7 +1883,11 @@
                 const resp = await fetch(apiBase + '/reprepare', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({force_fr, append_fr_title, manual_tmdb_id, manual_release_name, category_id_hint})
+                    body: JSON.stringify({
+                        force_fr, append_fr_title, manual_tmdb_id,
+                        manual_release_name, category_id_hint,
+                        manual_isbn, manual_author, manual_book_title,
+                    })
                 });
                 if (!resp.ok) {
                     const txt = await resp.text();
