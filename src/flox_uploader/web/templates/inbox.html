@@ -201,6 +201,62 @@
         </div>
     </div>
 
+    {# === Sprint C.1 v0.5.0 : Modal selecteur de categorie =================
+       S'ouvre quand l'user clique "Ajouter a la queue" depuis Inbox. Detecte
+       automatiquement la categorie probable selon les extensions, l'user peut
+       confirmer ou changer. Garde-fou si extensions mixtes (banner warning).
+       Les metadata 12 categories sont fetchees depuis /api/categories au load. #}
+    <div id="category-modal" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+        <div class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 w-full max-w-2xl">
+            <header class="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                    {{ icon('folder-open', size='md', classes='text-primary-600 dark:text-primary-400') }}
+                    Catégorie de l'upload
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Choisis la catégorie Gemini pour <span id="cat-modal-count">0</span> fichier<span id="cat-modal-plural"></span>. La sélection automatique est basée sur l'extension.
+                </p>
+            </header>
+
+            {# Banner suggestion : visible quand on a detecte une cat automatiquement #}
+            <div id="cat-modal-suggestion-banner" class="hidden mx-5 mt-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-md p-3 inline-flex items-start gap-2 w-[calc(100%-2.5rem)]">
+                <span class="text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0">{{ icon('sparkles', size='sm') }}</span>
+                <div class="text-xs text-primary-800 dark:text-primary-300">
+                    Détection automatique : <strong id="cat-modal-suggestion-label">…</strong>
+                </div>
+            </div>
+
+            {# Banner garde-fou : visible si on detecte des extensions mixtes #}
+            <div id="cat-modal-mixed-banner" class="hidden mx-5 mt-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-md p-3 inline-flex items-start gap-2 w-[calc(100%-2.5rem)]">
+                <span class="text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='sm') }}</span>
+                <div class="text-xs text-warning-800 dark:text-warning-300">
+                    <strong>Sélection mixte détectée :</strong> tu as choisi des fichiers de natures différentes (<span id="cat-modal-mixed-list">…</span>). Si tu valides, tous seront traités avec la même catégorie. Mieux vaut faire deux sélections distinctes.
+                </div>
+            </div>
+
+            <div class="p-5 space-y-3">
+                {# Sprint C.1ter v0.5.0 (suite brainstorm Louis) :
+                   - 1 grosse tuile "Vidéo" avec un bouton + qui déplie 8 sous-cats
+                     video juste en dessous (visuellement enfants de Vidéo).
+                   - 4 tuiles non-vidéo (Livre / Jeu / Logiciel / Formation).
+                   Les 8 sous-cats video sont cachées par défaut, l'user clique sur
+                   le bouton + de la tuile Video pour les déplier. Pas de section
+                   "avancée" séparée — l'arborescence Video > sous-cats est en place.
+
+                   Rendue dynamiquement par _buildCategoryGrid() qui inject les SVG inline. #}
+                <div id="cat-modal-top-grid"></div>
+            </div>
+
+            <footer class="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+                <button id="cat-modal-cancel" type="button" class="h-9 px-3.5 text-sm font-medium rounded-md text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Annuler</button>
+                <button id="cat-modal-confirm" type="button" disabled class="h-9 px-3.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5">
+                    {{ icon('arrow-right', size='sm') }}
+                    Ajouter à la queue
+                </button>
+            </footer>
+        </div>
+    </div>
+
     {# === Contenu : table OU erreur OU empty === #}
     {% if error %}
         <div class="p-4 m-4 rounded-md bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 flex items-start gap-2.5 text-sm text-danger-800 dark:text-danger-200">
@@ -560,13 +616,411 @@
         }
     }
 
+    // ============================================================
+    // Sprint C.1 v0.5.0 : Modal selecteur de categorie
+    // ============================================================
+    // Au lieu d'ajouter direct a la queue (= toujours categorie auto via
+    // extension), on ouvre une modal qui demande la categorie a l'user.
+    // L'extension est utilisee pour pre-selectionner la cat probable, mais
+    // l'user a le dernier mot.
+
+    let _categoriesData = null;  // {categories: [...], extension_to_category: {...}}
+    let _categoryModalSelectedId = 0;  // 0 = "Video" generique (= pas de hint, auto-detect)
+    let _categoryModalPaths = [];
+
+    // Sprint C.1bis/ter : IDs des "top categories" affichees dans la section primary.
+    // - 0 = pseudo "Video" qui regroupe Films/Series/Anime/Doc/Sport/Emission TV.
+    //       Le pipeline raffinera la sous-cat automatiquement via TMDB+keywords.
+    //       Envoyer hint=0 cote backend = auto-detection complete (= comportement v0.4.x).
+    // - 12 = Livre / BD / Manga
+    // - 3  = Jeu video
+    // - 17 = Logiciel
+    // - 18 = Formation
+    const TOP_CAT_IDS = [0, 12, 3, 17, 18];
+    const NON_VIDEO_CAT_IDS = [12, 3, 17, 18];
+
+    // Sprint C.1ter : sous-catégories video, dépliables sous la tuile Video via
+    // le bouton +. Order : couples Film/Série puis Anime puis Doc, puis Émission
+    // TV et Sport (les 2 categories qui ne sont jamais bien auto-detectées).
+    // L'user qui clique sur une de ces sous-cats force un override sticky qui
+    // sera persisté dans state.manual_category_id (fix Sprint C.1bis).
+    const VIDEO_SUB_CAT_IDS = [
+        1,   // Films
+        2,   // Séries
+        7,   // Films d'animation
+        6,   // Séries d'animation
+        13,  // Films documentaires
+        14,  // Séries documentaires
+        15,  // Émission TV (override-only, pas auto-detecté)
+        10,  // Sport (auto-detecté via keywords mais override possible)
+    ];
+
+    // Tuile "Video" virtuelle (n'existe pas en Gemini mais represente l'auto-detect video).
+    // SVG identique a 'clapperboard' (la cat Film). Visuel coherent avec le defaut historique.
+    const VIRTUAL_VIDEO_TILE = {
+        id: 0,
+        label: 'Vidéo',
+        icon: 'clapperboard',
+        icon_svg_path: '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+        color: 'primary',
+        hint: 'Films, Séries, Animes, Documentaires, Sport, Émission TV — sous-catégorie auto-détectée',
+        sublabel: 'Films, Séries, Animes, Docus, Sport, Émission TV (auto)',
+    };
+
+    async function _loadCategoriesMetadata() {
+        if (_categoriesData) return _categoriesData;
+        try {
+            const resp = await fetch('/api/categories');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            _categoriesData = await resp.json();
+            return _categoriesData;
+        } catch (e) {
+            console.error('Erreur chargement /api/categories :', e);
+            return null;
+        }
+    }
+
+    function _extensionOf(path) {
+        // Extension en minuscule, avec le point. "" si pas d'extension.
+        const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const basename = slash >= 0 ? path.slice(slash + 1) : path;
+        const dot = basename.lastIndexOf('.');
+        if (dot <= 0) return '';
+        return basename.slice(dot).toLowerCase();
+    }
+
+    function _suggestCategoryForPaths(paths, extMap) {
+        // Sprint C.1bis : on suggere parmi les top-cats (Video / Livre / Jeu /
+        // Logiciel / Formation) plutot que parmi les 12 sous-cats. Tout ce qui
+        // est video (ou inconnu) tombe dans Video (id=0 = auto-detect).
+        // Retourne {suggestedId, isMixed, categoryCounts (top-level)}.
+        const counts = {};
+        for (const p of paths) {
+            const ext = _extensionOf(p);
+            const catId = extMap[ext] || 0;
+            // Mapping vers les top-cats
+            let topCat;
+            if (NON_VIDEO_CAT_IDS.indexOf(catId) >= 0) {
+                topCat = catId;  // Livre / Jeu / Logiciel / Formation
+            } else {
+                topCat = 0;  // Video generique (incluant extension inconnue)
+            }
+            counts[topCat] = (counts[topCat] || 0) + 1;
+        }
+        const uniqueCats = Object.keys(counts);
+        if (uniqueCats.length === 0) {
+            return { suggestedId: 0, isMixed: false, categoryCounts: counts };
+        }
+        if (uniqueCats.length === 1) {
+            return { suggestedId: parseInt(uniqueCats[0]), isMixed: false, categoryCounts: counts };
+        }
+        // Plusieurs top-cats detectees -> on prend la plus frequente.
+        const sorted = uniqueCats.sort((a, b) => counts[b] - counts[a]);
+        return { suggestedId: parseInt(sorted[0]), isMixed: true, categoryCounts: counts };
+    }
+
+    // Mapping couleur Tailwind -> classes (selected vs unselected). Partage entre
+    // les 2 grilles (top et avancee).
+    const _CAT_COLOR_CLASSES = {
+        primary: { sel: 'bg-primary-50 dark:bg-primary-900/30 border-primary-500 text-primary-900 dark:text-primary-100',
+                   icon: 'text-primary-600 dark:text-primary-400' },
+        success: { sel: 'bg-success-50 dark:bg-success-900/30 border-success-500 text-success-900 dark:text-success-100',
+                   icon: 'text-success-600 dark:text-success-400' },
+        warning: { sel: 'bg-warning-50 dark:bg-warning-900/30 border-warning-500 text-warning-900 dark:text-warning-100',
+                   icon: 'text-warning-600 dark:text-warning-400' },
+        pink:    { sel: 'bg-pink-50 dark:bg-pink-900/30 border-pink-500 text-pink-900 dark:text-pink-100',
+                   icon: 'text-pink-600 dark:text-pink-400' },
+        cyan:    { sel: 'bg-cyan-50 dark:bg-cyan-900/30 border-cyan-500 text-cyan-900 dark:text-cyan-100',
+                   icon: 'text-cyan-600 dark:text-cyan-400' },
+        amber:   { sel: 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-900 dark:text-amber-100',
+                   icon: 'text-amber-600 dark:text-amber-400' },
+        slate:   { sel: 'bg-slate-100 dark:bg-slate-700/50 border-slate-500 text-slate-900 dark:text-slate-100',
+                   icon: 'text-slate-600 dark:text-slate-300' },
+    };
+    const _CAT_UNSELECTED_BASE = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500';
+
+    // Etat global : est-ce que la grille sous-cats video est dépliée ?
+    // Reset a chaque ouverture de la modal (cf. openCategoryModal).
+    let _videoSubcatsExpanded = false;
+
+    function _renderCatTile(cat, isSelected, opts) {
+        // opts = { large: bool, small: bool, onSelect: fn(catId), withExpandToggle: bool }
+        // - large : tuile horizontale icone + label (= grosse tuile Video)
+        // - small : tuile compacte 1 ligne (= sous-cats video, plus petites que tuiles top)
+        // - sinon : tuile normale icone + label centres (= tuiles non-video)
+        // - withExpandToggle : ajoute un bouton + a droite (tuile Video uniquement)
+        const colors = _CAT_COLOR_CLASSES[cat.color] || _CAT_COLOR_CLASSES.primary;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.catId = String(cat.id);
+        const iconSize = opts.large ? 28 : (opts.small ? 16 : 22);
+        if (opts.large) {
+            // Grosse tuile horizontale : icone | label + sublabel + (option) bouton +
+            btn.className = 'cat-modal-option-large w-full flex items-center gap-3 p-4 rounded-lg border-2 transition-colors text-left ' +
+                            (isSelected ? colors.sel : _CAT_UNSELECTED_BASE);
+            const expandBtn = opts.withExpandToggle ? `
+                <button type="button" id="cat-modal-video-expand-btn"
+                        class="cat-modal-expand-btn flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                        data-tu-tooltip="Choisir une sous-catégorie vidéo précise (Anime, Doc, Émission TV, Sport...)"
+                        aria-label="Déplier les sous-catégories vidéo"
+                        aria-expanded="${_videoSubcatsExpanded ? 'true' : 'false'}">
+                    <span id="cat-modal-video-expand-icon" class="transition-transform ${_videoSubcatsExpanded ? 'rotate-45' : ''}">
+                        {{ icon('plus', size='md') }}
+                    </span>
+                </button>
+            ` : '';
+            btn.innerHTML = `
+                <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        ${cat.icon_svg_path || ''}
+                    </svg>
+                </span>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold">${cat.label}</div>
+                    ${cat.sublabel ? `<div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">${cat.sublabel}</div>` : ''}
+                </div>
+                ${expandBtn}
+            `;
+        } else if (opts.small) {
+            // Sous-cat video : tuile plus petite, layout horizontal compact icone + label
+            btn.className = 'cat-modal-option-small flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md border transition-colors text-center ' +
+                            (isSelected ? colors.sel : _CAT_UNSELECTED_BASE);
+            btn.innerHTML = `
+                <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        ${cat.icon_svg_path || ''}
+                    </svg>
+                </span>
+                <span class="text-[11px] font-medium leading-tight truncate">${cat.label}</span>
+            `;
+        } else {
+            // Tuile compacte verticale : icone + label centres
+            btn.className = 'cat-modal-option flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-colors text-left ' +
+                            (isSelected ? colors.sel : _CAT_UNSELECTED_BASE);
+            btn.innerHTML = `
+                <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} mb-0.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        ${cat.icon_svg_path || ''}
+                    </svg>
+                </span>
+                <span class="text-xs font-medium text-center leading-tight">${cat.label}</span>
+            `;
+        }
+        btn.setAttribute('data-tu-tooltip', cat.hint || cat.label);
+        // Click handler sur la tuile entière -> sélectionne la cat.
+        // Pour la grosse tuile Video avec bouton +, on intercepte les clicks sur
+        // ce bouton AVANT pour qu'ils togglent l'expand au lieu de sélectionner.
+        btn.addEventListener('click', (e) => {
+            // Si le click vient du bouton expand (ou un de ses descendants), on stop.
+            if (e.target.closest('.cat-modal-expand-btn')) {
+                return;
+            }
+            opts.onSelect(cat.id);
+        });
+        return btn;
+    }
+
+    function _buildCategoryGrid(categories, selectedId) {
+        // Sprint C.1ter : Rend une seule section avec la structure :
+        //   1. Grosse tuile Video (+ bouton + pour deplier les 8 sous-cats)
+        //   2. Si deplié : 8 sous-cats video en tuiles plus petites
+        //   3. Grille 4 colonnes pour les non-video (Livre / Jeu / Logiciel / Formation)
+        // L'user peut selectionner soit la tuile Video generique (id=0 = auto-detect),
+        // soit une sous-cat video precise (id=1/2/6/7/10/13/14/15 = override sticky),
+        // soit une non-video (id=12/3/17/18).
+        const onSelect = (catId) => {
+            _categoryModalSelectedId = catId;
+            _buildCategoryGrid(categories, catId);  // re-render avec nouvelle selection
+            const confirmBtn = document.getElementById('cat-modal-confirm');
+            if (confirmBtn) confirmBtn.disabled = false;
+        };
+
+        // Une sous-cat video est selectionnee -> on force l'expansion pour que
+        // l'user voie visuellement la selection (sinon il ne saurait plus
+        // pourquoi la grosse tuile Video n'est plus highlightee).
+        const aVideoSubcatIsSelected = VIDEO_SUB_CAT_IDS.indexOf(selectedId) >= 0;
+        if (aVideoSubcatIsSelected) {
+            _videoSubcatsExpanded = true;
+        }
+
+        const topGrid = document.getElementById('cat-modal-top-grid');
+        if (!topGrid) return;
+        topGrid.innerHTML = '';
+
+        // --- 1. Grosse tuile Video (selected seulement si id=0 exactement) ---
+        const videoTile = _renderCatTile(
+            VIRTUAL_VIDEO_TILE,
+            selectedId === 0,
+            { large: true, onSelect, withExpandToggle: true }
+        );
+        topGrid.appendChild(videoTile);
+
+        // --- 2. Container sous-cats video (caché par défaut, depliable via bouton +) ---
+        const subcatsContainer = document.createElement('div');
+        subcatsContainer.id = 'cat-modal-video-subcats';
+        subcatsContainer.className = (_videoSubcatsExpanded ? '' : 'hidden ') +
+            'mt-2 pl-3 border-l-2 border-primary-200 dark:border-primary-800 ml-2';
+        const subcatsGrid = document.createElement('div');
+        subcatsGrid.className = 'grid grid-cols-2 sm:grid-cols-4 gap-1.5';
+        for (const subCatId of VIDEO_SUB_CAT_IDS) {
+            const cat = categories.find(c => c.id === subCatId);
+            if (!cat) continue;
+            const tile = _renderCatTile(cat, selectedId === subCatId, { small: true, onSelect });
+            subcatsGrid.appendChild(tile);
+        }
+        subcatsContainer.appendChild(subcatsGrid);
+        topGrid.appendChild(subcatsContainer);
+
+        // --- 3. Grille 4 colonnes pour les non-video ---
+        const nonVideoGrid = document.createElement('div');
+        nonVideoGrid.className = 'grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3';
+        for (const catId of NON_VIDEO_CAT_IDS) {
+            const cat = categories.find(c => c.id === catId);
+            if (!cat) continue;
+            const tile = _renderCatTile(cat, selectedId === catId, { large: false, onSelect });
+            nonVideoGrid.appendChild(tile);
+        }
+        topGrid.appendChild(nonVideoGrid);
+
+        // --- 4. Brancher le toggle bouton + ---
+        // (re-rendu a chaque _buildCategoryGrid donc on rebranche systematiquement)
+        const expandBtn = document.getElementById('cat-modal-video-expand-btn');
+        if (expandBtn) {
+            expandBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _videoSubcatsExpanded = !_videoSubcatsExpanded;
+                const container = document.getElementById('cat-modal-video-subcats');
+                const icon = document.getElementById('cat-modal-video-expand-icon');
+                if (container) {
+                    container.classList.toggle('hidden', !_videoSubcatsExpanded);
+                }
+                if (icon) {
+                    icon.classList.toggle('rotate-45', _videoSubcatsExpanded);
+                }
+                expandBtn.setAttribute('aria-expanded', _videoSubcatsExpanded ? 'true' : 'false');
+            });
+        }
+    }
+
+    // Helper : retourne le libelle pour une "top-cat" (incluant Video virtuel id=0).
+    function _labelForTopCat(catId, categories) {
+        if (catId === 0) return VIRTUAL_VIDEO_TILE.label;
+        const cat = categories.find(c => c.id === catId);
+        return cat ? cat.label : 'Inconnu';
+    }
+
+    async function openCategoryModal(paths) {
+        // Charge les metadata si pas deja fait
+        const data = await _loadCategoriesMetadata();
+        if (!data) {
+            // Fallback : si l'API echoue, on bypass la modal et on envoie sans hint
+            // (= comportement v0.3.x : auto-detect via early_category_guess).
+            await _addToQueueCore(0);
+            return;
+        }
+
+        // Suggestion automatique selon les extensions des paths selectionnes.
+        // Sprint C.1bis : la suggestion top-level retourne soit 0 (Video generique)
+        // soit un ID precis non-video (12/3/17/18).
+        const suggestion = _suggestCategoryForPaths(paths, data.extension_to_category);
+        _categoryModalSelectedId = suggestion.suggestedId;
+        _categoryModalPaths = paths;
+
+        // Render les 2 grilles (top + advanced)
+        _buildCategoryGrid(data.categories, suggestion.suggestedId);
+
+        // Header : count
+        const countEl = document.getElementById('cat-modal-count');
+        const pluralEl = document.getElementById('cat-modal-plural');
+        if (countEl) countEl.textContent = paths.length;
+        if (pluralEl) pluralEl.textContent = paths.length > 1 ? 's' : '';
+
+        // Banner suggestion (gere aussi le cas Video virtuel id=0)
+        const suggestionBanner = document.getElementById('cat-modal-suggestion-banner');
+        const suggestionLabel = document.getElementById('cat-modal-suggestion-label');
+        if (suggestionBanner && suggestionLabel) {
+            suggestionLabel.textContent = _labelForTopCat(suggestion.suggestedId, data.categories);
+            suggestionBanner.classList.remove('hidden');
+        }
+
+        // Banner garde-fou mixte (labels top-level)
+        const mixedBanner = document.getElementById('cat-modal-mixed-banner');
+        const mixedList = document.getElementById('cat-modal-mixed-list');
+        if (mixedBanner && mixedList) {
+            if (suggestion.isMixed) {
+                const labels = Object.entries(suggestion.categoryCounts).map(([catId, n]) => {
+                    return `${n} ${_labelForTopCat(parseInt(catId), data.categories)}`;
+                });
+                mixedList.textContent = labels.join(', ');
+                mixedBanner.classList.remove('hidden');
+            } else {
+                mixedBanner.classList.add('hidden');
+            }
+        }
+
+        // Sprint C.1ter : reset l'etat deplie/replie de la grille sous-cats video
+        // à chaque ouverture. Si la suggestion auto pointe sur une sous-cat video
+        // (cas rare : extension dedie a une sous-cat), _buildCategoryGrid forcera
+        // l'expansion. Sinon, replie pour un look minimal au premier affichage.
+        _videoSubcatsExpanded = false;
+
+        // Active le bouton Valider (une top-cat est toujours pre-selectionnee).
+        const confirmBtn = document.getElementById('cat-modal-confirm');
+        if (confirmBtn) confirmBtn.disabled = false;
+
+        // Ouvre la modal
+        const modal = document.getElementById('category-modal');
+        if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeCategoryModal() {
+        const modal = document.getElementById('category-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    // Sprint C.1ter : l'ancien toggle "Catégoriser plus finement" a été
+    // remplacé par le bouton + intégré dans la tuile Vidéo. Le handler est
+    // branché à chaque _buildCategoryGrid (cf. cat-modal-video-expand-btn).
+
+    // Handlers boutons modal
+    const catCancelBtn = document.getElementById('cat-modal-cancel');
+    if (catCancelBtn) {
+        catCancelBtn.addEventListener('click', closeCategoryModal);
+    }
+    const catConfirmBtn = document.getElementById('cat-modal-confirm');
+    if (catConfirmBtn) {
+        catConfirmBtn.addEventListener('click', async () => {
+            const catId = _categoryModalSelectedId;
+            closeCategoryModal();
+            await _addToQueueCore(catId);
+        });
+    }
+    // Close on backdrop click (mais pas sur le dialog lui-meme)
+    const catModalBg = document.getElementById('category-modal');
+    if (catModalBg) {
+        catModalBg.addEventListener('click', (e) => {
+            if (e.target === catModalBg) closeCategoryModal();
+        });
+    }
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && catModalBg && !catModalBg.classList.contains('hidden')) {
+            closeCategoryModal();
+        }
+    });
+
     async function doAddDefault() {
-        await _addToQueueCore();
+        const paths = Array.from(checkboxes())
+            .filter(cb => cb.checked)
+            .map(cb => cb.dataset.path);
+        if (paths.length === 0) return;
+        // Sprint C.1 : on ouvre la modal categorie au lieu d'appeler direct.
+        await openCategoryModal(paths);
     }
 
     addBtn.addEventListener('click', () => doAddDefault());
 
-    async function _addToQueueCore() {
+    async function _addToQueueCore(categoryIdHint) {
         const paths = Array.from(checkboxes())
             .filter(cb => cb.checked)
             .map(cb => cb.dataset.path);
@@ -576,10 +1030,15 @@
         const originalLabel = labelSpan ? labelSpan.textContent : 'Ajouter à la queue';
         if (labelSpan) labelSpan.textContent = 'En cours…';
         try {
+            // Sprint C.1 : on envoie category_id_hint au backend.
+            const body = { paths };
+            if (categoryIdHint && categoryIdHint > 0) {
+                body.category_id_hint = categoryIdHint;
+            }
             const resp = await fetch('/api/queue/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ paths }),
+                body: JSON.stringify(body),
             });
             const data = await resp.json();
             if (resp.ok) {

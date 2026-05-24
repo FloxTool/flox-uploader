@@ -543,6 +543,27 @@ def process_one(
     # commande `upload` de savoir ou en est le package et de garantir
     # l'idempotence (pas de double-upload).
     init_state(package_dir, release_name, tracker.key)
+
+    # Sprint C.1bis v0.5.0 : propagation du hint user vers state.manual_category_id.
+    # Si l'user a fourni un hint explicite via la modal Inbox (sous-categorie
+    # video precise via menu Avance, ou cat non-video), on le persiste comme
+    # override pour qu'il ne soit pas ecrase par l'auto-detection TMDB dans
+    # build_upload_payload() (qui prend manual_category_id en priorite quand > 0).
+    #
+    # Si category_hint=0 ou None (cas "Video" generique top-level de la modal,
+    # ou pas de modal du tout en CLI), on NE patche PAS manual_category_id ->
+    # l'auto-detection TMDB+keywords reste pleinement active. C'est le comportement
+    # v0.4.x par defaut.
+    if category_hint is not None and category_hint > 0:
+        from .core.package_state import read_state, write_state
+        _state_data = read_state(package_dir)
+        if _state_data is not None and _state_data.manual_category_id != int(category_hint):
+            _state_data.manual_category_id = int(category_hint)
+            write_state(package_dir, _state_data)
+            print(
+                f"[INFO] Hint user persiste : manual_category_id = "
+                f"{category_hint} (override sticky depuis modal Inbox)."
+            )
     if early_dedup_certain and early_dedup_result is not None:
         # On a tout genere sauf le .torrent, on marque le state final.
         from .core.upload_orchestrator import mark_aborted_duplicate

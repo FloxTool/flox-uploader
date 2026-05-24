@@ -45,6 +45,9 @@ class PendingJob:
     # Lot F.2 : controle de la file de preparation
     is_paused: bool = False          # le scheduler skip les jobs pauses
     priority_order: int = 0          # tri ascendant ; 0 = utilise id (insertion order)
+    # Sprint C.1 v0.5.0 : hint categorie choisi par l'user dans la modal Inbox.
+    # 0 = pas de hint (auto-detect via extension dans early_category_guess).
+    category_id_hint: int = 0
 
 
 # ============================================================
@@ -125,6 +128,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
         if "priority_order" not in cols:
             _add_column_idempotent(conn, "pending_jobs", "priority_order",
                                    "INTEGER NOT NULL DEFAULT 0")
+        # Sprint C.1 v0.5.0 : hint categorie choisi par l'user dans la modal Inbox.
+        if "category_id_hint" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "category_id_hint",
+                                   "INTEGER NOT NULL DEFAULT 0")
         # Migration one-shot via PRAGMA user_version pour s'executer
         # une seule fois. Sinon (round 4 bug) on ecraserait les valeurs
         # priority_order=0 valides posees par move_job('top').
@@ -165,6 +172,11 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         priority_order = int(row["priority_order"] or 0)
     except (IndexError, KeyError, ValueError, TypeError):
         priority_order = 0
+    # Sprint C.1 : hint categorie pour les bases pre-v0.5.0 (defaut 0 = auto)
+    try:
+        category_id_hint = int(row["category_id_hint"] or 0)
+    except (IndexError, KeyError, ValueError, TypeError):
+        category_id_hint = 0
     return PendingJob(
         id=row["id"],
         file_path=row["file_path"],
@@ -181,6 +193,7 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_release_name=manual_release_name,
         is_paused=is_paused,
         priority_order=priority_order,
+        category_id_hint=category_id_hint,
     )
 
 
@@ -198,15 +211,23 @@ def add_job(
     append_fr_title: bool = False,
     tmdb_id_override: int = 0,
     manual_release_name: str = "",
+    category_id_hint: int = 0,
 ) -> PendingJob:
-    """Cree un nouveau job en status 'pending'."""
+    """Cree un nouveau job en status 'pending'.
+
+    Args:
+        category_id_hint : Sprint C.1 — categorie Gemini choisie par l'user dans la
+            modal Inbox (0 = auto-detect via extension dans early_category_guess).
+    """
     now = _now_iso()
     with _connect() as conn:
         cur = conn.execute(
             "INSERT INTO pending_jobs "
-            "(file_path, status, force_fr, append_fr_title, tmdb_id_override, manual_release_name, created_at, updated_at) "
-            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?)",
-            (file_path, force_fr, 1 if append_fr_title else 0, int(tmdb_id_override or 0), manual_release_name, now, now),
+            "(file_path, status, force_fr, append_fr_title, tmdb_id_override, manual_release_name, category_id_hint, created_at, updated_at) "
+            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
+            (file_path, force_fr, 1 if append_fr_title else 0,
+             int(tmdb_id_override or 0), manual_release_name,
+             int(category_id_hint or 0), now, now),
         )
         job_id = cur.lastrowid
         log_path = str(jobs_log_dir() / f"{job_id}.log")
