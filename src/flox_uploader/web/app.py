@@ -276,11 +276,22 @@ def _list_packages() -> list[PackageEntry]:
                 dedup_confidence="",
             ))
             continue
+        # Sprint D.6 v0.5.0 : route le score via la bonne strategy selon la
+        # categorie effective. Pour un livre -> BookConfidenceStrategy
+        # (penalites auteur/ISBN/cover/etc.). Pour video -> VideoConfidenceStrategy
+        # (= comportement historique compute_confidence_score). Evite que les
+        # livres recoivent les penalites video bidon (TMDB manquant, IMDB absent).
         try:
-            conf = compute_confidence_score(d)
+            from ..core.category_resolver import resolve_effective_category
+            from ..core.confidence_strategies.strategy import (
+                get_confidence_strategy,
+            )
+            _eff_cat = resolve_effective_category(d)
+            _strategy = get_confidence_strategy(_eff_cat)
+            conf = _strategy.compute(d)
         except (OSError, ValueError, KeyError) as e:
             conf = ConfidenceScore(score=0, bucket="blocked", bucket_emoji="?", bucket_color="slate")
-            print(f"[WARN] compute_confidence_score({d.name}) : {e}")
+            print(f"[WARN] confidence strategy ({d.name}) : {e}")
         # Lecture du release_name.txt (contient le suffixe FR si active)
         rn_txt = _read_text_safe(d / "release_name.txt")
         rn_display = state_data.release_name or d.name
@@ -408,10 +419,19 @@ def _load_package_detail(name: str) -> dict[str, Any]:
 
     target = _resolve_package_dir(name)
     state_data = read_state(target)
+    # Sprint D.6 v0.5.0 : route le score via la bonne strategy selon la
+    # categorie effective du package (livre vs video).
     try:
-        conf = compute_confidence_score(target)
-    except Exception:
+        from ..core.category_resolver import resolve_effective_category
+        from ..core.confidence_strategies.strategy import (
+            get_confidence_strategy,
+        )
+        _eff_cat = resolve_effective_category(target)
+        _strategy = get_confidence_strategy(_eff_cat)
+        conf = _strategy.compute(target)
+    except (OSError, ValueError, KeyError) as e:
         conf = ConfidenceScore(score=0, bucket="blocked", bucket_emoji="?", bucket_color="slate")
+        print(f"[WARN] confidence strategy detail ({target.name}) : {e}")
 
     # Debug.json pour TMDB / IMDB / media_type / size
     debug = {}

@@ -82,19 +82,21 @@ def test_get_strategy_returns_video_for_video_categories(cat_id):
 
 
 @pytest.mark.parametrize("cat_id", [
-    # Cats non-video : en B.2/B.3 retournent aussi VideoNamingStrategy
-    # (pipeline early-return avant naming, cf. PR-3 Brique 1).
-    CATEGORY_BOOKS, CATEGORY_GAME, CATEGORY_SOFTWARE, CATEGORY_TRAINING,
+    # Sprint D.3 v0.5.0 : CATEGORY_BOOKS est desormais cable sur
+    # BookNamingStrategy -> retire de ce test. Les autres cats non-video
+    # restent sur VideoNamingStrategy en attendant Sprints E/H.
+    CATEGORY_GAME, CATEGORY_SOFTWARE, CATEGORY_TRAINING,
 ])
 def test_get_strategy_returns_video_for_non_video_categories_in_b23(cat_id):
-    """En Sprint B.2/B.3, seule VideoNamingStrategy existe -> toutes les cats
-    la recoivent. Sprints D/E/H ajouteront les autres strategies et
-    adapteront ce dispatcher.
+    """Cats non-video sans strategy dediee retournent VideoNamingStrategy.
+
+    Sprint D.3 a specialise BookNamingStrategy pour cat 12, donc Livres
+    sortent de ce test. Sprints E/H ajouteront Game/Manual et reduiront
+    encore cette liste.
 
     Note : le pipeline early-return AVANT naming pour les cats non-video
-    (PR-3 Brique 1 dans pipeline.process_one), donc cette strategy n'est
-    JAMAIS appelee sur du non-video aujourd'hui. Le dispatcher est juste
-    coherent.
+    (PR-3 Brique 1 dans pipeline.process_one), donc ces strategies de
+    fallback ne sont pas appelees en pratique.
     """
     strategy = get_strategy(cat_id)
     assert isinstance(strategy, VideoNamingStrategy)
