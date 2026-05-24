@@ -48,9 +48,12 @@ _EXTENSION_TO_CATEGORY: dict[str, int] = {
     ".djvu": CATEGORY_BOOKS,
     ".cbr": CATEGORY_BOOKS,   # BD / Comics / Manga
     ".cbz": CATEGORY_BOOKS,
-    ".m4b": CATEGORY_BOOKS,   # Livre audio
-    # Note : on ne mappe pas `.mp3` ici car il peut être une musique normale
-    # ou un livre audio — trop ambigu, l'user devra choisir explicitement.
+    ".m4b": CATEGORY_BOOKS,   # Livre audio (format dedie audiobook)
+    # Sprint D.9 v0.5.0 : .mp3 est ambigu (musique vs audiobook) mais
+    # comme Gemini n'a PAS de categorie Musique, on assume audiobook pour
+    # toute upload MP3. L'user peut toujours override depuis la modal
+    # Inbox s'il a un usage atypique.
+    ".mp3": CATEGORY_BOOKS,
 
     # === Logiciels (cat 17) ===
     ".exe": CATEGORY_SOFTWARE,

@@ -446,6 +446,13 @@ def _run_prepare_job(job_id: int) -> None:
     # Sprint C.1 : hint categorie choisi par l'user dans la modal Inbox.
     if job.category_id_hint:
         cmd.extend(["--category-hint", str(job.category_id_hint)])
+    # Sprint D.9 v0.5.0 : overrides livre (ISBN/auteur/titre).
+    if job.manual_isbn:
+        cmd.extend(["--manual-isbn", job.manual_isbn])
+    if job.manual_author:
+        cmd.extend(["--manual-author", job.manual_author])
+    if job.manual_book_title:
+        cmd.extend(["--manual-book-title", job.manual_book_title])
 
     # Env override : APPEND_FR_TITLE_TO_RELEASE_NAME passe au subprocess
     subprocess_env = dict(os.environ)

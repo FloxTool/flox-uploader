@@ -48,6 +48,12 @@ class PendingJob:
     # Sprint C.1 v0.5.0 : hint categorie choisi par l'user dans la modal Inbox.
     # 0 = pas de hint (auto-detect via extension dans early_category_guess).
     category_id_hint: int = 0
+    # Sprint D.9 v0.5.0 : overrides livre saisis dans la section Re-preparer
+    # pour les packages cat 12. Surchargent l'extraction locale EPUB/PDF/CBZ
+    # avant l'enrichissement BnF/Google Books/OpenLibrary.
+    manual_isbn: str = ""        # ISBN-13 ou ISBN-10 (auto-detect du type)
+    manual_author: str = ""      # auteur principal force (1 seul)
+    manual_book_title: str = ""  # titre du livre force
 
 
 # ============================================================
@@ -132,6 +138,16 @@ def _connect() -> Iterator[sqlite3.Connection]:
         if "category_id_hint" not in cols:
             _add_column_idempotent(conn, "pending_jobs", "category_id_hint",
                                    "INTEGER NOT NULL DEFAULT 0")
+        # Sprint D.9 v0.5.0 : overrides livre (ISBN/auteur/titre).
+        if "manual_isbn" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "manual_isbn",
+                                   "TEXT NOT NULL DEFAULT ''")
+        if "manual_author" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "manual_author",
+                                   "TEXT NOT NULL DEFAULT ''")
+        if "manual_book_title" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "manual_book_title",
+                                   "TEXT NOT NULL DEFAULT ''")
         # Migration one-shot via PRAGMA user_version pour s'executer
         # une seule fois. Sinon (round 4 bug) on ecraserait les valeurs
         # priority_order=0 valides posees par move_job('top').
@@ -177,6 +193,19 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         category_id_hint = int(row["category_id_hint"] or 0)
     except (IndexError, KeyError, ValueError, TypeError):
         category_id_hint = 0
+    # Sprint D.9 v0.5.0 : overrides livre (bases pre-D.9 = vides)
+    try:
+        manual_isbn = row["manual_isbn"] or ""
+    except (IndexError, KeyError):
+        manual_isbn = ""
+    try:
+        manual_author = row["manual_author"] or ""
+    except (IndexError, KeyError):
+        manual_author = ""
+    try:
+        manual_book_title = row["manual_book_title"] or ""
+    except (IndexError, KeyError):
+        manual_book_title = ""
     return PendingJob(
         id=row["id"],
         file_path=row["file_path"],
@@ -194,6 +223,9 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         is_paused=is_paused,
         priority_order=priority_order,
         category_id_hint=category_id_hint,
+        manual_isbn=manual_isbn,
+        manual_author=manual_author,
+        manual_book_title=manual_book_title,
     )
 
 
@@ -212,22 +244,32 @@ def add_job(
     tmdb_id_override: int = 0,
     manual_release_name: str = "",
     category_id_hint: int = 0,
+    manual_isbn: str = "",
+    manual_author: str = "",
+    manual_book_title: str = "",
 ) -> PendingJob:
     """Cree un nouveau job en status 'pending'.
 
     Args:
         category_id_hint : Sprint C.1 — categorie Gemini choisie par l'user dans la
             modal Inbox (0 = auto-detect via extension dans early_category_guess).
+        manual_isbn / manual_author / manual_book_title : Sprint D.9 — overrides
+            livre saisis dans la section Re-preparer. Vides par defaut.
     """
     now = _now_iso()
     with _connect() as conn:
         cur = conn.execute(
             "INSERT INTO pending_jobs "
-            "(file_path, status, force_fr, append_fr_title, tmdb_id_override, manual_release_name, category_id_hint, created_at, updated_at) "
-            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
+            "(file_path, status, force_fr, append_fr_title, tmdb_id_override, "
+            "manual_release_name, category_id_hint, "
+            "manual_isbn, manual_author, manual_book_title, "
+            "created_at, updated_at) "
+            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (file_path, force_fr, 1 if append_fr_title else 0,
              int(tmdb_id_override or 0), manual_release_name,
-             int(category_id_hint or 0), now, now),
+             int(category_id_hint or 0),
+             manual_isbn or "", manual_author or "", manual_book_title or "",
+             now, now),
         )
         job_id = cur.lastrowid
         log_path = str(jobs_log_dir() / f"{job_id}.log")

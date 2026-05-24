@@ -719,8 +719,12 @@ def _check_separate_subs(torrent_target: Path | None) -> list[ComplianceIssue]:
 # - NFO obligatoire pour tous les ebooks
 
 # Formats autorises par la charte ebook Gemini.
+# Sprint D.9 v0.5.0 : .mp3 ajoute pour les livres audio. Gemini n'a pas de
+# categorie Musique distincte, donc tout MP3 cote Livres est implicitement
+# un audiobook (decision validee par Louis : "gemini n'a pas de section
+# musique donc ca sera forcement audiobook pour le moment").
 _BOOK_ALLOWED_FORMATS: frozenset[str] = frozenset({
-    "cbr", "cbz", "epub", "djvu", "mobi", "azw3", "pdf", "m4b",
+    "cbr", "cbz", "epub", "djvu", "mobi", "azw3", "pdf", "m4b", "mp3",
 })
 
 # Extensions d'archives interdites pour les uploads ebooks.

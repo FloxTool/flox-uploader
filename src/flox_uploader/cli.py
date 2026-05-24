@@ -117,6 +117,11 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         category_hint=(
             int(getattr(args, "category_hint", 0) or 0) or None
         ),
+        manual_isbn=(getattr(args, "manual_isbn", None) or None),
+        manual_author=(getattr(args, "manual_author", None) or None),
+        manual_book_title=(
+            getattr(args, "manual_book_title", None) or None
+        ),
     )
 
     # Si --upload demande, on enchaine la boucle upload
@@ -409,6 +414,19 @@ def build_parser() -> argparse.ArgumentParser:
             "17=Logiciels, etc. — voir trackers/gemini/unit3d_mapping.py). "
             "0 = auto-detect via extension."
         ),
+    )
+    # Sprint D.9 v0.5.0 : overrides livre.
+    p_prepare.add_argument(
+        "--manual-isbn", dest="manual_isbn", default="",
+        help="(Cat Livres) ISBN-13 ou ISBN-10 force pour le lookup BnF/Google Books.",
+    )
+    p_prepare.add_argument(
+        "--manual-author", dest="manual_author", default="",
+        help="(Cat Livres) Auteur principal force (override extraction EPUB/PDF/CBZ).",
+    )
+    p_prepare.add_argument(
+        "--manual-book-title", dest="manual_book_title", default="",
+        help="(Cat Livres) Titre du livre force (override extraction).",
     )
     _add_upload_options(p_prepare, default_dry_run=True)
     p_prepare.set_defaults(func=cmd_prepare)
