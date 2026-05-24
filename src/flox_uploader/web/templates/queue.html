@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_components.html" import page_header, card, badge, button, link_button, empty_state %}
 {% from "_icons.html" import icon %}
+{% from "_category_badge.html" import category_badge %}
 
 {% block title %}Queue · Flox Uploader{% endblock %}
 
@@ -419,9 +420,12 @@
                                {% if p.confidence_bucket == 'ready' and p.state == 'prepared' %}checked data-tu-tooltip="Auto-coche : score {{ p.confidence_score }}"{% elif p.state == 'uploaded' %}data-tu-tooltip="Déjà uploadé — non pris en compte par le bouton Uploader, mais sélectionnable pour suppression"{% else %}data-tu-tooltip="Score {{ p.confidence_score }} · état {{ p.state }}"{% endif %}>
                     </label>
                 </td>
-                {# RELEASE NAME — une seule ligne propre, plus de warnings inline #}
+                {# RELEASE NAME — une seule ligne propre, plus de warnings inline.
+                   Sprint C.2 : badge categorie a gauche du release_name (couleur
+                   + icone Lucide selon CATEGORY_UI_METADATA). Tooltip = hint cat. #}
                 <td class="px-4 py-3">
                     <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {{ category_badge(p.category_id, size='sm') }}
                         <a href="/packages/{{ p.package_name }}" class="font-mono text-primary-700 dark:text-primary-400 hover:underline text-xs break-all">{{ p.release_name }}</a>
                         {% if p.uploaded_torrent_url %}
                             <a href="{{ p.uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-1">

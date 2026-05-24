@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_components.html" import card, button, link_button, badge %}
 {% from "_icons.html" import icon %}
+{% from "_category_badge.html" import category_badge %}
 {# SYNC-MARKER-2026-05-06 #}
 
 {% block title %}{{ release_name }} · Flox Uploader{% endblock %}
@@ -70,6 +71,12 @@
             {{ icon('arrow-left', size='sm') }}
             Retour à la queue
         </a>
+        {# Sprint C.2 v0.5.0 : badge categorie au-dessus du release_name pour
+           identifier d'un coup d'oeil le type de contenu (Film, Anime, Sport,
+           Livre, Jeu...). Reflete gemini_category_id (override sticky > auto). #}
+        <div class="mb-2">
+            {{ category_badge(gemini_category_id, size='md') }}
+        </div>
         <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1.5 break-all font-mono tracking-tight">{{ release_name }}</h1>
         <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
             <span>État</span>
