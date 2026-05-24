@@ -922,7 +922,44 @@
         // Suggestion automatique selon les extensions des paths selectionnes.
         // Sprint C.1bis : la suggestion top-level retourne soit 0 (Video generique)
         // soit un ID precis non-video (12/3/17/18).
-        const suggestion = _suggestCategoryForPaths(paths, data.extension_to_category);
+        let suggestion = _suggestCategoryForPaths(paths, data.extension_to_category);
+
+        // Sprint D.7 v0.5.0 — Si la suggestion client-side est Video par defaut
+        // (= aucun signal extension exploitable, typiquement le cas d'un
+        // DOSSIER sans extension), on demande au serveur de scanner le
+        // contenu. /api/inbox/peek-category fait le scan recursif via
+        // early_category_guess() (ignore satellites cover.jpg/.nfo, etc.).
+        if (suggestion.suggestedId === 0 && paths.length > 0) {
+            try {
+                const peekResp = await fetch('/api/inbox/peek-category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paths }),
+                });
+                if (peekResp.ok) {
+                    const peek = await peekResp.json();
+                    if (peek && peek.confidence === 'high' && peek.category_id > 0) {
+                        // Override : on remplace l'auto-detect client par
+                        // celui du serveur (qui a scanne le dossier).
+                        // Si la cat detectee est non-video (book/game/soft),
+                        // on remplace direct. Sinon (cat video precise),
+                        // on garde 0 = Video generique pour la modal.
+                        const NON_VIDEO = NON_VIDEO_CAT_IDS;
+                        if (NON_VIDEO.indexOf(peek.category_id) >= 0) {
+                            suggestion = {
+                                suggestedId: peek.category_id,
+                                isMixed: false,
+                                categoryCounts: { [peek.category_id]: paths.length },
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('peek-category fallback failed:', e);
+                // On garde la suggestion client (Video generique par defaut).
+            }
+        }
+
         _categoryModalSelectedId = suggestion.suggestedId;
         _categoryModalPaths = paths;
 

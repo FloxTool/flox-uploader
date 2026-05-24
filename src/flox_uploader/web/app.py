@@ -1725,6 +1725,28 @@ def create_app() -> FastAPI:
         ctx["page"] = "queue"
         return templates.TemplateResponse(request, "package_detail.html", ctx)
 
+    @app.get("/packages/{name}/cover")
+    def serve_package_cover(name: str):
+        """Sert la couverture extraite localement (Sprint D.7 v0.5.0).
+
+        Cherche `cover.jpg`, `cover.png`, `cover.webp` dans le package_dir.
+        Si rien -> 404. Utilise par le template _detail_book.html quand
+        l'extraction locale a reussi (EPUB/PDF/CBZ).
+        """
+        from fastapi.responses import FileResponse, Response
+        try:
+            target = _resolve_package_dir(name)
+        except HTTPException:
+            return Response(status_code=404)
+        for candidate in ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp"):
+            cover_path = target / candidate
+            if cover_path.is_file():
+                # On detecte le content-type au header par l'extension du file
+                # local — meme si on a tjs ecrit en .jpg cote pipeline, on
+                # garde la flexibilite si une future extraction sauve en png.
+                return FileResponse(cover_path)
+        return Response(status_code=404)
+
     # ------------------------------------------------------------
     # Routes API JSON
     # ------------------------------------------------------------
@@ -1742,6 +1764,73 @@ def create_app() -> FastAPI:
     @app.get("/api/packages")
     def api_packages():
         return {"packages": [asdict(p) for p in _list_packages()]}
+
+    @app.post("/api/inbox/peek-category")
+    def api_inbox_peek_category(payload: dict[str, Any]):
+        """Sprint D.7 v0.5.0 — devine la categorie pour 1 ou N paths.
+
+        Permet a la modal Inbox de pre-cocher le bon bouton (Vidéo / Livre /
+        Jeu / Logiciel) selon le contenu detecte. Aucun side-effect : pure
+        lecture filesystem.
+
+        Body :
+            {"paths": ["C:\\...\\file.epub", ...]}
+
+        Returns :
+            {"category_id": 12, "category_label": "Livres",
+             "confidence": "high"|"low"}
+            confidence='low' si fallback CATEGORY_MOVIE par defaut
+            (= aucun signal exploitable, on a devine video).
+        """
+        from ..core.early_category import early_category_guess
+        from ..trackers.gemini.unit3d_mapping import (
+            CATEGORY_BOOKS, CATEGORY_GAME, CATEGORY_MOVIE, CATEGORY_SOFTWARE,
+            CATEGORY_OPTIONS,
+        )
+
+        paths = payload.get("paths") or []
+        if not paths:
+            return {
+                "category_id": CATEGORY_MOVIE,
+                "category_label": "Films",
+                "confidence": "low",
+            }
+
+        # Tente sur le premier path. Si plusieurs paths : on prend la cat la
+        # plus frequente (les outliers sont l'exception).
+        votes: dict[int, int] = {}
+        for p in paths[:20]:  # cap a 20 pour eviter de bloquer sur un gros bundle
+            try:
+                target = _safe_resolve_path(str(p))
+            except HTTPException:
+                continue
+            if not target.exists():
+                continue
+            cat = early_category_guess(target)
+            votes[cat] = votes.get(cat, 0) + 1
+
+        if not votes:
+            return {
+                "category_id": CATEGORY_MOVIE,
+                "category_label": "Films",
+                "confidence": "low",
+            }
+
+        # Cat la plus votee
+        best_cat = max(votes.items(), key=lambda kv: kv[1])[0]
+        # Confidence : 'high' si la cat detectee est explicitement non-default
+        # (livre / jeu / logiciel), 'low' si c'est Films par defaut.
+        confidence = "high" if best_cat != CATEGORY_MOVIE else "low"
+
+        # Label depuis CATEGORY_OPTIONS (cf. unit3d_mapping)
+        label_map = {cat_id: label for cat_id, label in CATEGORY_OPTIONS}
+        label = label_map.get(best_cat, "Films")
+
+        return {
+            "category_id": best_cat,
+            "category_label": label,
+            "confidence": confidence,
+        }
 
     @app.post("/api/queue/add")
     def api_queue_add(payload: dict[str, Any]):

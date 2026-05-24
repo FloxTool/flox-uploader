@@ -57,9 +57,12 @@ def lookup_book_metadata(
     Returns:
         Le meme objet `base` enrichi (mute in-place + retourne pour chainer).
     """
-    # On a besoin d'au moins ISBN OU (title + 1 author) pour pouvoir chercher.
+    # On a besoin d'au moins ISBN OU title (auteur optionnel) pour chercher.
+    # Sprint D.7 v0.5.0 : on permet title-seul (sans author) car de
+    # nombreux PDF/CBZ n'ont pas d'auteur dans /Info ou ComicInfo.xml.
+    # Google Books / BnF acceptent une recherche par titre seul.
     has_isbn = bool(base.isbn)
-    has_text_query = bool(base.title and base.primary_author)
+    has_text_query = bool(base.title)
     if not has_isbn and not has_text_query:
         return base
 

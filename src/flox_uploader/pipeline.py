@@ -728,6 +728,19 @@ def _process_book(
     # ---- release_name.txt ----
     (package_dir / "release_name.txt").write_text(release_name + "\n", encoding="utf-8")
 
+    # ---- Extraction de la couverture locale (Sprint D.7) ----
+    # Si on n'a pas de cover_url depuis un provider en ligne, on tente
+    # d'extraire la cover depuis le fichier source (EPUB/PDF/CBZ).
+    if not book_meta.get("cover_url"):
+        cover_extracted = _try_extract_local_cover(
+            input_path, package_dir, book_meta,
+        )
+        if cover_extracted:
+            # Reflet dans debug pour que la page detail / template BBCode
+            # voient bien la cover.
+            book_meta["cover_url"] = cover_extracted
+            debug.set("book_metadata", book_meta)
+
     # ---- BBCode livre (Sprint D.5) ----
     from .core.bbcode_book import render_book_bbcode
     from .core.providers.book_metadata import book_from_dict
@@ -802,3 +815,48 @@ def _process_book(
     print(f"Dossier package : {package_dir}")
     print(f"Release name : {release_name}")
     return package_dir
+
+
+def _try_extract_local_cover(
+    input_path: Path,
+    package_dir: Path,
+    book_meta: dict,
+) -> str:
+    """Tente d'extraire la couverture depuis le fichier source vers le package.
+
+    Sprint D.7 v0.5.0 — augmente le taux de couverture (0/33 sur tests reels).
+
+    Args:
+        input_path : path du fichier source (.epub / .pdf / .cbz / .cbr).
+        package_dir : dossier package ou stocker la cover extraite.
+        book_meta : dict des metadonnees livre (pour file_format).
+
+    Returns:
+        URL relative (ex: "cover.jpg") de la cover si extraite, sinon "".
+        L'URL est relative au package_dir et sera resolue par la route
+        `/packages/{name}/cover` cote web app.
+    """
+    if not input_path.is_file():
+        return ""
+    ext = input_path.suffix.lower()
+    output = package_dir / "cover.jpg"
+    try:
+        if ext == ".epub":
+            from .core.providers.epub_metadata import extract_epub_cover
+            if extract_epub_cover(input_path, output):
+                # Renommer si l'extension reelle est differente (PNG/webp)
+                # On garde .jpg pour simplifier le servage; le navigateur
+                # devine le content-type au header.
+                return f"/packages/{package_dir.name}/cover"
+        elif ext == ".cbz":
+            from .core.providers.cbz_metadata import extract_cbz_cover
+            if extract_cbz_cover(input_path, output):
+                return f"/packages/{package_dir.name}/cover"
+        elif ext == ".pdf":
+            from .core.providers.pdf_metadata import extract_pdf_cover
+            if extract_pdf_cover(input_path, output):
+                return f"/packages/{package_dir.name}/cover"
+    except Exception as e:
+        print(f"[WARN] cover extraction local ({ext}) : {type(e).__name__} {e}")
+        return ""
+    return ""
