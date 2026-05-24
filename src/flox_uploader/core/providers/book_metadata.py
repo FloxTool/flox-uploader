@@ -144,3 +144,56 @@ class BookMetadata:
         # Tracker la source
         if source_name and source_name not in self.sources:
             self.sources.append(source_name)
+
+
+# ============================================================
+# Serialisation cache (utilisee par bnf.py / google_books.py / openlibrary.py)
+# ============================================================
+# Pattern : BookMetadata.to_dict() pour la sauvegarde JSON du cache,
+# book_from_dict(d) pour reconstruire. Plus simple qu'asdict() pour gerer
+# Path (file_path / cover_local_path -> str -> Path), int safe, list copy.
+
+def book_to_dict(meta: BookMetadata) -> dict:
+    """Serialise un BookMetadata en dict JSON-able pour le cache."""
+    return {
+        "title": meta.title,
+        "subtitle": meta.subtitle,
+        "authors": list(meta.authors),
+        "isbn_13": meta.isbn_13,
+        "isbn_10": meta.isbn_10,
+        "publisher": meta.publisher,
+        "publication_year": meta.publication_year,
+        "language": meta.language,
+        "page_count": meta.page_count,
+        "series": meta.series,
+        "series_index": meta.series_index,
+        "description": meta.description,
+        "cover_url": meta.cover_url,
+        "genres": list(meta.genres),
+        "sources": list(meta.sources),
+        # Note : on ne cache PAS file_path (chemin local utilisateur) ni
+        # cover_local_path (regenerable). Le cache est partage entre runs / users.
+    }
+
+
+def book_from_dict(d: dict) -> BookMetadata:
+    """Reconstruit un BookMetadata depuis un dict cache. Tolerant aux types."""
+    if not isinstance(d, dict):
+        return BookMetadata()
+    return BookMetadata(
+        title=str(d.get("title", "") or ""),
+        subtitle=str(d.get("subtitle", "") or ""),
+        authors=[str(a) for a in (d.get("authors") or []) if a],
+        isbn_13=str(d.get("isbn_13", "") or ""),
+        isbn_10=str(d.get("isbn_10", "") or ""),
+        publisher=str(d.get("publisher", "") or ""),
+        publication_year=int(d.get("publication_year") or 0),
+        language=str(d.get("language", "") or ""),
+        page_count=int(d.get("page_count") or 0),
+        series=str(d.get("series", "") or ""),
+        series_index=float(d.get("series_index") or 0.0),
+        description=str(d.get("description", "") or ""),
+        cover_url=str(d.get("cover_url", "") or ""),
+        genres=[str(g) for g in (d.get("genres") or []) if g],
+        sources=[str(s) for s in (d.get("sources") or []) if s],
+    )

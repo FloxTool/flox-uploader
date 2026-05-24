@@ -1,0 +1,304 @@
+"""Client API BnF (Bibliotheque nationale de France) — SRU XML.
+
+Sprint D.2 v0.5.0 (PLAN-MULTICAT §7.4). Pivot FR pour les metadonnees livres.
+La BnF expose son catalogue via le standard SRU (Search/Retrieve via URL) qui
+retourne du XML Dublin Core. Gratuit, aucune cle requise (institution publique).
+
+Endpoint : http://catalogue.bnf.fr/api/SRU
+
+Documentation : https://api.bnf.fr/catalogue-general-de-la-bnf
+
+Strategie :
+- Recherche par ISBN-13 d'abord (le plus precis)
+- Fallback recherche par titre + auteur si pas d'ISBN
+- Cache atomique par ISBN dans data/.bnf_cache.json
+- Cache aussi les misses (404 / pas trouve) pour eviter de re-frapper l'API
+
+Champs SRU consommes (Dublin Core / DCMES / MARC) :
+- dc:title          -> BookMetadata.title
+- dc:creator        -> BookMetadata.authors (premier element)
+- dc:contributor    -> BookMetadata.authors (suivants)
+- dc:date           -> BookMetadata.publication_year (extract annee)
+- dc:publisher      -> BookMetadata.publisher
+- dc:language       -> BookMetadata.language (normalise ISO 639-1)
+- dc:description    -> BookMetadata.description
+- dc:subject        -> BookMetadata.genres
+- dcterms:extent    -> BookMetadata.page_count
+
+NOTE : la BnF peut renvoyer du XML namespace-prefixe variable selon les
+records. On utilise des XPath tolerants (`{*}tagname`).
+"""
+from __future__ import annotations
+
+import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+from ..http import http_get_with_retry as _default_http_get
+from .book_metadata import BookMetadata, book_from_dict, book_to_dict
+from ._cache import (
+    cache_key_isbn, is_miss, load_cache, make_miss, save_cache,
+)
+
+
+# Endpoint officiel BnF SRU
+BNF_SRU_URL = "http://catalogue.bnf.fr/api/SRU"
+
+# Schema retour : Dublin Core simple (le plus stable pour notre usage)
+_DEFAULT_PARAMS = {
+    "version": "1.2",
+    "operation": "searchRetrieve",
+    "recordSchema": "dublincore",
+    "maximumRecords": "1",
+}
+
+
+def lookup_bnf(
+    isbn: str = "",
+    title: str = "",
+    author: str = "",
+    cache_file: Path | None = None,
+    http_get=None,
+) -> BookMetadata | None:
+    """Cherche un livre dans le catalogue BnF.
+
+    Args:
+        isbn : ISBN-13 ou ISBN-10. Si fourni, recherche directe par identifiant.
+        title : utilise en fallback si pas d'ISBN.
+        author : optionnel, refine la recherche par titre.
+        cache_file : path du cache JSON. Si None, pas de cache.
+        http_get : fonction HTTP injectable (pour les tests).
+
+    Returns:
+        BookMetadata avec source='bnf' si trouve, None sinon (cache aussi
+        les misses). Ne plante jamais sur erreur reseau.
+    """
+    http = http_get or _default_http_get
+    cache = load_cache(cache_file) if cache_file else {}
+
+    # === Strategie 1 : ISBN prioritaire ===
+    key = cache_key_isbn(isbn)
+    if key:
+        if key in cache:
+            cached = cache[key]
+            if is_miss(cached):
+                return None
+            return book_from_dict(cached)
+
+        meta = _query_bnf_by_isbn(key, http=http)
+        if cache_file is not None:
+            cache[key] = book_to_dict(meta) if meta else make_miss()
+            save_cache(cache_file, cache)
+        return meta
+
+    # === Strategie 2 : titre + auteur (pas de cache pour ce type de query) ===
+    if title:
+        return _query_bnf_by_title(title, author, http=http)
+
+    return None
+
+
+def _query_bnf_by_isbn(isbn: str, http) -> BookMetadata | None:
+    """Recherche BnF par ISBN. Retourne None si pas trouve ou erreur."""
+    cql_query = f'bib.isbn adj "{isbn}"'
+    params = {**_DEFAULT_PARAMS, "query": cql_query}
+    try:
+        resp = http(BNF_SRU_URL, params=params)
+    except Exception as e:
+        print(f"[WARN] BnF lookup ISBN {isbn} : {type(e).__name__} {e}")
+        return None
+    return _parse_first_record(resp.text)
+
+
+def _query_bnf_by_title(title: str, author: str, http) -> BookMetadata | None:
+    """Recherche BnF par titre + auteur optionnel."""
+    # CQL : bib.title adj "..." AND bib.author adj "..."
+    parts = [f'bib.title adj "{title}"']
+    if author:
+        parts.append(f'bib.author adj "{author}"')
+    cql_query = " AND ".join(parts)
+    params = {**_DEFAULT_PARAMS, "query": cql_query}
+    try:
+        resp = http(BNF_SRU_URL, params=params)
+    except Exception as e:
+        print(f"[WARN] BnF lookup title {title!r} : {type(e).__name__} {e}")
+        return None
+    return _parse_first_record(resp.text)
+
+
+def _parse_first_record(xml_text: str) -> BookMetadata | None:
+    """Parse la reponse SRU XML et extrait le premier record en BookMetadata.
+
+    Retourne None si numberOfRecords=0 ou XML mal forme.
+    """
+    if not xml_text or not xml_text.strip():
+        return None
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None
+
+    # Verifier numberOfRecords (tag SRU standard, namespace variable)
+    num_elem = _find_first(root, "numberOfRecords")
+    if num_elem is not None and num_elem.text:
+        try:
+            if int(num_elem.text.strip()) == 0:
+                return None
+        except ValueError:
+            pass
+
+    # Trouver le premier <record> -> <recordData> -> <oai_dc:dc> ou equivalent
+    record = _find_first(root, "record")
+    if record is None:
+        return None
+    record_data = _find_first(record, "recordData")
+    # Le bloc Dublin Core est dans record_data, tag varie selon le serveur
+    # (oai_dc:dc, dc, etc). On itere sur le contenu.
+    dc_block = record_data if record_data is not None else record
+    return _extract_dc_fields(dc_block)
+
+
+def _find_first(parent: ET.Element, local_name: str) -> ET.Element | None:
+    """Trouve le premier descendant avec ce local-name, peu importe le namespace."""
+    for elem in parent.iter():
+        # elem.tag peut etre "{ns}name" ou "name"
+        if elem.tag == local_name or elem.tag.endswith("}" + local_name):
+            return elem
+    return None
+
+
+def _findall_dc(parent: ET.Element, local_name: str) -> list[ET.Element]:
+    """Trouve tous les descendants <dc:local_name>."""
+    out: list[ET.Element] = []
+    for elem in parent.iter():
+        # On accepte {http://purl.org/dc/elements/1.1/}local_name ou {dc}local_name
+        tag = elem.tag
+        if tag.endswith("}" + local_name) and ("dc" in tag.lower() or "dublincore" in tag.lower() or "purl.org/dc/" in tag):
+            out.append(elem)
+    return out
+
+
+def _extract_dc_fields(dc_block: ET.Element) -> BookMetadata:
+    """Parse les champs Dublin Core dans un bloc et retourne un BookMetadata."""
+    meta = BookMetadata()
+    meta.sources.append("bnf")
+
+    # Titre
+    titles = _findall_dc(dc_block, "title")
+    if titles and titles[0].text:
+        meta.title = titles[0].text.strip()
+
+    # Auteurs : dc:creator (1er) + dc:contributor (suivants)
+    for creator in _findall_dc(dc_block, "creator"):
+        if creator.text:
+            name = _clean_author_name(creator.text)
+            if name and name not in meta.authors:
+                meta.authors.append(name)
+    for contrib in _findall_dc(dc_block, "contributor"):
+        if contrib.text:
+            name = _clean_author_name(contrib.text)
+            if name and name not in meta.authors:
+                meta.authors.append(name)
+
+    # Editeur
+    publishers = _findall_dc(dc_block, "publisher")
+    if publishers and publishers[0].text:
+        meta.publisher = _clean_publisher(publishers[0].text)
+
+    # Date -> annee
+    dates = _findall_dc(dc_block, "date")
+    if dates and dates[0].text:
+        m = re.search(r"\b(1[89]|20)\d{2}\b", dates[0].text)
+        if m:
+            try:
+                meta.publication_year = int(m.group())
+            except ValueError:
+                pass
+
+    # Langue -> ISO 639-1 court
+    languages = _findall_dc(dc_block, "language")
+    if languages and languages[0].text:
+        raw = languages[0].text.strip().lower()
+        # BnF code souvent en 3 lettres : "fre", "eng", "spa"...
+        mapping_3_to_2 = {
+            "fre": "fr", "fra": "fr", "eng": "en", "spa": "es",
+            "ger": "de", "deu": "de", "ita": "it", "jpn": "ja",
+            "chi": "zh", "zho": "zh", "rus": "ru", "por": "pt",
+        }
+        if raw in mapping_3_to_2:
+            meta.language = mapping_3_to_2[raw]
+        elif len(raw) >= 2:
+            meta.language = raw[:2]
+
+    # Description
+    descriptions = _findall_dc(dc_block, "description")
+    if descriptions and descriptions[0].text:
+        meta.description = descriptions[0].text.strip()
+
+    # Subjects -> genres
+    for subj in _findall_dc(dc_block, "subject"):
+        if subj.text:
+            tag = subj.text.strip()
+            if tag and tag not in meta.genres:
+                meta.genres.append(tag)
+
+    # ISBN (identifier scheme=ISBN ou texte contient ISBN)
+    for ident in _findall_dc(dc_block, "identifier"):
+        if ident.text and "isbn" in (ident.text + ident.get("scheme", "") + ident.get("xsi:type", "")).lower():
+            clean = re.sub(r"[^\dXx]", "", ident.text.upper())
+            if len(clean) == 13 and clean.isdigit() and not meta.isbn_13:
+                meta.isbn_13 = clean
+            elif len(clean) == 10 and not meta.isbn_10:
+                meta.isbn_10 = clean
+
+    # Pages (dcterms:extent)
+    for elem in dc_block.iter():
+        if elem.tag.endswith("}extent") and elem.text:
+            m = re.search(r"(\d+)\s*p", elem.text)
+            if m:
+                try:
+                    meta.page_count = int(m.group(1))
+                    break
+                except ValueError:
+                    pass
+
+    # Si on n'a rien recupere, on retourne None implicitement (caller vide)
+    if not meta.title and not meta.authors and not meta.isbn_13:
+        return None  # type: ignore[return-value]
+    return meta
+
+
+def _clean_author_name(raw: str) -> str:
+    """Nettoie un nom d'auteur BnF (souvent format 'Nom, Prenom (dates)').
+
+    Exemple : "Tolkien, John Ronald Reuel (1892-1973)" -> "John Ronald Reuel Tolkien"
+    """
+    name = raw.strip()
+    # Retirer parenthese de dates
+    name = re.sub(r"\s*\([^)]+\)\s*$", "", name)
+    # Inverser "Nom, Prenom" -> "Prenom Nom"
+    if "," in name:
+        parts = name.split(",", 1)
+        if len(parts) == 2:
+            last, first = parts[0].strip(), parts[1].strip()
+            if first and last:
+                return f"{first} {last}"
+    return name.strip()
+
+
+def _clean_publisher(raw: str) -> str:
+    """Nettoie un nom d'editeur (retirer ville, dates entre crochets, etc.)."""
+    pub = raw.strip()
+    # Format BnF typique : "Paris : Gallimard , DL 2010"
+    if ":" in pub:
+        pub = pub.split(":", 1)[1]
+    if "," in pub:
+        pub = pub.split(",", 1)[0]
+    return pub.strip()
+
+
+# ============================================================
+# Cache serialisation : factorise dans book_metadata.py
+# (book_to_dict / book_from_dict reutilises par google_books.py et openlibrary.py)
+# ============================================================
