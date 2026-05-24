@@ -1,27 +1,162 @@
 {# ============================================================
-   STUB profile = 'book' (Sprint C.4 v0.5.0)
+   Page detail enrichie pour les packages Livre / BD / Manga (cat 12)
+   Sprint D.5 v0.5.0 (PLAN-MULTICAT §7.4)
 
-   Affiche un placeholder pour les packages de categorie Livre / BD / Manga
-   (cat 12). En l'etat actuel (Sprint A-C), aucun package livre ne peut
-   exister en base : le pipeline early-return des la Brique 1 (PR-3) avec
-   message d'erreur clair. Donc ce stub n'est jamais atteint en pratique.
-
-   Sprint D enrichira ce template avec :
-   - Couverture livre (BnF Service Couvertures, Google Books)
-   - Auteur, titre, ISBN, éditeur, année, pages, langue
-   - Résumé FR (Google Books, OpenLibrary)
-   - Série / tome
-   - Formulaire override (ISBN manuel, auteur, etc.)
-   - BBCode template ebook
-============================================================ #}
+   Variables disponibles (depuis _load_package_detail) :
+   - book_metadata : dict avec title, authors, publisher, publication_year,
+     language, page_count, isbn_13, isbn_10, series, series_index,
+     description, cover_url, genres, sources, file_format
+   ============================================================ #}
 {% from "_icons.html" import icon %}
 
+{% if book_metadata %}
+{%- set bm = book_metadata -%}
+{%- set isbn = bm.isbn_13 or bm.isbn_10 -%}
+{%- set lang_label = {"fr": "Français", "en": "Anglais", "es": "Espagnol", "de": "Allemand", "it": "Italien", "pt": "Portugais", "ja": "Japonais", "zh": "Chinois", "ru": "Russe", "ar": "Arabe", "ko": "Coréen", "nl": "Néerlandais"}.get(bm.language, bm.language | upper if bm.language else "Inconnue") -%}
+<section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-success-200 dark:border-success-800 mb-6 overflow-hidden">
+    <header class="px-4 py-3 border-b border-success-200 dark:border-success-800 bg-success-50/60 dark:bg-success-900/20">
+        <h3 class="text-sm font-semibold text-success-900 dark:text-success-200 inline-flex items-center gap-2">
+            {{ icon('book-open', size='md') }}
+            Métadonnées Livre
+            {% if bm.sources %}
+            <span class="text-xs font-normal text-success-700/80 dark:text-success-400/80">
+                via {{ bm.sources | join(", ") }}
+            </span>
+            {% endif %}
+        </h3>
+    </header>
+
+    <div class="p-4">
+        <div class="flex gap-4 flex-wrap md:flex-nowrap">
+            {# Couverture (si fournie par BnF / Google Books / OpenLibrary) #}
+            {% if bm.cover_url %}
+            <div class="flex-shrink-0">
+                <img src="{{ bm.cover_url }}" alt="Couverture {{ bm.title or 'livre' }}"
+                     class="rounded-md shadow-md max-w-[160px] border border-slate-200 dark:border-slate-700"
+                     loading="lazy"
+                     onerror="this.style.display='none'">
+            </div>
+            {% endif %}
+
+            <div class="flex-1 min-w-0 space-y-2">
+                {# Titre + sous-titre #}
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100">
+                        {{ bm.title or "Titre inconnu" }}
+                    </h2>
+                    {% if bm.subtitle %}
+                    <p class="text-sm italic text-slate-500 dark:text-slate-400 mt-0.5">
+                        {{ bm.subtitle }}
+                    </p>
+                    {% endif %}
+                </div>
+
+                {# Auteur(s) #}
+                {% if bm.authors %}
+                <div class="text-sm text-slate-700 dark:text-slate-300">
+                    par <span class="font-semibold">{{ bm.authors | join(", ") }}</span>
+                </div>
+                {% endif %}
+
+                {# Série + tome #}
+                {% if bm.series %}
+                <div class="inline-flex items-center gap-2 text-xs px-2 py-0.5 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800">
+                    {{ icon('list', size='sm') }}
+                    Série : <strong>{{ bm.series }}</strong>{% if bm.series_index %} — tome {{ bm.series_index | round(1) }}{% endif %}
+                </div>
+                {% endif %}
+
+                {# Grille metadonnees #}
+                <dl class="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1 text-xs pt-2">
+                    {% if bm.publisher %}
+                    <div>
+                        <dt class="text-slate-500 dark:text-slate-400">Éditeur</dt>
+                        <dd class="text-slate-900 dark:text-slate-100 font-medium">{{ bm.publisher }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if bm.publication_year %}
+                    <div>
+                        <dt class="text-slate-500 dark:text-slate-400">Année</dt>
+                        <dd class="text-slate-900 dark:text-slate-100 font-medium">{{ bm.publication_year }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if lang_label %}
+                    <div>
+                        <dt class="text-slate-500 dark:text-slate-400">Langue</dt>
+                        <dd class="text-slate-900 dark:text-slate-100 font-medium">{{ lang_label }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if bm.file_format %}
+                    <div>
+                        <dt class="text-slate-500 dark:text-slate-400">Format</dt>
+                        <dd class="text-slate-900 dark:text-slate-100 font-medium font-mono">{{ bm.file_format | upper }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if bm.page_count %}
+                    <div>
+                        <dt class="text-slate-500 dark:text-slate-400">Pages</dt>
+                        <dd class="text-slate-900 dark:text-slate-100 font-medium tabular-nums">{{ bm.page_count }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if isbn %}
+                    <div>
+                        <dt class="text-slate-500 dark:text-slate-400">ISBN</dt>
+                        <dd class="text-slate-900 dark:text-slate-100 font-medium font-mono">{{ isbn }}</dd>
+                    </div>
+                    {% endif %}
+                </dl>
+
+                {# Genres (tags) #}
+                {% if bm.genres %}
+                <div class="flex flex-wrap gap-1 pt-2">
+                    {% for genre in bm.genres[:6] %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                        {{ genre }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Description (resume) si fournie #}
+        {% if bm.description %}
+        <details class="mt-4 group">
+            <summary class="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5 hover:text-primary-700 dark:hover:text-primary-400">
+                {{ icon('chevron-right', size='sm', classes='group-open:rotate-90 transition-transform') }}
+                Résumé
+            </summary>
+            <p class="text-sm text-slate-600 dark:text-slate-300 mt-2 whitespace-pre-wrap leading-relaxed">{{ bm.description }}</p>
+        </details>
+        {% endif %}
+
+        {# Sources providers : indique quelles APIs ont contribue (transparent) #}
+        {% if bm.sources %}
+        <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap gap-1.5">
+            <span class="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Métadonnées :</span>
+            {% for source in bm.sources %}
+            <span class="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border
+                {% if source == 'local_epub' %}bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700
+                {% elif source == 'bnf' %}bg-success-50 dark:bg-success-900/30 text-success-700 dark:text-success-300 border-success-200 dark:border-success-800
+                {% elif source == 'google_books' %}bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border-primary-200 dark:border-primary-800
+                {% elif source == 'openlibrary' %}bg-warning-50 dark:bg-warning-900/30 text-warning-700 dark:text-warning-300 border-warning-200 dark:border-warning-800
+                {% else %}bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700{% endif %}">
+                {{ source }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% else %}
+{# Pas de book_metadata = package livre sans extraction reussie. On garde un stub minimal. #}
 <div class="bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg p-4 mb-6 flex items-start gap-3">
     <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('book-open', size='md') }}</span>
     <div class="flex-1 min-w-0 text-sm">
         <div class="font-semibold text-warning-900 dark:text-warning-200 mb-1">Catégorie Livre / BD / Manga</div>
         <p class="text-warning-800 dark:text-warning-300">
-            Le pipeline livres sera implémenté en Sprint D v0.5.0 (BnF + Google Books + OpenLibrary). Pour l'instant cette page utilise le rendu vidéo par défaut.
+            Aucune métadonnée livre extraite pour ce package. Vérifie que le fichier est un ebook valide (EPUB / PDF / CBZ / CBR / MOBI / AZW3 / DJVU).
         </p>
     </div>
 </div>
+{% endif %}

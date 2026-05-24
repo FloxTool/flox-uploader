@@ -728,6 +728,22 @@ def _process_book(
     # ---- release_name.txt ----
     (package_dir / "release_name.txt").write_text(release_name + "\n", encoding="utf-8")
 
+    # ---- BBCode livre (Sprint D.5) ----
+    from .core.bbcode_book import render_book_bbcode
+    from .core.providers.book_metadata import book_from_dict
+    book_meta_obj = book_from_dict(book_meta)
+    book_meta_obj.file_format = book_meta.get("file_format", "")
+    try:
+        bbcode = render_book_bbcode(book_meta_obj, release_name, tracker)
+        (package_dir / "presentation.txt").write_text(bbcode, encoding="utf-8")
+        print(f"[OK] BBCode livre genere : presentation.txt ({len(bbcode)} chars)")
+    except Exception as e:
+        print(f"[WARN] BBCode livre echec : {type(e).__name__} {e}. Fallback texte simple.")
+        # Au minimum, on garde le NFO comme presentation
+        (package_dir / "presentation.txt").write_text(
+            "\n".join(nfo_lines), encoding="utf-8",
+        )
+
     # ---- .torrent ----
     torrent_path = package_dir / f"{release_name}.torrent"
     create_torrent(

@@ -1,0 +1,71 @@
+{# ============================================================
+   Template BBCode pour les uploads Livres / BD / Manga (cat 12 Gemini)
+   Sprint D.5 v0.5.0 (PLAN-MULTICAT §7.4)
+
+   Variables disponibles (BookMetadata serialise) :
+   - meta.title, meta.subtitle, meta.authors (liste), meta.publisher,
+     meta.publication_year, meta.language, meta.page_count,
+     meta.isbn_13, meta.isbn_10, meta.series, meta.series_index,
+     meta.description, meta.cover_url, meta.genres (liste), meta.sources
+   - release_name : str
+   - tracker_name : str (ex: "Gemini")
+   ============================================================ #}
+{%- set isbn = meta.isbn_13 or meta.isbn_10 -%}
+{%- set authors_str = meta.authors | join(", ") if meta.authors else "Inconnu" -%}
+{%- set lang_label = {"fr": "Français", "en": "Anglais", "es": "Espagnol", "de": "Allemand", "it": "Italien", "pt": "Portugais", "ja": "Japonais", "zh": "Chinois", "ru": "Russe", "ar": "Arabe", "ko": "Coréen", "nl": "Néerlandais"}.get(meta.language, meta.language | upper) -%}
+[center]
+{%- if meta.cover_url %}
+[img]{{ meta.cover_url }}[/img]
+{% endif %}
+[size=200][b]{{ meta.title or release_name }}[/b][/size]
+{%- if meta.subtitle %}
+[size=120][i]{{ meta.subtitle }}[/i][/size]
+{% endif %}
+{%- if meta.series and meta.series_index %}
+[size=110]Série : [b]{{ meta.series }}[/b] — tome {{ meta.series_index | round(1) | int if (meta.series_index | round(1)) == (meta.series_index | int) else meta.series_index }}[/size]
+{% endif %}
+
+par [b]{{ authors_str }}[/b]
+[/center]
+
+[hr]
+
+[b]Informations[/b]
+[list]
+[*][b]Auteur(s) :[/b] {{ authors_str }}
+{%- if meta.publisher %}
+[*][b]Éditeur :[/b] {{ meta.publisher }}
+{%- endif %}
+{%- if meta.publication_year %}
+[*][b]Année :[/b] {{ meta.publication_year }}
+{%- endif %}
+{%- if lang_label %}
+[*][b]Langue :[/b] {{ lang_label }}
+{%- endif %}
+{%- if meta.file_format %}
+[*][b]Format :[/b] {{ meta.file_format | upper }}
+{%- endif %}
+{%- if meta.page_count %}
+[*][b]Pages :[/b] {{ meta.page_count }}
+{%- endif %}
+{%- if isbn %}
+[*][b]ISBN :[/b] {{ isbn }}
+{%- endif %}
+{%- if meta.series %}
+[*][b]Série :[/b] {{ meta.series }}{% if meta.series_index %} (tome {{ meta.series_index | round(1) | int if (meta.series_index | round(1)) == (meta.series_index | int) else meta.series_index }}){% endif %}
+{%- endif %}
+{%- if meta.genres %}
+[*][b]Genres :[/b] {{ meta.genres | join(", ") }}
+{%- endif %}
+[/list]
+
+{%- if meta.description %}
+
+[b]Résumé[/b]
+[quote]{{ meta.description }}[/quote]
+{% endif %}
+
+[hr]
+
+[size=85][i]Fiche générée automatiquement par Flox Uploader.
+{%- if meta.sources %} Sources : {{ meta.sources | join(", ") }}.{% endif %}[/i][/size]

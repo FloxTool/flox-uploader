@@ -660,6 +660,10 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "scene_nfo_lines": scene_nfo_lines,
         "log_text": log_text,
         "log_lines": log_lines,
+        # Sprint D.5 v0.5.0 : metadonnees livre extraites par le pipeline.
+        # Consommees par _detail_book.html (couverture, auteur, ISBN, etc.).
+        # Pour les packages non-livres, ce dict est vide / non present.
+        "book_metadata": (debug or {}).get("book_metadata") if isinstance(debug, dict) else None,
     }
 
 
