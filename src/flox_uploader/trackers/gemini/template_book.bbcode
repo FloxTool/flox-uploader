@@ -1,71 +1,85 @@
 {# ============================================================
    Template BBCode pour les uploads Livres / BD / Manga (cat 12 Gemini)
-   Sprint D.5 v0.5.0 (PLAN-MULTICAT §7.4)
+   Sprint D.8 v0.5.0 — refonte harmonisee avec template_movie.bbcode
+   (memes blocs : header titre, separateurs visuels, blocs infos /
+   release / source, footer enjoy).
 
    Variables disponibles (BookMetadata serialise) :
    - meta.title, meta.subtitle, meta.authors (liste), meta.publisher,
      meta.publication_year, meta.language, meta.page_count,
      meta.isbn_13, meta.isbn_10, meta.series, meta.series_index,
-     meta.description, meta.cover_url, meta.genres (liste), meta.sources
+     meta.description, meta.cover_url, meta.genres (liste), meta.sources,
+     meta.file_format
    - release_name : str
    - tracker_name : str (ex: "Gemini")
    ============================================================ #}
 {%- set isbn = meta.isbn_13 or meta.isbn_10 -%}
-{%- set authors_str = meta.authors | join(", ") if meta.authors else "Inconnu" -%}
-{%- set lang_label = {"fr": "Français", "en": "Anglais", "es": "Espagnol", "de": "Allemand", "it": "Italien", "pt": "Portugais", "ja": "Japonais", "zh": "Chinois", "ru": "Russe", "ar": "Arabe", "ko": "Coréen", "nl": "Néerlandais"}.get(meta.language, meta.language | upper) -%}
+{%- set authors_str = meta.authors | join(", ") if meta.authors else "" -%}
+{%- set lang_label = {"fr": "Français", "en": "Anglais", "es": "Espagnol", "de": "Allemand", "it": "Italien", "pt": "Portugais", "ja": "Japonais", "zh": "Chinois", "ru": "Russe", "ar": "Arabe", "ko": "Coréen", "nl": "Néerlandais"}.get(meta.language, meta.language | upper if meta.language else "") -%}
+{%- set title_safe = meta.title or release_name -%}
+{%- set year_str = meta.publication_year | string if meta.publication_year else "" -%}
+
 [center]
-{%- if meta.cover_url %}
-[img]{{ meta.cover_url }}[/img]
+{%- if meta.cover_url and meta.cover_url.startswith("http") %}
+[img=300]{{ meta.cover_url }}[/img]
 {% endif %}
-[size=200][b]{{ meta.title or release_name }}[/b][/size]
-{%- if meta.subtitle %}
-[size=120][i]{{ meta.subtitle }}[/i][/size]
-{% endif %}
-{%- if meta.series and meta.series_index %}
-[size=110]Série : [b]{{ meta.series }}[/b] — tome {{ meta.series_index | round(1) | int if (meta.series_index | round(1)) == (meta.series_index | int) else meta.series_index }}[/size]
+[color=#C9B27D][b][size=30]📚 {{ title_safe }} 📚[/size][/b][/color]
+{% if year_str %}{{ year_str }}{% endif %}
+
+[color=#C9B27D][b]{% if authors_str %}{{ authors_str }}{% else %}Auteur inconnu{% endif %}{% if lang_label %} · {{ lang_label }}{% endif %}{% if meta.file_format %} · {{ meta.file_format | upper }}{% endif %}[/b][/color]
+
+[img=500]https://i.imgur.com/jOSyeDp.png[/img]
+
+{# Section liens externes harmonisee avec films (ratings_section) #}
+{%- if isbn %}
+[color=#8B8680]ISBN :[/color] [b]{{ isbn }}[/b]
 {% endif %}
 
-par [b]{{ authors_str }}[/b]
-[/center]
+[img=500]https://i.imgur.com/ZHUrtS7.png[/img]
 
-[hr]
+[color=#C9B27D][b][size=20]📖 Informations sur le livre 📖[/size][/b][/color]
 
-[b]Informations[/b]
-[list]
-[*][b]Auteur(s) :[/b] {{ authors_str }}
+[color=#8B8680]Auteur(s) :[/color] {% if authors_str %}{{ authors_str }}{% else %}[i]Inconnu[/i]{% endif %}
 {%- if meta.publisher %}
-[*][b]Éditeur :[/b] {{ meta.publisher }}
+[color=#8B8680]Éditeur :[/color] {{ meta.publisher }}
 {%- endif %}
-{%- if meta.publication_year %}
-[*][b]Année :[/b] {{ meta.publication_year }}
+{%- if year_str %}
+[color=#8B8680]Année :[/color] {{ year_str }}
 {%- endif %}
 {%- if lang_label %}
-[*][b]Langue :[/b] {{ lang_label }}
-{%- endif %}
-{%- if meta.file_format %}
-[*][b]Format :[/b] {{ meta.file_format | upper }}
+[color=#8B8680]Langue :[/color] {{ lang_label }}
 {%- endif %}
 {%- if meta.page_count %}
-[*][b]Pages :[/b] {{ meta.page_count }}
-{%- endif %}
-{%- if isbn %}
-[*][b]ISBN :[/b] {{ isbn }}
+[color=#8B8680]Pages :[/color] {{ meta.page_count }}
 {%- endif %}
 {%- if meta.series %}
-[*][b]Série :[/b] {{ meta.series }}{% if meta.series_index %} (tome {{ meta.series_index | round(1) | int if (meta.series_index | round(1)) == (meta.series_index | int) else meta.series_index }}){% endif %}
+[color=#8B8680]Série :[/color] [b]{{ meta.series }}[/b]{% if meta.series_index %} — tome {{ meta.series_index | round(1) | int if (meta.series_index | round(1)) == (meta.series_index | int) else meta.series_index }}{% endif %}
 {%- endif %}
 {%- if meta.genres %}
-[*][b]Genres :[/b] {{ meta.genres | join(", ") }}
+[color=#8B8680]Genres :[/color] {{ meta.genres | join(", ") }}
 {%- endif %}
-[/list]
 
-{%- if meta.description %}
+[img=500]https://i.imgur.com/ZHUrtS7.png[/img]
 
-[b]Résumé[/b]
-[quote]{{ meta.description }}[/quote]
-{% endif %}
+[color=#C9B27D][b][size=20]📝 Résumé 📝[/size][/b][/color]
 
-[hr]
+{% if meta.description %}{{ meta.description }}{% else %}[i]Aucun résumé disponible pour ce livre. Les providers BnF / Google Books / OpenLibrary n'ont rien fourni — il est conseillé d'éditer la fiche manuellement avant l'upload.[/i]{% endif %}
 
-[size=85][i]Fiche générée automatiquement par Flox Uploader.
-{%- if meta.sources %} Sources : {{ meta.sources | join(", ") }}.{% endif %}[/i][/size]
+[img=500]https://i.imgur.com/jOSyeDp.png[/img]
+
+[color=#C9B27D][b][size=20]💿 Informations sur la release 💿[/size][/b][/color]
+
+[color=#8B8680]Titre :[/color] {{ release_name }}
+[color=#8B8680]Format :[/color] {% if meta.file_format %}{{ meta.file_format | upper }}{% else %}Inconnu{% endif %}
+{%- if meta.page_count %}
+[color=#8B8680]Pages :[/color] {{ meta.page_count }}
+{%- endif %}
+{%- if meta.sources %}
+[color=#8B8680]Métadonnées :[/color] {{ meta.sources | join(", ") }}
+{%- endif %}
+
+[img=500]https://i.imgur.com/ZHUrtS7.png[/img]
+
+[color=#C9B27D][b]🔥 Bonne lecture ! 🔥[/b][/color]
+
+[/center]

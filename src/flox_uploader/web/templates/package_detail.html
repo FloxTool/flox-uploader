@@ -1216,6 +1216,37 @@
 {{ nfo_block('mediainfo-nfo-body', 'NFO MediaInfo — généré par le pipeline', 'wrench', mediainfo_nfo_text, body_classes='whitespace-pre max-h-96 overflow-y-auto', extra_label='(' ~ mediainfo_nfo_lines ~ ' lignes)') }}
 {% endif %}
 
+{# Sprint D.8 v0.5.0 : warning si la presentation livre est manifestement
+   incomplete (champs critiques manquants). On signale a l'user qu'il
+   ferait mieux d'editer avant l'upload. #}
+{% if _profile == 'book' and book_metadata %}
+    {%- set _bm = book_metadata -%}
+    {%- set _missing = [] -%}
+    {%- if not (_bm.authors or []) -%}{%- set _ = _missing.append("auteur") -%}{%- endif -%}
+    {%- if not (_bm.description or '').strip() -%}{%- set _ = _missing.append("résumé") -%}{%- endif -%}
+    {%- if not (_bm.cover_url or '').strip() -%}{%- set _ = _missing.append("couverture") -%}{%- endif -%}
+    {%- if not (_bm.isbn_13 or _bm.isbn_10) -%}{%- set _ = _missing.append("ISBN") -%}{%- endif -%}
+    {% if _missing %}
+    <div class="mb-3 border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20 rounded-lg p-3 flex items-start gap-2.5">
+        <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
+        <div class="flex-1 min-w-0 text-sm">
+            <div class="font-semibold text-warning-900 dark:text-warning-200">
+                Présentation incomplète
+            </div>
+            <p class="text-warning-800 dark:text-warning-300 mt-0.5 text-xs">
+                Champs manquants : <strong>{{ _missing | join(", ") }}</strong>. La fiche uploadée sera plus pauvre que si tu complètes manuellement. Édite la présentation ci-dessous pour ajouter ce qui manque.
+            </p>
+            <button type="button"
+                    class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-warning-600 text-white hover:bg-warning-700"
+                    onclick="document.getElementById('btn-presentation-toggle')?.click();document.getElementById('toc-bbcode')?.scrollIntoView({behavior:'smooth',block:'start'});">
+                {{ icon('edit', size='sm') }}
+                Éditer la présentation
+            </button>
+        </div>
+    </div>
+    {% endif %}
+{% endif %}
+
 {% if presentation_text %}
 <section id="toc-bbcode" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
     <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap">
