@@ -1,0 +1,24 @@
+{# ============================================================
+   STUB profile = 'sport' (Sprint C.4 v0.5.0)
+
+   Affiche un placeholder pour les packages de categorie Sports (cat 10).
+   Sprint G enrichira ce template avec :
+   - Logo de la ligue (base statique JSON ~70 logos pre-caches)
+   - Nom de l'evenement (TheSportsDB)
+   - Date, venue, fighters/equipes (TheSportsDB)
+   - Resultat si dispo
+   - 3 thumbnails ffmpeg (le sport a souvent peu de visuels API)
+   - Formulaire override (ligue, date)
+   - BBCode template sport
+============================================================ #}
+{% from "_icons.html" import icon %}
+
+<div class="bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg p-4 mb-6 flex items-start gap-3">
+    <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('flame', size='md') }}</span>
+    <div class="flex-1 min-w-0 text-sm">
+        <div class="font-semibold text-warning-900 dark:text-warning-200 mb-1">Catégorie Sports</div>
+        <p class="text-warning-800 dark:text-warning-300">
+            Le pipeline sport sera enrichi en Sprint G v0.5.0 (TheSportsDB + base statique logos des ~70 ligues détectées par les keywords). Pour l'instant l'auto-détection keywords (UFC, F1, NBA, Tour de France...) classe correctement en catégorie Sports, et cette page utilise le rendu vidéo par défaut.
+        </p>
+    </div>
+</div>

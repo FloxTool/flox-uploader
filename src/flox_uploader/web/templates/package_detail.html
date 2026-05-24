@@ -81,6 +81,19 @@
         <div class="mb-2">
             {{ category_badge(gemini_category_id, size='md') }}
         </div>
+
+        {# Sprint C.4 v0.5.0 : si le package n'est PAS de profil video (= cat
+           non-video : Livre, Jeu, Logiciel, Formation, Emission TV, Sport),
+           on include le stub specifique au profil pour afficher un message
+           contextuel. En l'etat actuel (Sprints A-C), ce bloc n'est jamais
+           atteint pour Livre/Jeu/Logiciel/Formation : la Brique 1 die() avant
+           la creation du package. Mais l'infrastructure est prete pour les
+           Sprints D/E/F/G/H qui remplaceront ces stubs par leur UI specialisee.
+           Profile 'video' n'inclut rien (le rendu actuel suffit). #}
+        {% set _profile = category_profile(gemini_category_id) %}
+        {% if _profile != 'video' %}
+            {% include "_detail_" ~ _profile ~ ".html" ignore missing %}
+        {% endif %}
         <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1.5 break-all font-mono tracking-tight">{{ release_name }}</h1>
         <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
             <span>État</span>

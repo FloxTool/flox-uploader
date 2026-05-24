@@ -1,0 +1,27 @@
+{# ============================================================
+   STUB profile = 'book' (Sprint C.4 v0.5.0)
+
+   Affiche un placeholder pour les packages de categorie Livre / BD / Manga
+   (cat 12). En l'etat actuel (Sprint A-C), aucun package livre ne peut
+   exister en base : le pipeline early-return des la Brique 1 (PR-3) avec
+   message d'erreur clair. Donc ce stub n'est jamais atteint en pratique.
+
+   Sprint D enrichira ce template avec :
+   - Couverture livre (BnF Service Couvertures, Google Books)
+   - Auteur, titre, ISBN, éditeur, année, pages, langue
+   - Résumé FR (Google Books, OpenLibrary)
+   - Série / tome
+   - Formulaire override (ISBN manuel, auteur, etc.)
+   - BBCode template ebook
+============================================================ #}
+{% from "_icons.html" import icon %}
+
+<div class="bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg p-4 mb-6 flex items-start gap-3">
+    <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('book-open', size='md') }}</span>
+    <div class="flex-1 min-w-0 text-sm">
+        <div class="font-semibold text-warning-900 dark:text-warning-200 mb-1">Catégorie Livre / BD / Manga</div>
+        <p class="text-warning-800 dark:text-warning-300">
+            Le pipeline livres sera implémenté en Sprint D v0.5.0 (BnF + Google Books + OpenLibrary). Pour l'instant cette page utilise le rendu vidéo par défaut.
+        </p>
+    </div>
+</div>

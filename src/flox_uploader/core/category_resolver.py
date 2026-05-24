@@ -96,3 +96,51 @@ def resolve_effective_category(package_dir: Path) -> int:
         tmdb_context=tmdb_context,
         release_name=release_name,
     )
+
+
+def category_profile(category_id: int | None) -> str:
+    """Retourne le nom du profil UI pour une category_id.
+
+    Sprint C.4 v0.5.0 — utilise par les templates pour inclure le bon
+    `_detail_<profile>.html` selon la categorie effective. Aligne avec
+    `compliance._profile_for_category` pour eviter toute desynchronisation
+    entre les profils naming, compliance et UI.
+
+    Profils retournes :
+    - 'video'  : Films / Series / Anime / Doc (cats 1, 2, 6, 7, 13, 14)
+    - 'show'   : Emission TV (cat 15)
+    - 'sport'  : Sports (cat 10)
+    - 'book'   : Livres (cat 12)
+    - 'game'   : Jeux (cat 3)
+    - 'manual' : Logiciels (17), Formations (18)
+    - 'video' par defaut si category_id inconnu ou None
+
+    Note : on differencie ici 'show' et 'sport' de 'video' contrairement a
+    compliance._profile_for_category qui les agglomere en 'video' pour eviter
+    de casser la compat. C'est volontaire : Sprint F (Emission TV) et Sprint G
+    (Sport) auront leurs propres templates UI specialises.
+    """
+    if category_id is None:
+        return "video"
+    from ..trackers.gemini.unit3d_mapping import (
+        CATEGORY_MOVIE, CATEGORY_TV, CATEGORY_TV_ANIME, CATEGORY_MOVIE_ANIME,
+        CATEGORY_SPORTS, CATEGORY_MOVIE_DOC, CATEGORY_TV_DOC, CATEGORY_TV_SHOW,
+        CATEGORY_GAME, CATEGORY_BOOKS, CATEGORY_SOFTWARE, CATEGORY_TRAINING,
+    )
+    video_cats = {
+        CATEGORY_MOVIE, CATEGORY_TV, CATEGORY_TV_ANIME, CATEGORY_MOVIE_ANIME,
+        CATEGORY_MOVIE_DOC, CATEGORY_TV_DOC,
+    }
+    if category_id in video_cats:
+        return "video"
+    if category_id == CATEGORY_TV_SHOW:
+        return "show"
+    if category_id == CATEGORY_SPORTS:
+        return "sport"
+    if category_id == CATEGORY_BOOKS:
+        return "book"
+    if category_id == CATEGORY_GAME:
+        return "game"
+    if category_id in (CATEGORY_SOFTWARE, CATEGORY_TRAINING):
+        return "manual"
+    return "video"  # fallback safe
