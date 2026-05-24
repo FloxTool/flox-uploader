@@ -234,11 +234,32 @@
                 </div>
             </div>
 
-            <div class="p-5">
-                {# Grille 12 categories. Le contenu est rendu dynamiquement par le JS
-                   apres fetch /api/categories. Permet de garder une seule source
-                   de verite cote backend (CATEGORY_UI_METADATA). #}
-                <div id="cat-modal-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+            <div class="p-5 space-y-3">
+                {# Sprint C.1bis : section primary = 5 tuiles (1 grosse Video + 4 non-video).
+                   Cas usage 90%+. La sous-categorie video sera raffinee automatiquement
+                   par le pipeline (TMDB genre Animation/Documentary, keywords sport, etc.).
+                   Rendue dynamiquement par _buildCategoryGrid() qui inject les SVG inline. #}
+                <div id="cat-modal-top-grid"></div>
+
+                {# Lien "Catégoriser plus finement" : toggle la section avancée.
+                   Cible : power-user qui veut forcer Anime/Doc/Émission TV/Sport
+                   directement (sans passer par l'override page détail). #}
+                <button id="cat-modal-advanced-toggle" type="button"
+                        class="w-full text-xs text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 inline-flex items-center justify-center gap-1.5 py-1.5 transition-colors"
+                        aria-expanded="false">
+                    <span>Catégoriser plus finement</span>
+                    <span id="cat-modal-advanced-chevron" class="transition-transform">
+                        {{ icon('chevron-down', size='sm') }}
+                    </span>
+                </button>
+
+                {# Section avancée = 12 tuiles détaillées. Cachée par défaut. #}
+                <div id="cat-modal-advanced-section" class="hidden">
+                    <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">
+                        Sous-catégorie précise (override)
+                    </div>
+                    <div id="cat-modal-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+                </div>
             </div>
 
             <footer class="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
@@ -619,8 +640,31 @@
     // l'user a le dernier mot.
 
     let _categoriesData = null;  // {categories: [...], extension_to_category: {...}}
-    let _categoryModalSelectedId = 0;
+    let _categoryModalSelectedId = 0;  // 0 = "Video" generique (= pas de hint, auto-detect)
     let _categoryModalPaths = [];
+
+    // Sprint C.1bis : IDs des "top categories" affichees dans la section primary.
+    // - 0 = pseudo "Video" qui regroupe Films/Series/Anime/Doc/Sport/Emission TV.
+    //       Le pipeline raffinera la sous-cat automatiquement via TMDB+keywords.
+    //       Envoyer hint=0 cote backend = auto-detection complete (= comportement v0.4.x).
+    // - 12 = Livre / BD / Manga
+    // - 3  = Jeu video
+    // - 17 = Logiciel
+    // - 18 = Formation
+    const TOP_CAT_IDS = [0, 12, 3, 17, 18];
+    const NON_VIDEO_CAT_IDS = [12, 3, 17, 18];
+
+    // Tuile "Video" virtuelle (n'existe pas en Gemini mais represente l'auto-detect video).
+    // SVG identique a 'clapperboard' (la cat Film). Visuel coherent avec le defaut historique.
+    const VIRTUAL_VIDEO_TILE = {
+        id: 0,
+        label: 'Vidéo',
+        icon: 'clapperboard',
+        icon_svg_path: '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+        color: 'primary',
+        hint: 'Films, Séries, Animes, Documentaires, Sport, Émission TV — sous-catégorie auto-détectée',
+        sublabel: 'Films, Séries, Animes, Docus, Sport, Émission TV (auto)',
+    };
 
     async function _loadCategoriesMetadata() {
         if (_categoriesData) return _categoriesData;
@@ -645,78 +689,143 @@
     }
 
     function _suggestCategoryForPaths(paths, extMap) {
-        // Retourne {suggestedId, isMixed, categoryCounts}
-        // categoryCounts = {catId: count} pour diagnostic UI mixte.
+        // Sprint C.1bis : on suggere parmi les top-cats (Video / Livre / Jeu /
+        // Logiciel / Formation) plutot que parmi les 12 sous-cats. Tout ce qui
+        // est video (ou inconnu) tombe dans Video (id=0 = auto-detect).
+        // Retourne {suggestedId, isMixed, categoryCounts (top-level)}.
         const counts = {};
         for (const p of paths) {
             const ext = _extensionOf(p);
             const catId = extMap[ext] || 0;
-            if (catId) counts[catId] = (counts[catId] || 0) + 1;
+            // Mapping vers les top-cats
+            let topCat;
+            if (NON_VIDEO_CAT_IDS.indexOf(catId) >= 0) {
+                topCat = catId;  // Livre / Jeu / Logiciel / Formation
+            } else {
+                topCat = 0;  // Video generique (incluant extension inconnue)
+            }
+            counts[topCat] = (counts[topCat] || 0) + 1;
         }
         const uniqueCats = Object.keys(counts);
         if (uniqueCats.length === 0) {
-            // Aucune extension reconnue -> fallback Film (consistent avec early_category_guess)
-            return { suggestedId: 1, isMixed: false, categoryCounts: counts };
+            return { suggestedId: 0, isMixed: false, categoryCounts: counts };
         }
         if (uniqueCats.length === 1) {
             return { suggestedId: parseInt(uniqueCats[0]), isMixed: false, categoryCounts: counts };
         }
-        // Plusieurs categories detectees -> on prend la plus frequente comme suggestion
-        // mais on signale le mix.
+        // Plusieurs top-cats detectees -> on prend la plus frequente.
         const sorted = uniqueCats.sort((a, b) => counts[b] - counts[a]);
         return { suggestedId: parseInt(sorted[0]), isMixed: true, categoryCounts: counts };
     }
 
-    function _buildCategoryGrid(categories, selectedId) {
-        // Rend les 12 boutons categorie dans la grille modale.
-        const grid = document.getElementById('cat-modal-grid');
-        if (!grid) return;
-        grid.innerHTML = '';
-        // Mapping couleur Tailwind -> classes (selected vs unselected).
-        const colorClasses = {
-            primary: { sel: 'bg-primary-50 dark:bg-primary-900/30 border-primary-500 text-primary-900 dark:text-primary-100',
-                       icon: 'text-primary-600 dark:text-primary-400' },
-            success: { sel: 'bg-success-50 dark:bg-success-900/30 border-success-500 text-success-900 dark:text-success-100',
-                       icon: 'text-success-600 dark:text-success-400' },
-            warning: { sel: 'bg-warning-50 dark:bg-warning-900/30 border-warning-500 text-warning-900 dark:text-warning-100',
-                       icon: 'text-warning-600 dark:text-warning-400' },
-            pink:    { sel: 'bg-pink-50 dark:bg-pink-900/30 border-pink-500 text-pink-900 dark:text-pink-100',
-                       icon: 'text-pink-600 dark:text-pink-400' },
-            cyan:    { sel: 'bg-cyan-50 dark:bg-cyan-900/30 border-cyan-500 text-cyan-900 dark:text-cyan-100',
-                       icon: 'text-cyan-600 dark:text-cyan-400' },
-            amber:   { sel: 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-900 dark:text-amber-100',
-                       icon: 'text-amber-600 dark:text-amber-400' },
-            slate:   { sel: 'bg-slate-100 dark:bg-slate-700/50 border-slate-500 text-slate-900 dark:text-slate-100',
-                       icon: 'text-slate-600 dark:text-slate-300' },
-        };
-        const unselectedBase = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500';
+    // Mapping couleur Tailwind -> classes (selected vs unselected). Partage entre
+    // les 2 grilles (top et avancee).
+    const _CAT_COLOR_CLASSES = {
+        primary: { sel: 'bg-primary-50 dark:bg-primary-900/30 border-primary-500 text-primary-900 dark:text-primary-100',
+                   icon: 'text-primary-600 dark:text-primary-400' },
+        success: { sel: 'bg-success-50 dark:bg-success-900/30 border-success-500 text-success-900 dark:text-success-100',
+                   icon: 'text-success-600 dark:text-success-400' },
+        warning: { sel: 'bg-warning-50 dark:bg-warning-900/30 border-warning-500 text-warning-900 dark:text-warning-100',
+                   icon: 'text-warning-600 dark:text-warning-400' },
+        pink:    { sel: 'bg-pink-50 dark:bg-pink-900/30 border-pink-500 text-pink-900 dark:text-pink-100',
+                   icon: 'text-pink-600 dark:text-pink-400' },
+        cyan:    { sel: 'bg-cyan-50 dark:bg-cyan-900/30 border-cyan-500 text-cyan-900 dark:text-cyan-100',
+                   icon: 'text-cyan-600 dark:text-cyan-400' },
+        amber:   { sel: 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-900 dark:text-amber-100',
+                   icon: 'text-amber-600 dark:text-amber-400' },
+        slate:   { sel: 'bg-slate-100 dark:bg-slate-700/50 border-slate-500 text-slate-900 dark:text-slate-100',
+                   icon: 'text-slate-600 dark:text-slate-300' },
+    };
+    const _CAT_UNSELECTED_BASE = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500';
 
-        for (const cat of categories) {
-            const isSelected = cat.id === selectedId;
-            const colors = colorClasses[cat.color] || colorClasses.primary;
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.dataset.catId = String(cat.id);
+    function _renderCatTile(cat, isSelected, opts) {
+        // opts = { large: bool, onSelect: fn(catId) }
+        const colors = _CAT_COLOR_CLASSES[cat.color] || _CAT_COLOR_CLASSES.primary;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.catId = String(cat.id);
+        const iconSize = opts.large ? 28 : 22;
+        const sublabel = cat.sublabel ? `<span class="text-[10px] text-slate-500 dark:text-slate-400 text-center mt-0.5 leading-tight">${cat.sublabel}</span>` : '';
+        if (opts.large) {
+            // Grosse tuile horizontale : icone | label + sublabel
+            btn.className = 'cat-modal-option-large w-full flex items-center gap-3 p-4 rounded-lg border-2 transition-colors text-left ' +
+                            (isSelected ? colors.sel : _CAT_UNSELECTED_BASE);
+            btn.innerHTML = `
+                <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        ${cat.icon_svg_path || ''}
+                    </svg>
+                </span>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold">${cat.label}</div>
+                    ${cat.sublabel ? `<div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">${cat.sublabel}</div>` : ''}
+                </div>
+            `;
+        } else {
+            // Tuile compacte verticale : icone + label centres
             btn.className = 'cat-modal-option flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-colors text-left ' +
-                            (isSelected ? colors.sel : unselectedBase);
-            btn.setAttribute('data-tu-tooltip', cat.hint || cat.label);
-            // SVG inline depuis CATEGORY_UI_METADATA.icon_svg_path (cf. unit3d_mapping.py)
+                            (isSelected ? colors.sel : _CAT_UNSELECTED_BASE);
             btn.innerHTML = `
                 <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} mb-0.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         ${cat.icon_svg_path || ''}
                     </svg>
                 </span>
                 <span class="text-xs font-medium text-center leading-tight">${cat.label}</span>
             `;
-            btn.addEventListener('click', () => {
-                _categoryModalSelectedId = cat.id;
-                _buildCategoryGrid(categories, cat.id);  // re-render avec nouvelle selection
-                const confirmBtn = document.getElementById('cat-modal-confirm');
-                if (confirmBtn) confirmBtn.disabled = false;
-            });
-            grid.appendChild(btn);
         }
+        btn.setAttribute('data-tu-tooltip', cat.hint || cat.label);
+        btn.addEventListener('click', () => opts.onSelect(cat.id));
+        return btn;
+    }
+
+    function _buildCategoryGrid(categories, selectedId) {
+        // Rend les 2 sections : top (5 tuiles : 1 grosse Video + 4 non-video)
+        // + advanced (12 sous-cats Gemini detaillees).
+        // L'user peut selectionner soit une top-cat (= categorie generique),
+        // soit une sous-cat precise via la section avancee.
+        const onSelect = (catId) => {
+            _categoryModalSelectedId = catId;
+            _buildCategoryGrid(categories, catId);  // re-render avec nouvelle selection
+            const confirmBtn = document.getElementById('cat-modal-confirm');
+            if (confirmBtn) confirmBtn.disabled = false;
+        };
+
+        // --- Section top : 1 grosse tuile Video + 4 tuiles non-video compactes ---
+        const topGrid = document.getElementById('cat-modal-top-grid');
+        if (topGrid) {
+            topGrid.innerHTML = '';
+            // 1. Grande tuile Video (pleine largeur)
+            const videoTile = _renderCatTile(VIRTUAL_VIDEO_TILE, selectedId === 0, { large: true, onSelect });
+            topGrid.appendChild(videoTile);
+            // 2. Grille 4 colonnes pour les non-video
+            const nonVideoGrid = document.createElement('div');
+            nonVideoGrid.className = 'grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2';
+            for (const catId of NON_VIDEO_CAT_IDS) {
+                const cat = categories.find(c => c.id === catId);
+                if (!cat) continue;
+                const tile = _renderCatTile(cat, selectedId === catId, { large: false, onSelect });
+                nonVideoGrid.appendChild(tile);
+            }
+            topGrid.appendChild(nonVideoGrid);
+        }
+
+        // --- Section avancee : 12 sous-cats Gemini detaillees ---
+        const advGrid = document.getElementById('cat-modal-grid');
+        if (advGrid) {
+            advGrid.innerHTML = '';
+            for (const cat of categories) {
+                const tile = _renderCatTile(cat, selectedId === cat.id, { large: false, onSelect });
+                advGrid.appendChild(tile);
+            }
+        }
+    }
+
+    // Helper : retourne le libelle pour une "top-cat" (incluant Video virtuel id=0).
+    function _labelForTopCat(catId, categories) {
+        if (catId === 0) return VIRTUAL_VIDEO_TILE.label;
+        const cat = categories.find(c => c.id === catId);
+        return cat ? cat.label : 'Inconnu';
     }
 
     async function openCategoryModal(paths) {
@@ -729,12 +838,14 @@
             return;
         }
 
-        // Suggestion automatique selon les extensions des paths selectionnes
+        // Suggestion automatique selon les extensions des paths selectionnes.
+        // Sprint C.1bis : la suggestion top-level retourne soit 0 (Video generique)
+        // soit un ID precis non-video (12/3/17/18).
         const suggestion = _suggestCategoryForPaths(paths, data.extension_to_category);
         _categoryModalSelectedId = suggestion.suggestedId;
         _categoryModalPaths = paths;
 
-        // Render grille
+        // Render les 2 grilles (top + advanced)
         _buildCategoryGrid(data.categories, suggestion.suggestedId);
 
         // Header : count
@@ -743,23 +854,21 @@
         if (countEl) countEl.textContent = paths.length;
         if (pluralEl) pluralEl.textContent = paths.length > 1 ? 's' : '';
 
-        // Banner suggestion
+        // Banner suggestion (gere aussi le cas Video virtuel id=0)
         const suggestionBanner = document.getElementById('cat-modal-suggestion-banner');
         const suggestionLabel = document.getElementById('cat-modal-suggestion-label');
-        const suggestedCat = data.categories.find(c => c.id === suggestion.suggestedId);
-        if (suggestionBanner && suggestionLabel && suggestedCat) {
-            suggestionLabel.textContent = suggestedCat.label;
+        if (suggestionBanner && suggestionLabel) {
+            suggestionLabel.textContent = _labelForTopCat(suggestion.suggestedId, data.categories);
             suggestionBanner.classList.remove('hidden');
         }
 
-        // Banner garde-fou mixte
+        // Banner garde-fou mixte (labels top-level)
         const mixedBanner = document.getElementById('cat-modal-mixed-banner');
         const mixedList = document.getElementById('cat-modal-mixed-list');
         if (mixedBanner && mixedList) {
             if (suggestion.isMixed) {
                 const labels = Object.entries(suggestion.categoryCounts).map(([catId, n]) => {
-                    const cat = data.categories.find(c => c.id === parseInt(catId));
-                    return `${n} ${cat ? cat.label : 'Inconnu'}`;
+                    return `${n} ${_labelForTopCat(parseInt(catId), data.categories)}`;
                 });
                 mixedList.textContent = labels.join(', ');
                 mixedBanner.classList.remove('hidden');
@@ -768,23 +877,46 @@
             }
         }
 
-        // Active le bouton Valider (une cat est toujours pre-selectionnee)
+        // Reset la section avancee a fermee a chaque ouverture de la modal.
+        const advSection = document.getElementById('cat-modal-advanced-section');
+        const advToggle = document.getElementById('cat-modal-advanced-toggle');
+        const advChevron = document.getElementById('cat-modal-advanced-chevron');
+        if (advSection) advSection.classList.add('hidden');
+        if (advToggle) advToggle.setAttribute('aria-expanded', 'false');
+        if (advChevron) advChevron.classList.remove('rotate-180');
+
+        // Active le bouton Valider (une top-cat est toujours pre-selectionnee).
         const confirmBtn = document.getElementById('cat-modal-confirm');
         if (confirmBtn) confirmBtn.disabled = false;
 
         // Ouvre la modal
         const modal = document.getElementById('category-modal');
         if (modal) modal.classList.remove('hidden');
-
-        // Reparse les SVG Lucide si tuParseLucide existe
-        if (typeof window.tuParseLucide === 'function') {
-            window.tuParseLucide(modal);
-        }
     }
 
     function closeCategoryModal() {
         const modal = document.getElementById('category-modal');
         if (modal) modal.classList.add('hidden');
+    }
+
+    // Toggle section avancee (12 sous-cats detaillees)
+    const advToggleBtn = document.getElementById('cat-modal-advanced-toggle');
+    if (advToggleBtn) {
+        advToggleBtn.addEventListener('click', () => {
+            const section = document.getElementById('cat-modal-advanced-section');
+            const chevron = document.getElementById('cat-modal-advanced-chevron');
+            if (!section) return;
+            const isExpanded = !section.classList.contains('hidden');
+            if (isExpanded) {
+                section.classList.add('hidden');
+                advToggleBtn.setAttribute('aria-expanded', 'false');
+                if (chevron) chevron.classList.remove('rotate-180');
+            } else {
+                section.classList.remove('hidden');
+                advToggleBtn.setAttribute('aria-expanded', 'true');
+                if (chevron) chevron.classList.add('rotate-180');
+            }
+        });
     }
 
     // Handlers boutons modal

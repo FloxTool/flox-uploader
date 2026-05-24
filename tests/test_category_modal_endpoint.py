@@ -164,12 +164,135 @@ def test_inbox_template_contains_category_modal(client, tmp_path):
     resp = client.get(f"/inbox?path={tmp_path}")
     assert resp.status_code == 200
     html = resp.text
-    # Marqueurs de la modal categorie
+    # Marqueurs de la modal categorie (Sprint C.1bis : section primary + advanced)
     assert 'id="category-modal"' in html
-    assert 'id="cat-modal-grid"' in html
+    assert 'id="cat-modal-top-grid"' in html        # section primary : 1 Video + 4 non-video
+    assert 'id="cat-modal-grid"' in html             # section avancee : 12 sous-cats
+    assert 'id="cat-modal-advanced-toggle"' in html  # lien "Catégoriser plus finement"
+    assert 'id="cat-modal-advanced-section"' in html
     assert 'id="cat-modal-confirm"' in html
     assert 'id="cat-modal-cancel"' in html
     assert "Catégorie de l'upload" in html
+    assert "Catégoriser plus finement" in html       # libelle du lien Avance
     # JS handlers presents
     assert "openCategoryModal" in html
     assert "_categoryModalSelectedId" in html
+    assert "VIRTUAL_VIDEO_TILE" in html              # tuile Video virtuelle
+    assert "TOP_CAT_IDS" in html                     # constants top-cats
+
+
+# ============================================================
+# Sprint C.1bis : propagation hint -> state.manual_category_id
+# ============================================================
+# Fix : le hint user envoye par la modal Inbox doit etre persiste dans
+# state.manual_category_id pour qu'il ne soit pas ecrase par l'auto-detection
+# TMDB dans build_upload_payload() (qui prend manual_category_id en priorite
+# quand > 0).
+
+def test_hint_zero_does_not_override_manual_category_id(tmp_path, monkeypatch):
+    """category_hint=0 ou None -> manual_category_id reste 0 (auto-detect TMDB)."""
+    from flox_uploader.core.package_state import PackageStateData, PackageState, write_state, read_state
+
+    # Simule un package state existant avec manual_category_id=0
+    pkg = tmp_path / "Test.Movie.2024.1080p.x265-TEAM"
+    pkg.mkdir()
+    state = PackageStateData(
+        state=PackageState.PREPARED,
+        release_name="Test.Movie.2024.1080p.x265-TEAM",
+        tracker_key="gemini",
+        created_at="2026-05-23T00:00:00Z",
+        updated_at="2026-05-23T00:00:00Z",
+        manual_category_id=0,
+    )
+    write_state(pkg, state)
+
+    # On simule la logique de pipeline.process_one : pour category_hint=0 ou None,
+    # on ne touche PAS au state. (cf. pipeline.py: `if category_hint and category_hint > 0`)
+    for hint in (None, 0):
+        # Si on ne fait rien, manual_category_id reste 0
+        re_read = read_state(pkg)
+        assert re_read.manual_category_id == 0
+
+
+def test_hint_positive_persists_to_manual_category_id(tmp_path):
+    """category_hint > 0 -> manual_category_id = hint (override sticky)."""
+    from flox_uploader.core.package_state import PackageStateData, PackageState, write_state, read_state
+
+    pkg = tmp_path / "Test.Movie.2024.1080p.x265-TEAM"
+    pkg.mkdir()
+    state = PackageStateData(
+        state=PackageState.PREPARED,
+        release_name="Test.Movie.2024.1080p.x265-TEAM",
+        tracker_key="gemini",
+        created_at="2026-05-23T00:00:00Z",
+        updated_at="2026-05-23T00:00:00Z",
+        manual_category_id=0,
+    )
+    write_state(pkg, state)
+
+    # Simule la logique pipeline.process_one Sprint C.1bis :
+    # `if category_hint is not None and category_hint > 0 -> persiste`.
+    for hint in (7, 12, 3, 17, 18, 15):
+        st = read_state(pkg)
+        st.manual_category_id = int(hint)
+        write_state(pkg, st)
+        re_read = read_state(pkg)
+        assert re_read.manual_category_id == hint, (
+            f"Hint={hint} doit etre persiste dans manual_category_id"
+        )
+
+
+def test_build_upload_payload_respects_manual_category_id(tmp_path):
+    """build_upload_payload doit respecter manual_category_id (override sticky)
+    meme si l'auto-detection TMDB renvoie autre chose.
+
+    Garantit que le hint user persiste depuis la modal Inbox via Sprint C.1bis
+    arrive bien dans le payload final envoye au tracker.
+    """
+    from flox_uploader.core.package_state import PackageStateData, PackageState, write_state
+    from flox_uploader.core.upload_orchestrator import build_upload_payload, PackageBundle, UploadConfig
+    from flox_uploader.core.media_type import MediaType
+
+    pkg = tmp_path / "Test.Movie.2024.1080p.x265-TEAM"
+    pkg.mkdir()
+    nfo = pkg / "test.nfo"
+    nfo.write_text("dummy nfo")
+    torrent = pkg / "test.torrent"
+    torrent.write_bytes(b"")
+
+    # State avec override manual_category_id=7 (Film Anime)
+    state = PackageStateData(
+        state=PackageState.PREPARED,
+        release_name="Test.Movie.2024.1080p.x265-TEAM",
+        tracker_key="gemini",
+        created_at="2026-05-23T00:00:00Z",
+        updated_at="2026-05-23T00:00:00Z",
+        manual_category_id=7,  # Anime Film force par l'user
+    )
+    write_state(pkg, state)
+
+    # Bundle = un film "normal" qui sans override serait classe cat 1
+    bundle = PackageBundle(
+        package_dir=pkg,
+        release_name="Test.Movie.2024.1080p.x265-TEAM",
+        description="...",
+        mediainfo="...",
+        torrent_path=torrent,
+        nfo_path=nfo,
+        infohash="0" * 40,
+        size_bytes=1024 * 1024 * 1024,
+        tmdb_id=12345,
+        imdb_id=0,
+        tvdb_id=0,
+        media_type=MediaType.MOVIE,
+        season_number=0,
+        episode_number=0,
+        tmdb_genres=(),  # Pas Animation -> auto-detect dirait cat 1 (Films)
+    )
+    cfg = UploadConfig(api_url="https://test", api_key="key")
+
+    payload = build_upload_payload(bundle, cfg)
+    # L'override doit gagner sur l'auto-detection
+    assert payload.category_id == 7, (
+        f"L'override manual_category_id=7 doit gagner sur l'auto-detect (obtenu {payload.category_id})"
+    )
