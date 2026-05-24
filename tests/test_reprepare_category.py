@@ -144,8 +144,9 @@ def test_reprepare_invalid_hint_falls_back_to_zero(client, tmp_path, monkeypatch
 # Frontend : smoke template
 # ============================================================
 
-def test_package_detail_contains_change_category_button(client, tmp_path):
-    """Le template package_detail.html doit contenir le bouton + modal Changer."""
+def test_package_detail_contains_reprepare_category_selector(client, tmp_path):
+    """Sprint C.3bis : le selecteur categorie est integre dans la section
+    'Re-preparer le package' (plus de modal separee)."""
     fake_source = tmp_path / "source.mkv"
     fake_source.write_bytes(b"")
     pkg, _ = _make_package_with_source(tmp_path, fake_source)
@@ -153,23 +154,21 @@ def test_package_detail_contains_change_category_button(client, tmp_path):
     resp = client.get(f"/packages/{pkg.name}")
     assert resp.status_code == 200
     html = resp.text
-    # Bouton "Changer" a cote du badge cat
-    assert 'id="btn-change-category"' in html
-    assert "Changer" in html
-    # Modal
-    assert 'id="change-category-modal"' in html
-    assert 'id="change-cat-grid"' in html
-    assert 'id="change-cat-confirm"' in html
-    assert 'id="change-cat-cancel"' in html
-    assert "Repréparer avec une autre catégorie" in html
-    # JS handlers
-    assert "openChangeCategoryModal" in html
-    assert "currentCategoryId" in html
+    # Section renommee "Re-preparer le package" (au lieu de "Override naming")
+    assert "Re-préparer le package" in html
+    # Selecteur categorie integre dans la section
+    assert 'id="reprepare-category"' in html
+    # Le bouton "Re-préparer avec ces options" existe toujours (id inchangee)
+    assert 'id="btn-reprepare"' in html
+    # Sprint C.3bis : ancien bouton "Changer" du header SUPPRIME
+    assert 'id="btn-change-category"' not in html
+    # Sprint C.3bis : ancienne modal change-category-modal SUPPRIMEE
+    assert 'id="change-category-modal"' not in html
 
 
-def test_change_category_button_hidden_for_uploaded_package(client, tmp_path):
-    """Le bouton Changer doit etre cache si le package est deja uploade
-    (le tracker a deja l'infohash, on ne peut plus changer)."""
+def test_reprepare_section_hidden_for_uploaded_package(client, tmp_path):
+    """Sprint C.3bis : pour un package UPLOADED, toute la section
+    'Re-preparer le package' est cachee (selecteur cat inclus)."""
     from flox_uploader.core.package_state import (
         PackageState, PackageStateData, write_state,
     )
@@ -183,7 +182,7 @@ def test_change_category_button_hidden_for_uploaded_package(client, tmp_path):
     pkg = pkg_root / "Uploaded.Pkg.2024-TEAM"
     pkg.mkdir()
     state = PackageStateData(
-        state=PackageState.UPLOADED,  # deja uploade
+        state=PackageState.UPLOADED,
         release_name="Uploaded.Pkg.2024-TEAM",
         tracker_key="gemini",
         created_at="2026-05-23T00:00:00Z",
@@ -204,9 +203,12 @@ def test_change_category_button_hidden_for_uploaded_package(client, tmp_path):
     resp = client.get(f"/packages/{pkg.name}")
     assert resp.status_code == 200
     html = resp.text
-    # Bouton Changer NE DOIT PAS apparaitre pour un package UPLOADED
+    # Section "Re-preparer le package" NE DOIT PAS apparaitre pour UPLOADED
+    # (cf. template : {% if state == 'prepared' or state == 'failed' %})
+    assert 'id="reprepare-category"' not in html
+    assert 'id="btn-reprepare"' not in html
+    # Anciens marqueurs aussi absents
     assert 'id="btn-change-category"' not in html
-    # Modal NE DOIT PAS apparaitre non plus
     assert 'id="change-category-modal"' not in html
 
 
