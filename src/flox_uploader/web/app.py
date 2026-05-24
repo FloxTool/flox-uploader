@@ -600,7 +600,10 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "gemini_resolution_auto": auto_resolution,
         "gemini_resolution_overridden": manual_resolution > 0,
         "gemini_category_options": unit3d_mapping.CATEGORY_OPTIONS,
-        "gemini_type_options": unit3d_mapping.TYPE_OPTIONS,
+        # Sprint C.6 v0.5.0 : type_options conditionnel a la categorie
+        # effective (eff_category). Pour un Jeu -> Windows/PS5/...
+        # Pour un Livre -> EPUB/PDF/... Pour video/Formation -> BluRay/WEB-DL/...
+        "gemini_type_options": unit3d_mapping.type_options_for_category(eff_category),
         "gemini_resolution_options": unit3d_mapping.RESOLUTION_OPTIONS,
         # Confidence
         "confidence_score": conf.score,
