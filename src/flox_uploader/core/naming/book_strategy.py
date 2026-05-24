@@ -35,6 +35,8 @@ from ._helpers import ascii_fold, collapse_dots
 from ..providers.book_metadata import BookMetadata, book_to_dict
 from ..providers.book_lookup import lookup_book_metadata
 from ..providers.epub_metadata import extract_epub_metadata
+from ..providers.pdf_metadata import extract_pdf_metadata
+from ..providers.cbz_metadata import extract_cbz_metadata, extract_cbr_metadata
 
 if TYPE_CHECKING:
     from ...trackers.base import Tracker
@@ -90,14 +92,21 @@ class BookNamingStrategy:
         livres). Le caller pipeline doit verifier ce cas.
         """
         # === 1. Extraction locale ===
+        # Sprint D.7 v0.5.0 : route vers l'extracteur adapte au format.
+        # EPUB / PDF / CBZ / CBR ont chacun leur extracteur dedie. Pour les
+        # autres (MOBI / AZW3 / DJVU / TXT...), pas d'extraction locale -
+        # on part d'un BookMetadata avec juste le file_format pour permettre
+        # le lookup en ligne via le nom de fichier.
         ext = video_path.suffix.lower()
         if ext == ".epub":
             meta = extract_epub_metadata(video_path)
+        elif ext == ".pdf":
+            meta = extract_pdf_metadata(video_path)
+        elif ext == ".cbz":
+            meta = extract_cbz_metadata(video_path)
+        elif ext == ".cbr":
+            meta = extract_cbr_metadata(video_path)
         else:
-            # .cbz / .cbr / .pdf / .mobi / .azw3 / .djvu : pas d'extracteur
-            # local (les .cbz/.cbr sont juste des ZIP/RAR d'images sans
-            # metadata ; .pdf a parfois des metadata XMP mais c'est complexe
-            # et peu fiable). On part d'un BookMetadata vide avec le format.
             meta = BookMetadata(
                 file_path=video_path,
                 file_format=ext.lstrip("."),
