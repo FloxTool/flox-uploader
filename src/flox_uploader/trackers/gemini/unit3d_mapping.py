@@ -881,6 +881,34 @@ def category_ui_metadata(category_id: int) -> dict | None:
     return None
 
 
+def type_options_for_category(category_id: int | None) -> list[tuple[int, str]]:
+    """Retourne la liste des type_id pertinents pour une categorie donnee.
+
+    Sprint C.6 v0.5.0 — permet a la dropdown 'Type' de la page detail de ne
+    proposer que les types valides pour la categorie du package (pas de
+    "Full Disc" pour un livre, pas de "EPUB" pour un film).
+
+    Mapping :
+    - Jeu (cat 3)       -> GAME_TYPE_OPTIONS (Windows/PS5/Switch/Xbox/...)
+    - Livre (cat 12)    -> BOOK_TYPE_OPTIONS (EPUB/PDF/CBR/M4B/...)
+    - Logiciel (cat 17) -> SOFTWARE_TYPE_OPTIONS (Windows/MacOS/Linux/Autre)
+    - Toute autre cat (video + Formation) -> TYPE_OPTIONS (BluRay/WEB-DL/...)
+      Pour Formation (cat 18) il n'y a pas de type officiel Gemini, on
+      retourne TYPE_OPTIONS par defaut faute de mieux (l'user n'a pas
+      vraiment a choisir).
+
+    Garantit de retourner une liste non vide.
+    """
+    if category_id == CATEGORY_GAME:
+        return GAME_TYPE_OPTIONS
+    if category_id == CATEGORY_BOOKS:
+        return BOOK_TYPE_OPTIONS
+    if category_id == CATEGORY_SOFTWARE:
+        return SOFTWARE_TYPE_OPTIONS
+    # Cats video + Formation (pas de type officiel) + fallback inconnu
+    return TYPE_OPTIONS
+
+
 def type_label(type_id: int) -> str:
     """Retourne le libelle humain d'un type_id, ou '?' si inconnu.
 
