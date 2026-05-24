@@ -1,0 +1,24 @@
+{# ============================================================
+   STUB profile = 'game' (Sprint C.4 v0.5.0)
+
+   Affiche un placeholder pour les packages de categorie Jeu video (cat 3).
+   Sprint E enrichira ce template avec :
+   - Jaquette IGDB (cover_big)
+   - Studio, editeur, plateformes, genres
+   - Resume FR (Steam Store si plateforme PC)
+   - Specs PC (Steam min/recommended)
+   - Note PEGI, ESRB
+   - Formulaire override (plateforme, version, edition, IGDB_id manuel)
+   - BBCode template jeu
+============================================================ #}
+{% from "_icons.html" import icon %}
+
+<div class="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4 mb-6 flex items-start gap-3">
+    <span class="text-cyan-600 dark:text-cyan-400 flex-shrink-0 mt-0.5">{{ icon('package', size='md') }}</span>
+    <div class="flex-1 min-w-0 text-sm">
+        <div class="font-semibold text-cyan-900 dark:text-cyan-200 mb-1">Catégorie Jeu vidéo</div>
+        <p class="text-cyan-800 dark:text-cyan-300">
+            Le pipeline jeux sera implémenté en Sprint E v0.5.0 (IGDB + Steam Store). Pour l'instant cette page utilise le rendu vidéo par défaut.
+        </p>
+    </div>
+</div>

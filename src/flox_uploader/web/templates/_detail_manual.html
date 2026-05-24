@@ -1,0 +1,29 @@
+{# ============================================================
+   STUB profile = 'manual' (Sprint C.4 v0.5.0)
+
+   Affiche un placeholder pour les packages de categorie Logiciel (cat 17)
+   et Formation (cat 18). Ces 2 categories partagent le profil 'manuel guide'
+   parce qu'aucune API publique fiable n'existe pour les auto-detecter.
+
+   Sprint H enrichira ce template avec :
+   - Formulaire complet logiciel : Nom, Editeur, Version, Date, Langue,
+     Plateforme, Architecture, Type (installateur/portable/patch/crack),
+     Licence (freeware/shareware/commercial/open-source), URL site officiel
+   - Auto-enrich si URL GitHub repo collee (api.github.com/repos)
+   - VirusTotal opt-in (hash SHA256 installer)
+   - Formulaire complet formation : Titre, Formateur, Plateforme,
+     Annee, Langue, Duree, Niveau, Categorie tech
+   - Auto-enrich si URL YouTube playlist collee
+   - BBCode templates software / training
+============================================================ #}
+{% from "_icons.html" import icon %}
+
+<div class="bg-slate-100 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 rounded-lg p-4 mb-6 flex items-start gap-3">
+    <span class="text-slate-600 dark:text-slate-400 flex-shrink-0 mt-0.5">{{ icon('wrench', size='md') }}</span>
+    <div class="flex-1 min-w-0 text-sm">
+        <div class="font-semibold text-slate-900 dark:text-slate-100 mb-1">Catégorie Logiciel ou Formation</div>
+        <p class="text-slate-700 dark:text-slate-300">
+            Le formulaire manuel guidé sera implémenté en Sprint H v0.5.0 (champs spécifiques Logiciel / Formation + auto-enrich URL GitHub / YouTube + VirusTotal opt-in). Pour l'instant cette page utilise le rendu vidéo par défaut, qui marche pour les overrides manuels via le formulaire générique.
+        </p>
+    </div>
+</div>

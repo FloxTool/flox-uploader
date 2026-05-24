@@ -926,6 +926,13 @@ def create_app() -> FastAPI:
     )
     templates.env.globals["category_ui_metadata"] = _category_ui_metadata
 
+    # Sprint C.4 v0.5.0 : helper pour determiner le profil UI d'un package
+    # (video / show / sport / book / game / manual). Utilise par
+    # package_detail.html pour inclure le bon `_detail_<profile>.html`
+    # selon la categorie effective.
+    from ..core.category_resolver import category_profile as _category_profile
+    templates.env.globals["category_profile"] = _category_profile
+
     # Filtre fmt_date : convertit ISO "2026-05-11T19:17:00Z" en
     # "2026-05-11 19:17" (T -> space, drop Z, drop ms, drop secondes).
     # Format compact et lisible humain.

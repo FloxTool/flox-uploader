@@ -1,0 +1,24 @@
+{# ============================================================
+   STUB profile = 'show' (Sprint C.4 v0.5.0)
+
+   Affiche un placeholder pour les packages de categorie Emission TV (cat 15).
+   Sprint F enrichira ce template avec :
+   - Chaine TV (TVmaze + Wikidata P449)
+   - Presentateur(s) (Wikidata P371)
+   - Genre (talk-show, jeu, reality, news...)
+   - Resume de l'episode + dates (TVmaze)
+   - 3 screenshots ffmpeg generes en fallback si TVmaze image=null
+   - Formulaire override (chaine, presentateur, date)
+   - BBCode template emission
+============================================================ #}
+{% from "_icons.html" import icon %}
+
+<div class="bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800 rounded-lg p-4 mb-6 flex items-start gap-3">
+    <span class="text-pink-600 dark:text-pink-400 flex-shrink-0 mt-0.5">{{ icon('mic-vocal' if false else 'film', size='md') }}</span>
+    <div class="flex-1 min-w-0 text-sm">
+        <div class="font-semibold text-pink-900 dark:text-pink-200 mb-1">Catégorie Émission TV</div>
+        <p class="text-pink-800 dark:text-pink-300">
+            Le pipeline émission TV sera implémenté en Sprint F v0.5.0 (TVmaze + Wikidata + ffmpeg screenshots). Pour l'instant cette page utilise le rendu vidéo par défaut, qui marche correctement pour les overrides manuels (chaîne, présentateur saisis à la main).
+        </p>
+    </div>
+</div>
