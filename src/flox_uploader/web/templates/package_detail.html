@@ -73,9 +73,21 @@
         </a>
         {# Sprint C.2 v0.5.0 : badge categorie au-dessus du release_name pour
            identifier d'un coup d'oeil le type de contenu (Film, Anime, Sport,
-           Livre, Jeu...). Reflete gemini_category_id (override sticky > auto). #}
-        <div class="mb-2">
+           Livre, Jeu...). Reflete gemini_category_id (override sticky > auto).
+           Sprint C.3 v0.5.0 : bouton "Changer" qui ouvre la modal de
+           re-preparation avec une autre categorie (envoie category_id_hint a
+           /api/packages/<name>/reprepare). Cache si l'upload est deja fait ou
+           si on n'a pas de source_file_path. #}
+        <div class="mb-2 flex items-center gap-2 flex-wrap">
             {{ category_badge(gemini_category_id, size='md') }}
+            {% if source_file_path and state not in ['uploaded'] %}
+            <button id="btn-change-category" type="button"
+                    class="interactive inline-flex items-center gap-1 h-7 px-2 text-xs text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    data-tu-tooltip="Repréparer ce package avec une autre catégorie Gemini (régénère release_name, NFO, BBCode, .torrent)">
+                {{ icon('rotate-ccw', size='sm') }}
+                <span>Changer</span>
+            </button>
+            {% endif %}
         </div>
         <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1.5 break-all font-mono tracking-tight">{{ release_name }}</h1>
         <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
@@ -2726,4 +2738,194 @@
     }
 })();
 </script>
+
+{# ============================================================
+   Sprint C.3 v0.5.0 : Modal "Changer de categorie" — mode expert.
+   Affiche les 12 cats Gemini detaillees d'un coup (pas de regroupement Video
+   comme la modal Inbox C.1ter — ici on est sur la page detail, l'user fait
+   un override fin et veut voir toutes les options).
+   ============================================================ #}
+{% if source_file_path and state not in ['uploaded'] %}
+<div id="change-category-modal" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div class="modal-dialog bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 w-full max-w-2xl">
+        <header class="px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+            <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
+                {{ icon('rotate-ccw', size='md', classes='text-primary-600 dark:text-primary-400') }}
+                Repréparer avec une autre catégorie
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Choisis la bonne catégorie Gemini. L'ancien package sera supprimé et le pipeline relancé avec la nouvelle catégorie comme override. Release_name, NFO, BBCode et .torrent seront régénérés.
+            </p>
+        </header>
+
+        <div class="mx-5 mt-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-md p-3 inline-flex items-start gap-2 w-[calc(100%-2.5rem)]">
+            <span class="text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='sm') }}</span>
+            <div class="text-xs text-warning-800 dark:text-warning-300">
+                <strong>Catégorie actuelle :</strong> {{ gemini_category_label }}.
+                L'ancien <code>.torrent</code> (s'il existe) sera invalidé. Tu vas être redirigé vers la queue pour suivre la nouvelle préparation.
+            </div>
+        </div>
+
+        <div class="p-5">
+            <div id="change-cat-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+        </div>
+
+        <footer class="px-5 py-3 bg-slate-50 dark:bg-slate-900/50 rounded-b-xl flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-700">
+            <button id="change-cat-cancel" type="button" class="h-9 px-3.5 text-sm font-medium rounded-md text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Annuler</button>
+            <button id="change-cat-confirm" type="button" disabled class="h-9 px-3.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5">
+                {{ icon('rotate-ccw', size='sm') }}
+                Repréparer
+            </button>
+        </footer>
+    </div>
+</div>
+
+<script>
+(function () {
+    const currentCategoryId = {{ gemini_category_id }};
+    const packageName = {{ package_name | tojson }};
+
+    let _changeCatData = null;     // {categories: [...], extension_to_category: {...}}
+    let _changeCatSelectedId = 0;  // 0 = pas de selection
+
+    async function _loadCatsForChange() {
+        if (_changeCatData) return _changeCatData;
+        try {
+            const resp = await fetch('/api/categories');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            _changeCatData = await resp.json();
+            return _changeCatData;
+        } catch (e) {
+            console.error('Erreur chargement /api/categories :', e);
+            return null;
+        }
+    }
+
+    const _CHG_COLOR_CLASSES = {
+        primary: { sel: 'bg-primary-50 dark:bg-primary-900/30 border-primary-500 text-primary-900 dark:text-primary-100', icon: 'text-primary-600 dark:text-primary-400' },
+        success: { sel: 'bg-success-50 dark:bg-success-900/30 border-success-500 text-success-900 dark:text-success-100', icon: 'text-success-600 dark:text-success-400' },
+        warning: { sel: 'bg-warning-50 dark:bg-warning-900/30 border-warning-500 text-warning-900 dark:text-warning-100', icon: 'text-warning-600 dark:text-warning-400' },
+        pink:    { sel: 'bg-pink-50 dark:bg-pink-900/30 border-pink-500 text-pink-900 dark:text-pink-100', icon: 'text-pink-600 dark:text-pink-400' },
+        cyan:    { sel: 'bg-cyan-50 dark:bg-cyan-900/30 border-cyan-500 text-cyan-900 dark:text-cyan-100', icon: 'text-cyan-600 dark:text-cyan-400' },
+        amber:   { sel: 'bg-amber-50 dark:bg-amber-900/30 border-amber-500 text-amber-900 dark:text-amber-100', icon: 'text-amber-600 dark:text-amber-400' },
+        slate:   { sel: 'bg-slate-100 dark:bg-slate-700/50 border-slate-500 text-slate-900 dark:text-slate-100', icon: 'text-slate-600 dark:text-slate-300' },
+    };
+    const _CHG_UNSELECTED = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500';
+
+    function _renderChangeCatGrid(categories, selectedId) {
+        const grid = document.getElementById('change-cat-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        for (const cat of categories) {
+            const isSelected = cat.id === selectedId;
+            const isCurrent = cat.id === currentCategoryId;
+            const colors = _CHG_COLOR_CLASSES[cat.color] || _CHG_COLOR_CLASSES.primary;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.dataset.catId = String(cat.id);
+            btn.className = 'flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-colors text-left ' +
+                            (isSelected ? colors.sel : _CHG_UNSELECTED);
+            // Marqueur visuel "actuelle" pour l'user
+            const currentBadge = isCurrent ? `<span class="absolute top-1 right-1 text-[9px] uppercase tracking-wide bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1 rounded">actuelle</span>` : '';
+            btn.classList.add('relative');
+            btn.innerHTML = `
+                ${currentBadge}
+                <span class="${isSelected ? colors.icon : 'text-slate-400 dark:text-slate-500'} mb-0.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        ${cat.icon_svg_path || ''}
+                    </svg>
+                </span>
+                <span class="text-xs font-medium text-center leading-tight">${cat.label}</span>
+            `;
+            btn.setAttribute('data-tu-tooltip', cat.hint || cat.label);
+            btn.addEventListener('click', () => {
+                _changeCatSelectedId = cat.id;
+                _renderChangeCatGrid(categories, cat.id);
+                const confirmBtn = document.getElementById('change-cat-confirm');
+                if (confirmBtn) {
+                    // Disabled si l'user a re-cliqu sur la cat actuelle (= aucun changement)
+                    confirmBtn.disabled = (cat.id === currentCategoryId);
+                }
+            });
+            grid.appendChild(btn);
+        }
+    }
+
+    async function openChangeCategoryModal() {
+        const data = await _loadCatsForChange();
+        if (!data) {
+            tu.toast({ title: 'Erreur', message: 'Impossible de charger les catégories.', tone: 'danger' });
+            return;
+        }
+        // Pre-selection = cat actuelle (mais bouton Valider disabled tant qu'on change pas)
+        _changeCatSelectedId = currentCategoryId;
+        _renderChangeCatGrid(data.categories, currentCategoryId);
+        const confirmBtn = document.getElementById('change-cat-confirm');
+        if (confirmBtn) confirmBtn.disabled = true;  // Pas de changement = pas d'action
+        const modal = document.getElementById('change-category-modal');
+        if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeChangeCategoryModal() {
+        const modal = document.getElementById('change-category-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    // Bouton "Changer" -> ouvre la modal
+    const btnChangeCat = document.getElementById('btn-change-category');
+    if (btnChangeCat) {
+        btnChangeCat.addEventListener('click', openChangeCategoryModal);
+    }
+
+    // Annuler / Echap / clic backdrop
+    const btnCancel = document.getElementById('change-cat-cancel');
+    if (btnCancel) btnCancel.addEventListener('click', closeChangeCategoryModal);
+    const modalBg = document.getElementById('change-category-modal');
+    if (modalBg) {
+        modalBg.addEventListener('click', (e) => {
+            if (e.target === modalBg) closeChangeCategoryModal();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalBg && !modalBg.classList.contains('hidden')) {
+            closeChangeCategoryModal();
+        }
+    });
+
+    // Valider -> POST /reprepare avec category_id_hint
+    const btnConfirm = document.getElementById('change-cat-confirm');
+    if (btnConfirm) {
+        btnConfirm.addEventListener('click', async () => {
+            const catId = _changeCatSelectedId;
+            if (catId === 0 || catId === currentCategoryId) return;
+            btnConfirm.disabled = true;
+            const labelSpan = btnConfirm.querySelector('span');
+            const originalLabel = labelSpan ? labelSpan.textContent : 'Repréparer';
+            if (labelSpan) labelSpan.textContent = 'Lancement…';
+            window.showPageLoader && window.showPageLoader();
+            try {
+                const resp = await fetch('/api/packages/' + encodeURIComponent(packageName) + '/reprepare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category_id_hint: catId }),
+                });
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    throw new Error(txt || resp.statusText);
+                }
+                // Succès -> redirige vers la queue pour suivre la nouvelle préparation
+                window.location.href = '/queue';
+            } catch (e) {
+                const loader = document.getElementById('page-loader');
+                if (loader) loader.classList.add('hidden');
+                tu.toast({ title: 'Échec re-préparation', message: e.message, tone: 'danger' });
+                btnConfirm.disabled = false;
+                if (labelSpan) labelSpan.textContent = originalLabel;
+            }
+        });
+    }
+})();
+</script>
+{% endif %}
+
 {% endblock %}
