@@ -1,0 +1,61 @@
+{# ============================================================
+   CATEGORY BADGE MACRO (Sprint C.2 v0.5.0)
+
+   Usage (depuis un autre template) :
+     - importer la macro : from _category_badge.html import category_badge
+     - rendre un badge   : category_badge(1) ou category_badge(12, size='md')
+   (Jinja ne supporte pas les commentaires imbriques, donc on n'utilise pas
+   la syntaxe de variables ici.)
+
+   Rend un badge Tailwind avec :
+   - Icone Lucide SVG (depuis CATEGORY_UI_METADATA.icon_svg_path)
+   - Label categorie (Film, Livre, Jeu...)
+   - Couleur thematique (palette Tailwind du meta.color : primary, success,
+     warning, pink, cyan, amber, slate)
+
+   Sizes supportees :
+     'sm' (defaut) : pour les listes (Queue, table History)
+     'md'          : pour les headers (Page detail)
+     'lg'          : pour les hero/banniere (futur usage)
+
+   Si category_id inconnu : badge "?" gris au lieu de rien (visibilite).
+============================================================ #}
+
+{% macro category_badge(category_id, size='sm', classes='') %}
+{%- set meta = category_ui_metadata(category_id) -%}
+{%- if meta -%}
+  {%- set color = meta.color -%}
+  {%- if size == 'lg' -%}
+    {%- set padding = 'px-3 py-1' -%}
+    {%- set text_size = 'text-sm' -%}
+    {%- set icon_size = 'w-4 h-4' -%}
+    {%- set gap = 'gap-1.5' -%}
+  {%- elif size == 'md' -%}
+    {%- set padding = 'px-2.5 py-1' -%}
+    {%- set text_size = 'text-xs' -%}
+    {%- set icon_size = 'w-3.5 h-3.5' -%}
+    {%- set gap = 'gap-1.5' -%}
+  {%- else -%}
+    {%- set padding = 'px-2 py-0.5' -%}
+    {%- set text_size = 'text-[11px]' -%}
+    {%- set icon_size = 'w-3 h-3' -%}
+    {%- set gap = 'gap-1' -%}
+  {%- endif -%}
+  <span class="category-badge inline-flex items-center {{ gap }} {{ padding }} rounded-md {{ text_size }} font-medium border bg-{{ color }}-50 dark:bg-{{ color }}-900/30 text-{{ color }}-700 dark:text-{{ color }}-300 border-{{ color }}-200 dark:border-{{ color }}-800 {{ classes }}"
+        data-category-id="{{ meta.id }}"
+        data-tu-tooltip="{{ meta.hint }}">
+    <span class="text-{{ color }}-600 dark:text-{{ color }}-400 flex-shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="{{ icon_size }}" aria-hidden="true">
+        {{ meta.icon_svg_path | safe }}
+      </svg>
+    </span>
+    <span>{{ meta.label }}</span>
+  </span>
+{%- else -%}
+  {# Fallback : category_id inconnu -> badge gris discret #}
+  <span class="category-badge inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 {{ classes }}"
+        data-category-id="{{ category_id }}">
+    <span>? (id={{ category_id }})</span>
+  </span>
+{%- endif -%}
+{% endmacro %}

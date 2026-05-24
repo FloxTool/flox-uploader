@@ -124,6 +124,12 @@ class PackageEntry:
     # Taille du contenu (depuis mediainfo_data.size_bytes du debug)
     size_bytes: int = 0
     size_pretty: str = ""
+    # Sprint C.2 v0.5.0 : categorie effective du package (override sticky
+    # state.manual_category_id si > 0, sinon auto-detection TMDB+keywords).
+    # Permet a la Queue d'afficher un badge couleur sans recalcul cote JS.
+    category_id: int = 1                  # CATEGORY_MOVIE par defaut
+    category_label: str = "Film"          # libelle humain
+    category_color: str = "primary"       # palette Tailwind
 
 
 @dataclass
@@ -285,6 +291,18 @@ def _list_packages() -> list[PackageEntry]:
         # _read_package_size lit + parse debug.json. Une seule lecture par
         # iteration (avant : 2 appels = 2 lectures pour rien).
         size = _read_package_size(d)
+        # Sprint C.2 : categorie effective (override > auto > fallback).
+        from ..core.category_resolver import resolve_effective_category
+        from ..trackers.gemini.unit3d_mapping import (
+            category_label as _cat_label,
+            category_ui_metadata as _cat_meta,
+        )
+        try:
+            cat_id = resolve_effective_category(d)
+        except (OSError, ValueError) as e:
+            print(f"[WARN] resolve_effective_category({d.name}) : {e}")
+            cat_id = 1  # CATEGORY_MOVIE fallback
+        cat_meta_dict = _cat_meta(cat_id) or {}
         out.append(PackageEntry(
             release_name=rn_display,
             package_dir=str(d),
@@ -309,6 +327,9 @@ def _list_packages() -> list[PackageEntry]:
             ],
             size_bytes=size,
             size_pretty=_format_size_pretty(size),
+            category_id=cat_id,
+            category_label=_cat_label(cat_id),
+            category_color=cat_meta_dict.get("color", "primary"),
         ))
     # Trier par updated_at decroissant (plus recent en haut)
     out.sort(key=lambda p: p.updated_at, reverse=True)
@@ -896,6 +917,14 @@ def create_app() -> FastAPI:
     # (page Guide). Aucun secret n'est inclus dans le diagnostic.
     from ..core.diagnostic import collect_diagnostic as _collect_diagnostic
     templates.env.globals["app_diagnostic"] = lambda: _collect_diagnostic()
+
+    # Sprint C.2 v0.5.0 : expose category_ui_metadata() aux templates pour
+    # que la macro `category_badge` puisse rendre n'importe quel badge cat
+    # depuis son id. Source de verite unique : CATEGORY_UI_METADATA.
+    from ..trackers.gemini.unit3d_mapping import (
+        category_ui_metadata as _category_ui_metadata,
+    )
+    templates.env.globals["category_ui_metadata"] = _category_ui_metadata
 
     # Filtre fmt_date : convertit ISO "2026-05-11T19:17:00Z" en
     # "2026-05-11 19:17" (T -> space, drop Z, drop ms, drop secondes).
