@@ -710,6 +710,120 @@ def _check_separate_subs(torrent_target: Path | None) -> list[ComplianceIssue]:
 
 
 # ============================================================
+# CHECKS EBOOK (Sprint D.4 v0.5.0)
+# ============================================================
+# Cf. PDF G3MINI TR4CK3R - REGLES D'UPLOAD EBOOK :
+# - Formats autorises : CBR, CBZ, EPUB, DJVU, MOBI, AZW3, PDF
+# - Archives RAR/ZIP/7Z interdites comme conteneur principal (sauf cbr/cbz
+#   qui sont historiquement RAR/ZIP renommes pour les BD)
+# - NFO obligatoire pour tous les ebooks
+
+# Formats autorises par la charte ebook Gemini.
+_BOOK_ALLOWED_FORMATS: frozenset[str] = frozenset({
+    "cbr", "cbz", "epub", "djvu", "mobi", "azw3", "pdf", "m4b",
+})
+
+# Extensions d'archives interdites pour les uploads ebooks.
+# Note : .cbr / .cbz sont des conteneurs ebook standards (RAR/ZIP d'images
+# pour les BD/comics) -> autorises et NON listes ici. .rar / .zip / .7z
+# brut sont interdits.
+_BOOK_FORBIDDEN_ARCHIVES: frozenset[str] = frozenset({
+    ".rar", ".zip", ".7z", ".tar", ".tar.gz", ".gz", ".bz2",
+})
+
+
+def _check_book_format(torrent_target: Path | None) -> list[ComplianceIssue]:
+    """Sprint D.4 : verifie qu'au moins un fichier ebook a un format autorise.
+
+    - Si torrent_target est un fichier : son extension doit etre dans
+      _BOOK_ALLOWED_FORMATS.
+    - Si torrent_target est un dossier : au moins un fichier ebook valide
+      (cbr/cbz/epub/djvu/mobi/azw3/pdf/m4b) doit etre present.
+    """
+    if torrent_target is None or not torrent_target.exists():
+        return []  # cas degenere, pas verifiable
+
+    if torrent_target.is_file():
+        ext = torrent_target.suffix.lower().lstrip(".")
+        if ext not in _BOOK_ALLOWED_FORMATS:
+            return [ComplianceIssue(
+                Severity.BLOCKING, "book_format",
+                f"Format '{ext}' non autorise pour la categorie Livres. "
+                f"Formats acceptes : {', '.join(sorted(_BOOK_ALLOWED_FORMATS)).upper()}."
+            )]
+        return []
+
+    # Dossier : chercher au moins un fichier ebook valide
+    for p in torrent_target.rglob("*"):
+        if not p.is_file() or p.name.startswith("."):
+            continue
+        ext = p.suffix.lower().lstrip(".")
+        if ext in _BOOK_ALLOWED_FORMATS:
+            return []  # trouve, OK
+
+    return [ComplianceIssue(
+        Severity.BLOCKING, "book_format",
+        f"Aucun fichier ebook detecte dans le dossier ({torrent_target.name}). "
+        f"Formats acceptes : {', '.join(sorted(_BOOK_ALLOWED_FORMATS)).upper()}."
+    )]
+
+
+def _check_book_archives(torrent_target: Path | None) -> list[ComplianceIssue]:
+    """Sprint D.4 : rejette les archives RAR/ZIP/7Z comme conteneur principal.
+
+    Charte Gemini ebook : les archives sont interdites. Les BD doivent etre
+    en .cbr/.cbz (qui sont techniquement RAR/ZIP renommes), pas en .rar/.zip
+    brut.
+    """
+    if torrent_target is None or not torrent_target.exists():
+        return []
+    if torrent_target.is_file():
+        ext = torrent_target.suffix.lower()
+        if ext in _BOOK_FORBIDDEN_ARCHIVES:
+            return [ComplianceIssue(
+                Severity.BLOCKING, "book_archive",
+                f"Archive '{ext}' interdite pour la categorie Livres. "
+                "Les BD doivent etre en .cbr/.cbz, les ebooks en EPUB/PDF/MOBI/AZW3/DJVU."
+            )]
+        return []
+    # Dossier : on signale si on trouve une archive interdite comme contenu
+    archives_found = [
+        p.name for p in torrent_target.rglob("*")
+        if p.is_file() and p.suffix.lower() in _BOOK_FORBIDDEN_ARCHIVES
+    ]
+    if archives_found:
+        sample = ", ".join(archives_found[:3])
+        extra = f" (+{len(archives_found) - 3})" if len(archives_found) > 3 else ""
+        return [ComplianceIssue(
+            Severity.BLOCKING, "book_archive",
+            f"Archive(s) interdite(s) detectee(s) : {sample}{extra}. "
+            "Decompresser avant upload (les BD en .cbr/.cbz sont OK)."
+        )]
+    return []
+
+
+def _check_book_nfo_present(package_dir: Path | None) -> list[ComplianceIssue]:
+    """Sprint D.4 : NFO obligatoire pour tous les uploads ebook.
+
+    Charte Gemini : "NFO obligatoire pour tous les ebooks" (cf. PDF
+    REGLES D'UPLOAD EBOOK page 2). On accepte n'importe quel .nfo dans
+    le package_dir (le pipeline generera un NFO minimaliste si l'user
+    n'en fournit pas).
+    """
+    if package_dir is None or not package_dir.is_dir():
+        return []  # verifie plus tard quand le package existe
+    nfo_files = list(package_dir.glob("*.nfo"))
+    if not nfo_files:
+        return [ComplianceIssue(
+            Severity.ERROR, "book_nfo_missing",
+            "Aucun fichier .nfo dans le package. La charte Gemini exige un "
+            "NFO pour tous les uploads ebook. Le pipeline en generera un "
+            "automatiquement si absent."
+        )]
+    return []
+
+
+# ============================================================
 # PROFILS DE COMPLIANCE (Sprint A.3 PR-3 - Brique 2)
 # ============================================================
 
@@ -793,6 +907,7 @@ def check_compliance(
     torrent_target: Path | None = None,
     banned_teams: list[str] | None = None,
     category_id: int | None = None,
+    package_dir: Path | None = None,
 ) -> list[ComplianceIssue]:
     """Lance les checks adaptes au profil de la categorie et retourne les issues.
 
@@ -851,13 +966,25 @@ def check_compliance(
 
         # --- Lot M : CRF hors plage (WARN uniquement, silence si absent) ---
         issues.extend(_check_crf_in_range(video))
+    elif profile == "book":
+        # === Profil book (Sprint D.4 v0.5.0) ===
+        # Charte Gemini ebook (cf. PDF REGLES D'UPLOAD EBOOK) :
+        # - Formats autorises : CBR, CBZ, EPUB, DJVU, MOBI, AZW3, PDF, M4B
+        # - Archives RAR/ZIP/7Z interdites (sauf cbr/cbz qui sont des conteneurs)
+        # - NFO obligatoire pour tous les ebooks
+        # + checks universels (team + banned team).
+        issues.extend(_check_team_present(release_name))
+        issues.extend(_check_banned_team(release_name, banned_teams))
+        issues.extend(_check_book_format(torrent_target))
+        issues.extend(_check_book_archives(torrent_target))
+        issues.extend(_check_book_nfo_present(package_dir))
     else:
-        # === Profils non-video (book / game / manual) ===
-        # Sprint A.3 PR-3 : en attendant les checks specifiques des Sprints
-        # D (ebook), E (jeu), H (logiciel/formation), on applique uniquement
-        # les checks universels (team presente + team non bannie).
-        # En pratique non atteint en PR-3 car le pipeline early-return en
-        # non-video avant d'appeler check_compliance, mais l'API est prete.
+        # === Profils non-video (game / manual) ===
+        # Sprint E (jeu) / H (logiciel/formation) : en attendant leurs
+        # checks specifiques, on applique uniquement les checks universels
+        # (team presente + team non bannie).
+        # En pratique non atteint car le pipeline early-return die() pour
+        # ces categories (Sprint D.4 ne leve la Brique 1 QUE pour les Livres).
         issues.extend(_check_team_present(release_name))
         issues.extend(_check_banned_team(release_name, banned_teams))
 
