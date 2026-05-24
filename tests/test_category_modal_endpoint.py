@@ -160,25 +160,29 @@ def test_queue_add_invalid_hint_falls_back_to_zero(client, tmp_path, monkeypatch
 # ============================================================
 
 def test_inbox_template_contains_category_modal(client, tmp_path):
-    """Le template Inbox doit contenir la modal selecteur de categorie."""
+    """Le template Inbox doit contenir la modal selecteur de categorie.
+
+    Sprint C.1ter : la section "advanced" 12 tuiles a été remplacée par un
+    bouton + intégré dans la tuile Vidéo qui déplie 8 sous-cats vidéo.
+    """
     resp = client.get(f"/inbox?path={tmp_path}")
     assert resp.status_code == 200
     html = resp.text
-    # Marqueurs de la modal categorie (Sprint C.1bis : section primary + advanced)
+    # Marqueurs structurels de la modal
     assert 'id="category-modal"' in html
-    assert 'id="cat-modal-top-grid"' in html        # section primary : 1 Video + 4 non-video
-    assert 'id="cat-modal-grid"' in html             # section avancee : 12 sous-cats
-    assert 'id="cat-modal-advanced-toggle"' in html  # lien "Catégoriser plus finement"
-    assert 'id="cat-modal-advanced-section"' in html
+    assert 'id="cat-modal-top-grid"' in html
     assert 'id="cat-modal-confirm"' in html
     assert 'id="cat-modal-cancel"' in html
     assert "Catégorie de l'upload" in html
-    assert "Catégoriser plus finement" in html       # libelle du lien Avance
     # JS handlers presents
     assert "openCategoryModal" in html
     assert "_categoryModalSelectedId" in html
     assert "VIRTUAL_VIDEO_TILE" in html              # tuile Video virtuelle
     assert "TOP_CAT_IDS" in html                     # constants top-cats
+    assert "VIDEO_SUB_CAT_IDS" in html               # 8 sous-cats video
+    assert "_videoSubcatsExpanded" in html           # etat depliage
+    assert "cat-modal-video-expand-btn" in html      # bouton + sur tuile Video
+    assert "cat-modal-video-subcats" in html         # container sous-cats
 
 
 # ============================================================
