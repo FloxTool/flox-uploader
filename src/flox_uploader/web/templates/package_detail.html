@@ -72,8 +72,12 @@
             Retour à la queue
         </a>
         {# Sprint C.2 v0.5.0 : badge categorie au-dessus du release_name pour
-           identifier d'un coup d'oeil le type de contenu (Film, Anime, Sport,
-           Livre, Jeu...). Reflete gemini_category_id (override sticky > auto). #}
+           identifier d'un coup d'oeil le type de contenu. Reflete
+           gemini_category_id (override sticky > auto).
+           Sprint C.3bis : le bouton "Changer" a ete supprime au profit d'un
+           sélecteur catégorie integre dans la section "Re-préparer le package"
+           plus bas — un seul chemin UX pour tous les overrides qui demandent
+           re-preparation (force_fr, tmdb_id, release_name, categorie). #}
         <div class="mb-2">
             {{ category_badge(gemini_category_id, size='md') }}
         </div>
@@ -763,8 +767,10 @@
    ============================================================ #}
 <section id="toc-override" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-primary-200 dark:border-primary-800 mb-6 overflow-hidden">
     {# NOTES round 9 P2.3 : header cliquable -> toggle de override-body.
-       Default fermé (cas rare ou l'user en a besoin) ; ouvert si l'user
-       a deja un override actif (auto-expand pour visibilite). #}
+       Default fermé ; ouvert si l'user a deja un override actif (auto-expand).
+       Sprint C.3bis : la section "Override naming" est renommee "Re-preparer le
+       package" car elle integre maintenant le selecteur categorie (et plus juste
+       le naming). #}
     {% set _override_has_value = (source_force_fr or source_manual_tmdb_id or source_manual_release_name) %}
     <button type="button" class="tu-section-toggle w-full px-4 py-3 border-b border-primary-200 dark:border-primary-800 bg-primary-50/60 dark:bg-primary-900/20 hover:bg-primary-50 dark:hover:bg-primary-900/30 text-left flex items-start gap-2 transition-colors duration-fast"
             data-section-target="override-naming-body"
@@ -775,18 +781,46 @@
         <div class="flex-1 min-w-0">
             <h3 class="text-sm font-semibold text-primary-900 dark:text-primary-200 inline-flex items-center gap-2">
                 {{ icon('rotate-ccw', size='md') }}
-                Override naming
-                <span class="text-xs font-normal text-primary-700/80 dark:text-primary-400/80">re-préparation requise</span>
+                Re-préparer le package
+                <span class="text-xs font-normal text-primary-700/80 dark:text-primary-400/80">catégorie, langue, TMDB ID, release_name</span>
                 {% if _override_has_value %}
                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-200/60 dark:bg-primary-800/60 text-primary-800 dark:text-primary-200">actif</span>
                 {% endif %}
             </h3>
             <p class="text-xs text-primary-800/80 dark:text-primary-300/80 mt-1">
-                Modifie le naming du package. Les changements ici n'ont effet qu'après avoir cliqué <strong>Re-préparer</strong> en bas.
+                Modifie un ou plusieurs champs ci-dessous puis clique <strong>Re-préparer</strong> en bas pour régénérer release_name, NFO, BBCode et .torrent.
             </p>
         </div>
     </button>
     <div id="override-naming-body" class="p-4 space-y-4 {% if not _override_has_value %}hidden{% endif %}">
+        {# Sprint C.3bis : selecteur categorie en premier (cas usage le plus
+           frequent : "j'ai un mauvais classement, je veux changer la cat").
+           Le badge en face montre la cat actuelle pour reference visuelle.
+           gemini_category_options contient les 12 cats Gemini (cf. unit3d_mapping). #}
+        <div>
+            <label for="reprepare-category" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Catégorie Gemini
+            </label>
+            <div class="flex items-center gap-2 flex-wrap">
+                <select id="reprepare-category"
+                        class="flex-1 min-w-[200px] px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                    {% for opt_id, opt_label in gemini_category_options %}
+                    <option value="{{ opt_id }}" {% if gemini_category_id == opt_id %}selected{% endif %}>
+                        {{ opt_label }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <span class="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">actuelle :</span>
+                {{ category_badge(gemini_category_id, size='sm') }}
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 inline-flex items-start gap-1.5">
+                <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
+                <span>
+                    Changer la catégorie ici regénère le release_name avec la bonne classification (override sticky). Pour un simple changement du payload tracker sans re-prepare, utilise la dropdown plus bas dans <em>Options pour l'upload</em>.
+                </span>
+            </p>
+        </div>
+
         <!-- Force FR (re-prepare) -->
         <div>
             <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Variante FR forcée</label>
@@ -1686,6 +1720,19 @@
             const unlockCb = document.getElementById('opt-unlock-manual-name');
             const manualNameInput = document.getElementById('manual-release-name');
             const manual_release_name = (unlockCb && unlockCb.checked && manualNameInput) ? manualNameInput.value.trim() : '';
+            // Sprint C.3bis : selecteur categorie integre dans la section. On
+            // n'envoie le hint QUE si l'user a explicitement change la cat
+            // (= different de la cat actuelle). Sinon on envoie 0 = pas de
+            // hint -> auto-detection preservee.
+            const catSelect = document.getElementById('reprepare-category');
+            const currentCatId = {{ gemini_category_id }};
+            let category_id_hint = 0;
+            if (catSelect) {
+                const selectedCatId = parseInt(catSelect.value, 10) || 0;
+                if (selectedCatId > 0 && selectedCatId !== currentCatId) {
+                    category_id_hint = selectedCatId;
+                }
+            }
             btnRe.disabled = true;
             const reLabel = btnRe.querySelector('span');
             if (reLabel) reLabel.textContent = 'Création du job…';
@@ -1694,7 +1741,7 @@
                 const resp = await fetch(apiBase + '/reprepare', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({force_fr, append_fr_title, manual_tmdb_id, manual_release_name})
+                    body: JSON.stringify({force_fr, append_fr_title, manual_tmdb_id, manual_release_name, category_id_hint})
                 });
                 if (!resp.ok) {
                     const txt = await resp.text();
@@ -2726,4 +2773,10 @@
     }
 })();
 </script>
+
+{# Sprint C.3bis : la modal change-category-modal a ete supprimee.
+   Le selecteur categorie est maintenant integre dans la section
+   "Re-préparer le package" (cf. plus haut, id="reprepare-category").
+   Un seul chemin UX pour tous les overrides qui demandent re-preparation. #}
+
 {% endblock %}

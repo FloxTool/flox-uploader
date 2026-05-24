@@ -2074,6 +2074,13 @@ def create_app() -> FastAPI:
         except (TypeError, ValueError):
             tmdb_id_override = 0
         manual_release_name = (payload.get("manual_release_name") or "").strip()
+        # Sprint C.3 v0.5.0 : si l'user a clique "Changer de categorie" sur la
+        # page detail, on recoit category_id_hint. Le pipeline le persistera
+        # dans state.manual_category_id via la logique C.1bis (override sticky).
+        try:
+            category_id_hint = int(payload.get("category_id_hint") or 0)
+        except (TypeError, ValueError):
+            category_id_hint = 0
         # Supprime l'ancien package + l'ancien job pour laisser place au nouveau.
         jobs_db.delete_job(source_job.id)
         try:
@@ -2086,6 +2093,7 @@ def create_app() -> FastAPI:
             append_fr_title=append_fr_title,
             tmdb_id_override=tmdb_id_override,
             manual_release_name=manual_release_name,
+            category_id_hint=category_id_hint,
         )
         submit_prepare_job(new_job.id)
         return {
