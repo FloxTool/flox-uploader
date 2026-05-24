@@ -380,8 +380,10 @@ def test_page_detail_book_renders_metadata(client, tmp_path):
     resp = client.get("/packages/Tolkien.Hobbit.2004-Flox")
     assert resp.status_code == 200
     html = resp.text
-    # Marqueurs de la section Metadata Livre (nouveau template _detail_book.html)
-    assert "Métadonnées Livre" in html
+    # Marqueurs de la section Livre (Sprint D.6 : titre = "Livre" ; remplace
+    # la grille Media+Technique pour les packages de profil book).
+    assert "Livre" in html
+    assert "Fichier" in html
     assert "Le Hobbit" in html
     assert "J.R.R. Tolkien" in html
     assert "Pocket Jeunesse" in html
@@ -393,6 +395,13 @@ def test_page_detail_book_renders_metadata(client, tmp_path):
     assert "google_books" in html
     # Couverture image
     assert "https://example.com/hobbit.jpg" in html
+    # Sprint D.6 : la carte Fichier (droite) doit afficher le chemin du
+    # package (preserve depuis l'ancienne carte Technique).
+    assert "Package" in html  # label de la ligne path
+    # Sprint D.6 : la carte Media+Technique video ne doit PAS etre rendue
+    # (replaced par _detail_book.html).
+    assert ">Média<" not in html
+    assert ">Technique<" not in html
 
 
 def test_page_detail_book_without_metadata_shows_fallback(client, tmp_path):
@@ -425,5 +434,6 @@ def test_page_detail_book_without_metadata_shows_fallback(client, tmp_path):
     resp = client.get("/packages/Empty.Book")
     assert resp.status_code == 200
     html = resp.text
-    # Le fallback warning doit apparaitre
-    assert "Aucune métadonnée livre extraite" in html
+    # Sprint D.6 : le fallback (sans book_metadata) doit afficher un
+    # message d'aide pour completer manuellement.
+    assert "Aucune métadonnée extraite" in html

@@ -121,8 +121,10 @@ def test_video_strategy_wraps_compute_confidence_score(tmp_path):
 
 
 def test_stubs_delegate_to_video_for_now(tmp_path):
-    """En Sprint C.5, les 5 stubs delegate au profil video (= NO-OP).
-    Sprints D-H remplaceront par leur logique specifique."""
+    """Sprint C.5 / D.5+ : les stubs *encore* non specialises delegent au
+    profil video. Sprint D.5 a specialise BookConfidenceStrategy avec ses
+    propres penalites (auteur/ISBN/cover) — il est donc EXCLU de ce test.
+    Sprints E-H remplaceront a leur tour Game/Show/Sport/Manual."""
     from flox_uploader.core.package_state import (
         PackageState, PackageStateData, write_state,
     )
@@ -141,10 +143,11 @@ def test_stubs_delegate_to_video_for_now(tmp_path):
     (debug_dir / "debug.json").write_text("{}", encoding="utf-8")
 
     video_score = VideoConfidenceStrategy().compute(pkg)
-    for stub_cls in (BookConfidenceStrategy, GameConfidenceStrategy,
+    # BookConfidenceStrategy specialisee en D.5 -> exclue du test NO-OP.
+    for stub_cls in (GameConfidenceStrategy,
                      ShowConfidenceStrategy, SportConfidenceStrategy,
                      ManualConfidenceStrategy):
         stub_score = stub_cls().compute(pkg)
         assert stub_score.score == video_score.score, (
-            f"{stub_cls.__name__} doit delegate au video score en Sprint C.5"
+            f"{stub_cls.__name__} doit delegate au video score"
         )

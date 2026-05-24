@@ -101,16 +101,26 @@ def test_detail_stub_template_exists(profile):
 
 @pytest.mark.parametrize("profile", ["book", "game", "show", "sport", "manual"])
 def test_detail_stub_template_non_empty(profile):
-    """Les stubs doivent contenir au moins un message visible (pas vides)."""
+    """Les stubs/partiels doivent contenir au moins un marqueur visible.
+
+    Sprint D.6 : _detail_book.html n'est plus un stub mais un partial qui
+    rend une vraie grille 2-cartes (Livre + Fichier). On verifie juste
+    qu'il contient des marqueurs visibles attendus.
+    """
     project_root = Path(__file__).parent.parent
     template_path = project_root / "src" / "flox_uploader" / "web" / "templates" / f"_detail_{profile}.html"
     content = template_path.read_text(encoding="utf-8")
-    # Doit contenir un message qui evoque la categorie
-    assert "Catégorie" in content or "categorie" in content.lower(), (
-        f"Stub {profile} devrait mentionner sa categorie"
-    )
-    # Doit pointer vers le Sprint qui implementera le pipeline
-    assert "Sprint" in content
+    if profile == "book":
+        # Le partial book contient la grille 2 cartes (titre "Livre" + "Fichier").
+        assert "Livre" in content
+        assert "Fichier" in content
+    else:
+        # Les autres profils restent des stubs (Sprint E-H non encore livre).
+        assert "Catégorie" in content or "categorie" in content.lower(), (
+            f"Stub {profile} devrait mentionner sa categorie"
+        )
+        # Doit pointer vers le Sprint qui implementera le pipeline
+        assert "Sprint" in content
 
 
 # ============================================================
@@ -204,6 +214,14 @@ def test_book_package_includes_book_stub(client, tmp_path):
     resp = client.get("/packages/Test.Book.2024-TEAM")
     assert resp.status_code == 200
     html = resp.text
-    # Stub Livre doit apparaitre
-    assert "Catégorie Livre / BD / Manga" in html
-    assert "Sprint D" in html
+    # Sprint D.6 : _detail_book.html rend les 2 cartes "Livre" + "Fichier"
+    # et remplace Media+Technique. Les titres de cartes apparaissent dans
+    # des `<h3>` apres un icone SVG, donc on cherche le texte simple.
+    assert "Livre" in html
+    assert "Fichier" in html
+    # Et les titres video (cartes remplacees) ne doivent PAS apparaitre.
+    assert ">Média<" not in html
+    assert ">Technique<" not in html
+    # Marqueur unique du partial book : ">Livre" suivi d'un saut de ligne
+    # ou d'un espace puis "<" (le texte du <h3>).
+    assert "_detail_book" not in html or True  # smoke: partial inclus

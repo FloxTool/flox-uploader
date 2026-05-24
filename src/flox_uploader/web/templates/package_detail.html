@@ -82,16 +82,13 @@
             {{ category_badge(gemini_category_id, size='md') }}
         </div>
 
-        {# Sprint C.4 v0.5.0 : si le package n'est PAS de profil video (= cat
-           non-video : Livre, Jeu, Logiciel, Formation, Emission TV, Sport),
-           on include le stub specifique au profil pour afficher un message
-           contextuel. En l'etat actuel (Sprints A-C), ce bloc n'est jamais
-           atteint pour Livre/Jeu/Logiciel/Formation : la Brique 1 die() avant
-           la creation du package. Mais l'infrastructure est prete pour les
-           Sprints D/E/F/G/H qui remplaceront ces stubs par leur UI specialisee.
-           Profile 'video' n'inclut rien (le rendu actuel suffit). #}
+        {# Sprint C.4 v0.5.0 : pour les profils non-video (Jeu, Logiciel,
+           Formation, Emission TV, Sport), on include un stub specifique pour
+           afficher un message contextuel. Sprint D.6 v0.5.0 : le profil
+           "book" n'est PAS inclus ici — sa carte 2-colonnes remplace
+           Media+Technique plus bas dans la page (cf. ~ligne 520). #}
         {% set _profile = category_profile(gemini_category_id) %}
-        {% if _profile != 'video' %}
+        {% if _profile not in ('video', 'book') %}
             {% include "_detail_" ~ _profile ~ ".html" ignore missing %}
         {% endif %}
         <h1 class="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1.5 break-all font-mono tracking-tight">{{ release_name }}</h1>
@@ -471,7 +468,12 @@
      empilees en mobile. La carte Media (gauche) decrit l'OEUVRE (TMDB/IMDB
      IDs cliquables, genres, synopsis tronque, langue VO, pays, durée,
      notes). La carte Technique (droite) decrit le FICHIER (container,
-     resolution, codec, pistes audio/sub avec drapeaux). -->
+     resolution, codec, pistes audio/sub avec drapeaux).
+
+     Sprint D.6 v0.5.0 : pour les packages livre (profile == 'book'), on
+     remplace cette grille par _detail_book.html qui rend les memes 2
+     colonnes mais adaptees au livre (Livre + Fichier au lieu de
+     Media + Technique). Visuellement coherent entre profils. -->
 
 {# Detection de la variante FR depuis le release_name (round 6 NOTES).
    Permet d'afficher le bon drapeau (🇨🇦 pour VFQ/VOQ, 🇧🇪 pour VFB)
@@ -518,6 +520,12 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# Sprint D.6 v0.5.0 : pour les livres, on remplace la grille Media+Technique
+   par _detail_book.html (qui rend une grille 2-cartes : Livre + Fichier).
+   Pour tous les autres profils, on garde le rendu video historique. #}
+{% if _profile == 'book' %}
+    {% include "_detail_book.html" ignore missing %}
+{% else %}
 <div id="toc-media" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
     <!-- ====== CARTE MEDIA (l'oeuvre) ====== -->
     <section class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -771,6 +779,7 @@
         </div>
     </section>
 </div>
+{% endif %} {# _profile != 'book' (fin Sprint D.6) #}
 
 {# 2 cartes distinctes — overrides re-prepare vs options upload #}
 {% if state == 'prepared' or state == 'failed' %}
