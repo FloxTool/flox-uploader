@@ -1,0 +1,283 @@
+"""BookNamingStrategy : génère le release_name pour les categories Livre / BD / Manga.
+
+Sprint D.3 v0.5.0 (PLAN-MULTICAT §5.5 + §7.4). Implémente le Protocol
+NamingStrategy pour produire un release_name au format Gemini officiel :
+
+    Auteur.Titre.Date.Langue.Format-TEAM
+
+Exemples :
+    J.R.R.Tolkien.Le.Seigneur.Des.Anneaux.1954.FRENCH.EPUB-Flox
+    Herge.Tintin.T1.Au.Pays.Des.Soviets.1930.FRENCH.CBZ-Flox
+    Stephen.King.La.Tour.Sombre.T3.Terres.Perdues.1991.FRENCH.PDF-Flox
+
+Pour les séries (BD, Manga, sagas), on insère le numéro de tome après le
+titre principal via le marqueur Tx (T1, T2, T3, …).
+
+Stratégie d'enrichissement (D.1 + D.2) :
+1. Extraction locale via `extract_epub_metadata` si .epub
+2. Pour .cbz/.cbr/.pdf/.mobi/.azw3 : on n'a pas d'extracteur local — on
+   se contente du file_format
+3. Lookup en ligne via `lookup_book_metadata` (BnF + Google Books + OpenLibrary)
+4. `merge_from()` préserve l'extraction locale (autoritaire) tout en
+   complétant les champs vides depuis les providers
+
+Sprint D.3 limite : la strategy est autonome et testable, mais l'intégration
+pipeline (lever la Brique 1 die() et router via `get_strategy()`) viendra en
+Sprint D.4 avec la compliance ebook. En l'état, BookNamingStrategy peut être
+appelée par les tests mais le pipeline normal die() toujours sur un .epub.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from ._helpers import ascii_fold, collapse_dots
+from ..providers.book_metadata import BookMetadata, book_to_dict
+from ..providers.book_lookup import lookup_book_metadata
+from ..providers.epub_metadata import extract_epub_metadata
+
+if TYPE_CHECKING:
+    from ...trackers.base import Tracker
+    from ..debug import Debug
+
+
+# Mapping code ISO 639-1 -> token langue Gemini (charte ebook PDF).
+# Source : PLAN-MULTICAT §7.4 + convention Gemini observée sur le tracker.
+# Pour les langues non listées, on retombe sur le code ISO en majuscule.
+_LANG_TOKENS: dict[str, str] = {
+    "fr": "FRENCH",
+    "en": "ENGLISH",
+    "es": "SPANISH",
+    "de": "GERMAN",
+    "it": "ITALIAN",
+    "pt": "PORTUGUESE",
+    "ja": "JAPANESE",
+    "zh": "CHINESE",
+    "ru": "RUSSIAN",
+    "ar": "ARABIC",
+    "ko": "KOREAN",
+    "nl": "DUTCH",
+    "sv": "SWEDISH",
+}
+
+
+class BookNamingStrategy:
+    """Strategy de naming pour Livres / BD / Manga (cat Gemini 12)."""
+
+    name: str = "book"
+
+    def build_release_name(
+        self,
+        video_path: Path,
+        tracker: "Tracker",
+        nfo_text: str,
+        debug: "Debug",
+        *,
+        force_fr: str | None = None,
+        tmdb_resolver: Any | None = None,
+        media_info: Any | None = None,
+        mediainfo_data: dict | None = None,
+        # Sprint D.3 specific : permet d'injecter un orchestrateur custom pour
+        # les tests (sans avoir a mocker http_get + cache_dir + env vars).
+        _book_lookup=None,
+    ) -> tuple[str, dict | None]:
+        """Construit le release_name livre. Retourne `(release_name, None)`.
+
+        `video_path` est en realite le path du fichier ebook (le naming est
+        partage avec la signature NamingStrategy.build_release_name).
+
+        Le `tmdb_context` retourne est `None` (TMDB n'est pas applicable aux
+        livres). Le caller pipeline doit verifier ce cas.
+        """
+        # === 1. Extraction locale ===
+        ext = video_path.suffix.lower()
+        if ext == ".epub":
+            meta = extract_epub_metadata(video_path)
+        else:
+            # .cbz / .cbr / .pdf / .mobi / .azw3 / .djvu : pas d'extracteur
+            # local (les .cbz/.cbr sont juste des ZIP/RAR d'images sans
+            # metadata ; .pdf a parfois des metadata XMP mais c'est complexe
+            # et peu fiable). On part d'un BookMetadata vide avec le format.
+            meta = BookMetadata(
+                file_path=video_path,
+                file_format=ext.lstrip("."),
+            )
+
+        # === 2. Enrichissement online (BnF + Google Books + OpenLibrary) ===
+        # Lookup configure depuis la config app si pas injecte (tests).
+        if _book_lookup is not None:
+            meta = _book_lookup(meta)
+        else:
+            from ... import config
+            google_key = config.get_optional_env("GOOGLE_BOOKS_API_KEY", "")
+            cache_dir = config.data_dir()
+            meta = lookup_book_metadata(
+                meta,
+                cache_dir=cache_dir,
+                google_api_key=google_key,
+            )
+
+        # === 3. Persister les metadonnees dans debug pour la page detail ===
+        try:
+            debug.set("book_metadata", book_to_dict(meta))
+        except Exception:
+            pass  # debug est best-effort
+
+        # === 4. Construire le release_name au format Gemini ===
+        team = (tracker.default_team or "NoTAG").strip()
+        release_name = self._build_book_release_name(meta, team)
+
+        # tmdb_context = None pour les livres (TMDB pas applicable)
+        return release_name, None
+
+    def compliance_profile(self) -> str:
+        """Aligne avec compliance._profile_for_category qui retourne 'book'
+        pour CATEGORY_BOOKS.
+        """
+        return "book"
+
+    def build_extra_payload(self, state_data: Any) -> dict:
+        """Sprint D.5 : ajoutera les champs livre dans le payload Gemini
+        (isbn, etc.). Pour l'instant rien."""
+        return {}
+
+    # ============================================================
+    # Construction du release_name
+    # ============================================================
+
+    def _build_book_release_name(self, meta: BookMetadata, team: str) -> str:
+        """Assemble les tokens scene-compliant :
+        `Auteur.Titre.Date.Langue.Format-TEAM`.
+
+        Pour les séries / BD / Manga, on insère T<num> après le titre :
+        `Auteur.Titre.T<num>.Sous-titre.Date.Langue.Format-TEAM`.
+        """
+        parts: list[str] = []
+
+        # 1. Auteur principal (J.R.R. Tolkien -> J.R.R.Tolkien)
+        author_token = self._tokenize_author(meta.primary_author)
+        if author_token:
+            parts.append(author_token)
+
+        # 2. Titre principal (le nom du livre)
+        # Si serie + tome, on prefere le nom de la serie comme titre principal
+        # et on ajoute le sous-titre du livre apres.
+        if meta.series and meta.series_index > 0:
+            series_token = self._tokenize_title(meta.series)
+            if series_token:
+                parts.append(series_token)
+            # T<num> : on prend l'int si entier, sinon on garde le float (T2.5)
+            if meta.series_index == int(meta.series_index):
+                parts.append(f"T{int(meta.series_index)}")
+            else:
+                parts.append(f"T{meta.series_index}")
+            # Le titre du livre devient un sous-titre apres T<num>
+            if meta.title and meta.title != meta.series:
+                subtitle_token = self._tokenize_title(meta.title)
+                if subtitle_token:
+                    parts.append(subtitle_token)
+        else:
+            # Pas de serie : juste le titre
+            if meta.title:
+                title_token = self._tokenize_title(meta.title)
+                if title_token:
+                    parts.append(title_token)
+
+        # Si on n'a ni auteur ni titre, on utilise le stem du fichier en
+        # fallback (mieux que de retourner juste "EPUB-Team" sans nom).
+        # Doit etre fait AVANT l'ajout de l'annee/langue/format pour que ces
+        # tokens viennent APRES le stem fallback dans le release_name final.
+        if not parts:
+            stem = meta.file_path.stem if meta.file_path else "Unknown"
+            stem_token = self._tokenize_title(stem)
+            if stem_token:
+                parts.append(stem_token)
+
+        # 3. Annee de publication
+        if meta.publication_year > 0:
+            parts.append(str(meta.publication_year))
+
+        # 4. Langue (FRENCH / ENGLISH / JAPANESE...)
+        lang_token = self._tokenize_language(meta.language)
+        if lang_token:
+            parts.append(lang_token)
+
+        # 5. Format (EPUB / PDF / CBZ / MOBI / AZW3 / DJVU)
+        if meta.file_format:
+            parts.append(meta.file_format.upper())
+
+        base = collapse_dots(".".join(parts))
+        # Nettoyer la team du caractere `-` (qui casserait le split scene)
+        clean_team = team.replace("-", "").strip(" .") or "NoTAG"
+        return f"{base}-{clean_team}"
+
+    # ----- helpers tokenisation -----
+
+    def _tokenize_author(self, raw: str) -> str:
+        """Nettoie un nom d'auteur pour le format scene.
+
+        "J.R.R. Tolkien" -> "J.R.R.Tolkien"
+        "Hergé" -> "Herge"
+        "Stephen King" -> "Stephen.King"
+        """
+        if not raw:
+            return ""
+        token = ascii_fold(raw.strip())
+        # Espaces -> points
+        token = ".".join(p for p in token.split() if p)
+        # Nettoyer caracteres non scene-safe (garde lettres, chiffres, points, tirets)
+        import re
+        token = re.sub(r"[^A-Za-z0-9.\-]+", "", token)
+        return collapse_dots(token)
+
+    def _tokenize_title(self, raw: str) -> str:
+        """Nettoie un titre pour le format scene.
+
+        "Le Seigneur des Anneaux" -> "Le.Seigneur.Des.Anneaux"
+        "Tintin au pays des Soviets" -> "Tintin.Au.Pays.Des.Soviets"
+        """
+        if not raw:
+            return ""
+        import re
+        token = ascii_fold(raw.strip())
+        # Apostrophes : retirer sans espace (l'homme -> lhomme)
+        for ch in "'’‘`":
+            token = token.replace(ch, "")
+        # Ponctuation -> espace puis dots
+        for ch in "()[]{},:;!?":
+            token = token.replace(ch, " ")
+        token = token.replace("_", ".")
+        # Espaces -> points + capitalize chaque mot
+        words = [w for w in re.split(r"[\s.]+", token) if w]
+        words = [self._capitalize_word(w) for w in words]
+        token = ".".join(words)
+        # Nettoyer caracteres non scene
+        token = re.sub(r"[^A-Za-z0-9.\-]+", "", token)
+        return collapse_dots(token)
+
+    def _capitalize_word(self, w: str) -> str:
+        """Capitalise un mot du titre (sauf les nombres et acronymes).
+
+        "le" -> "Le", "DES" -> "Des", "1984" -> "1984", "JRR" -> "JRR"
+        Heuristique simple : si all upper et len > 1 -> garder. Sinon
+        capitalize standard.
+        """
+        if not w:
+            return w
+        if w.isdigit():
+            return w
+        # Acronymes >= 2 lettres tous en majuscules : on garde
+        if w.isupper() and len(w) >= 2 and not any(c.isdigit() for c in w):
+            return w
+        return w[0].upper() + w[1:].lower()
+
+    def _tokenize_language(self, lang_code: str) -> str:
+        """Convertit un code ISO 639-1 en token Gemini (FRENCH/ENGLISH/...).
+
+        Fallback : si langue non listee, on retourne le code en majuscule
+        (FR pour un code "fr" sans mapping). Si vide, on retourne "".
+        """
+        if not lang_code:
+            return ""
+        code = lang_code.strip().lower()[:2]
+        return _LANG_TOKENS.get(code, code.upper())

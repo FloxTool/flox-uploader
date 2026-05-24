@@ -117,6 +117,17 @@ def get_strategy(category_id: int | None) -> NamingStrategy:
     Returns:
         Instance de `NamingStrategy` (= VideoNamingStrategy aujourd'hui).
     """
+    # Sprint D.3 v0.5.0 : route vers BookNamingStrategy pour les Livres (cat 12).
+    # Pour l'instant, le pipeline early-return (die() Brique 1) avant
+    # d'appeler la strategy pour les non-video, donc en pratique cette
+    # branche n'est jamais atteinte par process_one. Mais on cable le
+    # dispatch pour les appels directs (tests + Sprint D.4 qui levera le
+    # die() et utilisera vraiment cette strategy).
+    from ...trackers.gemini.unit3d_mapping import CATEGORY_BOOKS
+    if category_id == CATEGORY_BOOKS:
+        from .book_strategy import BookNamingStrategy
+        return BookNamingStrategy()
+
     # Import tardif pour eviter cycle (video_strategy importe naming.strategy
     # via le Protocol, mais ce module ne doit pas importer video_strategy
     # au top-level sous peine de cycle si on ajoute d'autres strategies).
