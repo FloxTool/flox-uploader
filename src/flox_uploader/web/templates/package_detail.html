@@ -2652,20 +2652,37 @@
             listEl.innerHTML = _renderNode(tree, true);
             listEl.classList.remove('hidden');
 
-            // Bind les caret pour expand/collapse.
-            listEl.querySelectorAll('.tu-tree-toggle').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const childUl = btn.nextElementSibling;
-                    const caret = btn.querySelector('.tu-tree-caret');
-                    if (!childUl) return;
-                    const wasHidden = childUl.classList.toggle('hidden');
-                    btn.setAttribute('aria-expanded', wasHidden ? 'false' : 'true');
-                    if (caret) {
-                        if (wasHidden) caret.classList.remove('rotate-90');
-                        else caret.classList.add('rotate-90');
-                    }
-                });
+            // Sprint D.23 fix B2 : event delegation sur listEl au lieu
+            // de binding par bouton. Plus robuste (1 seul listener,
+            // pas de duplication possible, marche meme si on reconstruit
+            // le DOM). Et on remonte le DOM via .closest('.tu-tree-toggle')
+            // pour gerer le cas ou le user clique sur le caret SVG / le span
+            // (event.target = element interne) au lieu du button lui-meme.
+            listEl.addEventListener('click', (e) => {
+                // closest() suit la chaine DOM pour trouver le bouton parent
+                const btn = e.target.closest('.tu-tree-toggle');
+                if (!btn || !listEl.contains(btn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Trouve l'UL frere immediatement apres le bouton.
+                // Defense : si pour une raison qq nextElementSibling ne
+                // retourne pas l'UL (rare), fallback sur querySelector du
+                // parent li.
+                let childUl = btn.nextElementSibling;
+                if (!childUl || childUl.tagName.toLowerCase() !== 'ul') {
+                    const parentLi = btn.closest('li');
+                    childUl = parentLi ? parentLi.querySelector(':scope > ul') : null;
+                }
+                if (!childUl) return;
+
+                const isNowHidden = childUl.classList.toggle('hidden');
+                btn.setAttribute('aria-expanded', isNowHidden ? 'false' : 'true');
+                const caret = btn.querySelector('.tu-tree-caret');
+                if (caret) {
+                    if (isNowHidden) caret.classList.remove('rotate-90');
+                    else caret.classList.add('rotate-90');
+                }
             });
         } catch (e) {
             loading.classList.add('hidden');
