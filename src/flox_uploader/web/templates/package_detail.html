@@ -1307,6 +1307,22 @@
                     </div>
                 </div>
                 <p id="book-options-status" class="text-xs text-slate-500 dark:text-slate-400 mt-2"></p>
+
+                {# Sprint D.18 v0.5.0 : bouton 'Regenerer presentation' pour
+                   appliquer le nouveau manual_cover_url au BBCode sans
+                   relancer toute la prepare. #}
+                <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/60">
+                    <button type="button" id="btn-regenerate-book-presentation"
+                            class="interactive inline-flex items-center gap-1.5 px-3 h-8 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700">
+                        {{ icon('refresh-cw', size='sm') }}
+                        Régénérer la présentation BBCode
+                    </button>
+                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5 inline-flex items-start gap-1.5">
+                        <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
+                        <span>Applique le Cover URL et le sous-type ci-dessus à la fiche BBCode sans relancer toute la prepare. Utile si tu viens de saisir une URL de cover externe.</span>
+                    </p>
+                    <p id="regenerate-presentation-status" class="text-xs mt-1"></p>
+                </div>
             </div>
 
         <!-- Lot R-B : Drapeaux upload deplaces EN BAS (apres tous les champs).
@@ -1931,6 +1947,52 @@
         _catSelectReprepare.addEventListener('change', (e) => {
             const newCatId = parseInt(e.target.value, 10) || 0;
             _applyProfileSections(newCatId);
+        });
+    }
+
+    // === Sprint D.18 v0.5.0 : Regenerate book presentation BBCode ===
+    const btnRegenPresent = document.getElementById('btn-regenerate-book-presentation');
+    if (btnRegenPresent) {
+        btnRegenPresent.addEventListener('click', async () => {
+            const statusEl = document.getElementById('regenerate-presentation-status');
+            btnRegenPresent.disabled = true;
+            if (statusEl) {
+                statusEl.textContent = 'Régénération en cours…';
+                statusEl.className = 'text-xs mt-1 text-slate-500 dark:text-slate-400';
+            }
+            try {
+                const resp = await fetch(apiBase + '/regenerate-presentation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    throw new Error(data.detail || resp.statusText);
+                }
+                if (statusEl) {
+                    let coverHint = '';
+                    if (data.cover_used) {
+                        coverHint = ' Cover utilisée : ' + data.cover_used.substring(0, 60) + (data.cover_used.length > 60 ? '…' : '');
+                    } else if (data.cover_is_local) {
+                        coverHint = ' (cover locale ignorée — saisis une URL externe pour qu\'elle apparaisse dans la fiche tracker)';
+                    } else {
+                        coverHint = ' (aucune cover dans la fiche)';
+                    }
+                    statusEl.textContent = '✓ ' + (data.message || 'Présentation regénérée.') + coverHint;
+                    statusEl.className = 'text-xs mt-1 text-success-700 dark:text-success-400';
+                }
+                tu.toast({ title: 'Présentation regénérée', tone: 'success' });
+                // Recharger la page après 1.5s pour voir le nouveau BBCode
+                setTimeout(() => window.location.reload(), 1500);
+            } catch (e) {
+                if (statusEl) {
+                    statusEl.textContent = '✗ ' + e.message;
+                    statusEl.className = 'text-xs mt-1 text-danger-600 dark:text-danger-400';
+                }
+                tu.toast({ title: 'Échec régénération', message: e.message, tone: 'danger' });
+            } finally {
+                btnRegenPresent.disabled = false;
+            }
         });
     }
 

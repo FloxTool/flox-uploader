@@ -43,13 +43,29 @@
         <div class="p-4">
             {% if bm %}
             <div class="flex gap-4 mb-3">
-                {# Couverture (fournie par BnF / Google Books / OpenLibrary) #}
+                {# Couverture (fournie par BnF / Google Books / OpenLibrary, ou
+                   extraite localement par D.7).
+                   Sprint D.18 v0.5.0 : on indique visuellement si la cover est
+                   externe (utilisable dans la fiche tracker) ou locale (visible
+                   ici mais inaccessible au tracker). #}
                 {% if bm.cover_url %}
-                <div class="flex-shrink-0">
+                {%- set _is_external_cover = bm.cover_url.startswith("http") -%}
+                <div class="flex-shrink-0 relative">
                     <img src="{{ bm.cover_url }}" alt="Couverture {{ bm.title or 'livre' }}"
                          class="w-44 rounded shadow-sm border border-slate-200 dark:border-slate-700"
                          loading="lazy"
                          onerror="this.style.display='none'">
+                    {% if _is_external_cover %}
+                    <span class="absolute bottom-1 left-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-success-100/95 dark:bg-success-900/90 text-success-700 dark:text-success-300 ring-1 ring-success-300 dark:ring-success-700"
+                          data-tu-tooltip="Cover externe accessible publiquement, sera incluse dans la fiche BBCode tracker">
+                        {{ icon('cloud', size='sm') }} externe
+                    </span>
+                    {% else %}
+                    <span class="absolute bottom-1 left-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-warning-100/95 dark:bg-warning-900/90 text-warning-800 dark:text-warning-200 ring-1 ring-warning-300 dark:ring-warning-700"
+                          data-tu-tooltip="Cover extraite localement du fichier — NON accessible par le tracker. Saisis une URL externe dans Options upload (ou utilise un host comme imgbb) pour qu'elle apparaisse dans la fiche.">
+                        {{ icon('alert-triangle', size='sm') }} locale
+                    </span>
+                    {% endif %}
                 </div>
                 {% endif %}
 

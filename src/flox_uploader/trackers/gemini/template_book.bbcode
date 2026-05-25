@@ -20,7 +20,10 @@
 {%- set year_str = meta.publication_year | string if meta.publication_year else "" -%}
 
 [center]
-{%- if meta.cover_url and meta.cover_url.startswith("http") %}
+{%- if meta.cover_url %}
+{# Sprint D.18 v0.5.0 : cover_url est garanti externe (https) ou vide
+   ici, le caller bbcode_book.pick_bbcode_cover_url filtre les covers
+   locales /packages/... qui ne sont pas accessibles depuis le tracker. #}
 [img=300]{{ meta.cover_url }}[/img]
 {% endif %}
 [color=#C9B27D][b][size=30]📚 {{ title_safe }} 📚[/size][/b][/color]
