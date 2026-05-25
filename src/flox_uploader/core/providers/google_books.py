@@ -110,23 +110,59 @@ def _query_by_isbn(isbn: str, api_key: str, http) -> BookMetadata | None:
 
 
 def _query_by_title_author(title: str, author: str, api_key: str, http) -> BookMetadata | None:
-    """Recherche Google Books par titre + auteur."""
-    query_parts = [f'intitle:"{title}"']
-    if author:
-        query_parts.append(f'inauthor:"{author}"')
-    params = {
-        "q": " ".join(query_parts),
-        "maxResults": "1",
-        "langRestrict": "fr",  # privilegier l'edition FR
-    }
-    if api_key:
-        params["key"] = api_key
-    try:
-        resp = http(GOOGLE_BOOKS_URL, params=params)
-    except Exception as e:
-        print(f"[WARN] Google Books lookup title {title!r} : {type(e).__name__} {e}")
+    """Recherche Google Books par titre + auteur.
+
+    Sprint D.16 v0.5.0 : multi-stratégies. On normalise titre+auteur via
+    _query_normalize, puis on essaye plusieurs variantes du plus strict au
+    plus permissif jusqu'à trouver un match.
+
+    Cf. notes Louis N-Rel-1 à N-Rel-6 : nos titres viennent souvent du
+    nom de fichier scene avec dots, tokens techniques (FRENCH/EPUB/PDF/...)
+    et marqueurs tome. La query strict avec quotes ratait tout.
+    """
+    from ._query_normalize import build_query_variants
+    variants = build_query_variants(title, author)
+    if not variants:
         return None
-    return _parse_first_item(resp.json())
+
+    for variant in variants:
+        # Construire la query selon la variante
+        if variant.use_quotes:
+            query_parts = [f'intitle:"{variant.title}"']
+            if variant.author:
+                query_parts.append(f'inauthor:"{variant.author}"')
+        else:
+            # Sans quotes : intitle:mot1 intitle:mot2 (chaque mot du titre)
+            # ou simplement intitle:tous-les-mots-concatenés. Google Books
+            # accepte les 2 ; on prefere la 2e qui est moins stricte.
+            query_parts = [f"intitle:{variant.title}"]
+            if variant.author:
+                query_parts.append(f"inauthor:{variant.author}")
+        params = {
+            "q": " ".join(query_parts),
+            "maxResults": "1",
+            "langRestrict": "fr",  # privilegier l'edition FR
+        }
+        if api_key:
+            params["key"] = api_key
+        try:
+            resp = http(GOOGLE_BOOKS_URL, params=params)
+        except Exception as e:
+            print(f"[WARN] Google Books variant {variant.label!r} : {type(e).__name__} {e}")
+            continue
+
+        try:
+            data = resp.json()
+        except Exception:
+            continue
+
+        meta = _parse_first_item(data)
+        if meta is not None:
+            # Match trouvé : on s'arrête sur la 1re variante qui fonctionne
+            return meta
+
+    # Aucune variante n'a matché
+    return None
 
 
 def _parse_first_item(data) -> BookMetadata | None:
