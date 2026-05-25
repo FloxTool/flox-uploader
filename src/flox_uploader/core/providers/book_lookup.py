@@ -27,6 +27,8 @@ from .book_metadata import BookMetadata
 from .bnf import lookup_bnf
 from .google_books import lookup_google_books
 from .openlibrary import lookup_openlibrary
+from .chasse_aux_livres import lookup_chasse_aux_livres
+from .leslibraires_ca import lookup_leslibraires_ca
 
 
 def lookup_book_metadata(
@@ -34,7 +36,13 @@ def lookup_book_metadata(
     cache_dir: Path | None = None,
     google_api_key: str = "",
     http_get=None,
-    providers_order: tuple[str, ...] = ("bnf", "google_books", "openlibrary"),
+    providers_order: tuple[str, ...] = (
+        "bnf", "google_books", "openlibrary",
+        # Sprint D.26 v0.5.0 (note Louis N-LS2) : fallback scraping si BnF
+        # + Google + OpenLib ratent. Priorite basse (lent + fragile car HTML
+        # peut changer cote site).
+        "chasse_aux_livres", "leslibraires_ca",
+    ),
 ) -> BookMetadata:
     """Enrichit `base` avec les metadonnees BnF, Google Books, OpenLibrary.
 
@@ -69,6 +77,8 @@ def lookup_book_metadata(
     bnf_cache = cache_dir / ".bnf_cache.json" if cache_dir else None
     google_cache = cache_dir / ".google_books_cache.json" if cache_dir else None
     openlib_cache = cache_dir / ".openlibrary_cache.json" if cache_dir else None
+    chasse_cache = cache_dir / ".chasse_aux_livres_cache.json" if cache_dir else None
+    leslibraires_cache = cache_dir / ".leslibraires_ca_cache.json" if cache_dir else None
 
     for provider in providers_order:
         try:
@@ -96,6 +106,24 @@ def lookup_book_metadata(
                 enriched = lookup_openlibrary(
                     isbn=base.isbn,
                     cache_file=openlib_cache,
+                    http_get=http_get,
+                )
+            elif provider == "chasse_aux_livres":
+                # Sprint D.26 : scraping, ISBN seul (pas de search texte)
+                if not base.isbn:
+                    continue
+                enriched = lookup_chasse_aux_livres(
+                    isbn=base.isbn,
+                    cache_file=chasse_cache,
+                    http_get=http_get,
+                )
+            elif provider == "leslibraires_ca":
+                # Sprint D.26 : scraping, ISBN seul
+                if not base.isbn:
+                    continue
+                enriched = lookup_leslibraires_ca(
+                    isbn=base.isbn,
+                    cache_file=leslibraires_cache,
                     http_get=http_get,
                 )
             else:
