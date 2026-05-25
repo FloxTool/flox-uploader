@@ -144,27 +144,95 @@ def build_torrent_info(torrent_path: Path) -> dict:
     files: list[dict] = []
     # torf renvoie t.files comme une list d'objets File ou de Path
     raw_files = list(t.files or [])
+    # Sprint D.25 fix : torf.File herite de Path. f.name = juste le nom
+    # de fichier ('Tome_01.pdf'), tandis que str(f) = full path relatif
+    # dans le torrent ('PDF/Tome_01.pdf'). On veut le full path pour
+    # preserver la hierarchie dans le tree.
     for f in raw_files[:50]:  # cap a 50 entrees pour eviter les BBCode gigantesques
         try:
-            # f peut etre un torf.File (a .size, .name) ou juste un Path
-            name = str(getattr(f, "name", None) or f)
+            full_path = str(f).replace("\\", "/")
             fsize = int(getattr(f, "size", 0) or 0)
         except Exception:
-            name = str(f)
+            full_path = str(f)
             fsize = 0
         files.append({
-            "name": name,
+            "name": full_path,
             "size_bytes": fsize,
             "size_pretty": _format_size(fsize) if fsize else "",
         })
+
+    # Sprint D.25 v0.5.0 (note Louis N-R4) : on construit aussi une vue
+    # hierarchique pour preserver l'arborescence dans le BBCode.
+    # Pour LARGO_WINCH/PDF/Tome_01.pdf + LARGO_WINCH/CBZ/Tome_01.cbz,
+    # on veut voir les 2 sous-dossiers indentes au lieu d'une liste flat.
+    tree_lines = _build_tree_lines(files)
 
     return {
         "size_bytes": size_bytes,
         "size_pretty": _format_size(size_bytes),
         "file_count": len(raw_files),
         "files": files,
+        "tree_lines": tree_lines,
         "truncated": len(raw_files) > 50,
     }
+
+
+def _build_tree_lines(files: list[dict]) -> list[str]:
+    """Sprint D.25 v0.5.0 : construit une representation hierarchique
+    indentee depuis la liste des fichiers.
+
+    Args:
+        files : liste de {"name": str, "size_pretty": str, ...}
+
+    Returns:
+        Liste de strings, chacune une ligne indentee a inclure dans un
+        [code] block du BBCode. Conserve l'ordre des fichiers tels qu'ils
+        apparaissent dans le torrent (sans sort agressif).
+
+    Exemple :
+        Input : [
+          {"name": "PDF/Tome_01.pdf", "size_pretty": "45 Mo"},
+          {"name": "PDF/Tome_02.pdf", "size_pretty": "43 Mo"},
+          {"name": "CBZ/Tome_01.cbz", "size_pretty": "12 Mo"},
+        ]
+        Output :
+          ["PDF/",
+           "  Tome_01.pdf (45 Mo)",
+           "  Tome_02.pdf (43 Mo)",
+           "CBZ/",
+           "  Tome_01.cbz (12 Mo)"]
+    """
+    if not files:
+        return []
+
+    lines: list[str] = []
+    seen_dirs: set[str] = set()
+    for f in files:
+        name = f.get("name", "")
+        size_pretty = f.get("size_pretty", "")
+        if not name:
+            continue
+        # Normalisation : / au lieu de \ pour les paths Windows
+        path_norm = name.replace("\\", "/")
+        parts = path_norm.split("/")
+
+        # Pour chaque niveau de dossier non encore vu, on emet une ligne
+        # "Dir/" indentee.
+        for i in range(len(parts) - 1):
+            dir_path = "/".join(parts[: i + 1])
+            if dir_path in seen_dirs:
+                continue
+            seen_dirs.add(dir_path)
+            indent = "  " * i
+            lines.append(f"{indent}{parts[i]}/")
+
+        # Le fichier lui-meme, indente selon sa profondeur
+        depth = len(parts) - 1
+        indent = "  " * depth
+        size_suffix = f" ({size_pretty})" if size_pretty else ""
+        lines.append(f"{indent}{parts[-1]}{size_suffix}")
+
+    return lines
 
 
 def _format_size(size_bytes: int) -> str:
