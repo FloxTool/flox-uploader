@@ -607,6 +607,13 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "manual_distributor_id": state_data.manual_distributor_id if state_data else 0,
         "manual_region_id": state_data.manual_region_id if state_data else 0,
         "manual_keywords": state_data.manual_keywords if state_data else "",
+        # Sprint D.12 v0.5.0 - Options upload livre (cat 12).
+        "manual_cover_url": (
+            state_data.manual_cover_url if state_data else ""
+        ),
+        "manual_book_subtype": (
+            state_data.manual_book_subtype if state_data else ""
+        ),
         # Auto-derived (depuis tmdb_context et media_info) — pour pre-remplir
         # les nouveaux champs avec les bonnes valeurs par defaut.
         "auto_imdb_id": (tmdb_ctx or {}).get("imdb_id", "") or "",
@@ -2912,6 +2919,29 @@ def create_app() -> FastAPI:
             updates["manual_imdb_id"] = v
         if "manual_keywords" in payload:
             updates["manual_keywords"] = str(payload["manual_keywords"] or "").strip()
+        # Sprint D.12 v0.5.0 - Options upload livre.
+        if "manual_cover_url" in payload:
+            cover = str(payload["manual_cover_url"] or "").strip()
+            # Validation legere : http(s) ou vide
+            if cover and not cover.startswith(("http://", "https://")):
+                raise HTTPException(
+                    400,
+                    "manual_cover_url doit etre une URL http(s) ou vide.",
+                )
+            updates["manual_cover_url"] = cover
+        if "manual_book_subtype" in payload:
+            subtype = str(payload["manual_book_subtype"] or "").strip().lower()
+            allowed_subtypes = {
+                "", "roman", "bd", "manga", "comics", "audiobook",
+                "essai", "manuel",
+            }
+            if subtype not in allowed_subtypes:
+                raise HTTPException(
+                    400,
+                    f"manual_book_subtype invalide. Valeurs autorisees : "
+                    f"{', '.join(sorted(allowed_subtypes - {''}))}.",
+                )
+            updates["manual_book_subtype"] = subtype
         if not updates:
             return {"ok": True, "message": "Rien a mettre a jour."}
         try:

@@ -142,6 +142,16 @@ class PackageStateData:
     # Si vide, on utilise les TMDB keywords (auto-extraction).
     manual_keywords: str = ""
 
+    # Sprint D.12 v0.5.0 - Options upload specifiques livres (cat 12).
+    # manual_cover_url : URL personnalisee pour la couverture (override
+    #   l'auto-extraction BnF/Google/local). Vide = utiliser cover_url
+    #   du book_metadata.
+    # manual_book_subtype : libelle sous-type pour la fiche tracker
+    #   (roman/bd/manga/comics/audiobook/essai/manuel). Vide = auto via
+    #   prefixe ISBN ou non specifie.
+    manual_cover_url: str = ""
+    manual_book_subtype: str = ""
+
     # Renseignes en cas d'echec
     last_error: str = ""
 

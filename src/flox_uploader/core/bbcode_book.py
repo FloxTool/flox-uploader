@@ -21,6 +21,7 @@ def render_book_bbcode(
     meta: BookMetadata,
     release_name: str,
     tracker: Tracker,
+    torrent_info: dict | None = None,
 ) -> str:
     """Rend le BBCode livre.
 
@@ -28,6 +29,9 @@ def render_book_bbcode(
         meta : BookMetadata enrichi (extraction locale + lookup providers).
         release_name : nom de release final (ex: "Auteur.Titre.2024.FRENCH.EPUB-Flox").
         tracker : Tracker (gemini).
+        torrent_info : Sprint D.12 — dict optionnel avec infos torrent
+            {'size_pretty': '12 Mo', 'file_count': 2, 'files': [{'name':..., 'size':...}]}.
+            Si fourni, le template affiche taille + contenu du torrent.
 
     Returns:
         BBCode rendu pret a poster sur Gemini. Jamais vide : si le template
@@ -62,7 +66,70 @@ def render_book_bbcode(
         meta=meta_dict,
         release_name=release_name,
         tracker_name=tracker.display_name,
+        torrent_info=torrent_info or {},
     )
+
+
+def build_torrent_info(torrent_path: Path) -> dict:
+    """Sprint D.12 v0.5.0 : extrait taille + liste des fichiers d'un .torrent.
+
+    Utilise pour enrichir la fiche BBCode livre avec le contenu du torrent
+    (Note Louis : 'on peut indiquer le nombre de fichier, montrer le contenu
+    du torrent').
+
+    Returns:
+        Dict avec keys :
+        - size_bytes : int (somme taille contenu)
+        - size_pretty : str (ex '12.4 Mo')
+        - file_count : int
+        - files : list[dict{name, size_bytes, size_pretty}] capee a 50 entrees
+        Vide si erreur de lecture.
+    """
+    if not torrent_path.is_file():
+        return {}
+    try:
+        from torf import Torrent
+        t = Torrent.read(str(torrent_path))
+    except Exception as e:
+        print(f"[WARN] build_torrent_info ({torrent_path.name}) : {type(e).__name__} {e}")
+        return {}
+
+    size_bytes = int(t.size or 0)
+    files: list[dict] = []
+    # torf renvoie t.files comme une list d'objets File ou de Path
+    raw_files = list(t.files or [])
+    for f in raw_files[:50]:  # cap a 50 entrees pour eviter les BBCode gigantesques
+        try:
+            # f peut etre un torf.File (a .size, .name) ou juste un Path
+            name = str(getattr(f, "name", None) or f)
+            fsize = int(getattr(f, "size", 0) or 0)
+        except Exception:
+            name = str(f)
+            fsize = 0
+        files.append({
+            "name": name,
+            "size_bytes": fsize,
+            "size_pretty": _format_size(fsize) if fsize else "",
+        })
+
+    return {
+        "size_bytes": size_bytes,
+        "size_pretty": _format_size(size_bytes),
+        "file_count": len(raw_files),
+        "files": files,
+        "truncated": len(raw_files) > 50,
+    }
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format taille humaine (1.5 Ko, 12.4 Mo, 1.23 Go)."""
+    if size_bytes <= 0:
+        return ""
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} Ko"
+    if size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} Mo"
+    return f"{size_bytes / (1024 ** 3):.2f} Go"
 
 
 def _fallback_bbcode(meta: BookMetadata, release_name: str) -> str:
