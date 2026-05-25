@@ -170,9 +170,10 @@ def _parse_first_item(data) -> BookMetadata | None:
         except ValueError:
             pass
 
-    # Description
+    # Description (strip HTML : certaines reponses Google contiennent <br>)
     if info.get("description"):
-        meta.description = str(info["description"]).strip()
+        from ._html import strip_html
+        meta.description = strip_html(str(info["description"]))
 
     # Pages
     if info.get("pageCount"):

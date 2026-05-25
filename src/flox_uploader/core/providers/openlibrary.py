@@ -207,13 +207,14 @@ def _parse_openlibrary_record(info: dict, isbn_queried: str) -> BookMetadata | N
                 url = "https://" + url[len("http://"):]
             meta.cover_url = url
 
-    # Notes (description partielle)
+    # Notes (description partielle) — strip HTML (Sprint D.10).
     notes = info.get("notes")
     if notes and not meta.description:
+        from ._html import strip_html
         if isinstance(notes, dict) and notes.get("value"):
-            meta.description = str(notes["value"]).strip()
+            meta.description = strip_html(str(notes["value"]))
         elif isinstance(notes, str):
-            meta.description = notes.strip()
+            meta.description = strip_html(notes)
 
     if not meta.title and not meta.authors and not meta.isbn_13:
         return None

@@ -78,6 +78,10 @@ class BookMetadata:
     # Serie (BD/Manga)
     series: str = ""
     series_index: float = 0.0  # 0 = pas de numero, sinon int ou float
+    # Sprint D.10 v0.5.0 : range tomes pour les multi-volumes / integrales
+    # partielles. Format string "1-6" pour T01-T06 (decision Louis : pas
+    # de token INTEGRALE car incertain). Vide = pas de range detecte.
+    series_index_range: str = ""
 
     # UI / fiche
     description: str = ""
@@ -119,7 +123,7 @@ class BookMetadata:
         # Strings : on remplit si vide
         for str_field in ("title", "subtitle", "publisher", "language",
                           "description", "cover_url", "isbn_13", "isbn_10",
-                          "series", "file_format"):
+                          "series", "series_index_range", "file_format"):
             if not getattr(self, str_field) and getattr(other, str_field):
                 setattr(self, str_field, getattr(other, str_field))
 
@@ -167,6 +171,8 @@ def book_to_dict(meta: BookMetadata) -> dict:
         "page_count": meta.page_count,
         "series": meta.series,
         "series_index": meta.series_index,
+        # Sprint D.10 : range tomes pour les multi-volumes
+        "series_index_range": meta.series_index_range,
         "description": meta.description,
         "cover_url": meta.cover_url,
         "genres": list(meta.genres),
@@ -192,6 +198,7 @@ def book_from_dict(d: dict) -> BookMetadata:
         page_count=int(d.get("page_count") or 0),
         series=str(d.get("series", "") or ""),
         series_index=float(d.get("series_index") or 0.0),
+        series_index_range=str(d.get("series_index_range", "") or ""),
         description=str(d.get("description", "") or ""),
         cover_url=str(d.get("cover_url", "") or ""),
         genres=[str(g) for g in (d.get("genres") or []) if g],

@@ -37,6 +37,9 @@ from ..providers.book_lookup import lookup_book_metadata
 from ..providers.epub_metadata import extract_epub_metadata
 from ..providers.pdf_metadata import extract_pdf_metadata
 from ..providers.cbz_metadata import extract_cbz_metadata, extract_cbr_metadata
+from ..providers.dir_parser import (
+    find_primary_ebook, merge_book_dir_hints, parse_book_dir_name,
+)
 
 if TYPE_CHECKING:
     from ...trackers.base import Tracker
@@ -93,24 +96,60 @@ class BookNamingStrategy:
         """
         # === 1. Extraction locale ===
         # Sprint D.7 v0.5.0 : route vers l'extracteur adapte au format.
-        # EPUB / PDF / CBZ / CBR ont chacun leur extracteur dedie. Pour les
-        # autres (MOBI / AZW3 / DJVU / TXT...), pas d'extraction locale -
-        # on part d'un BookMetadata avec juste le file_format pour permettre
-        # le lookup en ligne via le nom de fichier.
-        ext = video_path.suffix.lower()
+        # Sprint D.10 v0.5.0 : si l'input est un DOSSIER, on cherche le
+        # fichier ebook a l'interieur et on l'analyse, puis on parse le
+        # nom du dossier pour extraire format/serie/tome/range, et on
+        # MERGE intelligemment (decision Louis : merge avec warning si
+        # conflit). Sans ca, les torrents type
+        # `[EPUB].Series.Tome.13.Titre/` se retrouvaient avec book_metadata
+        # vide car video_path = dossier (suffix = "").
+        dir_warnings: list[str] = []
+        dir_hints = None
+        analysis_target = video_path
+
+        if video_path.is_dir():
+            # Trouver le fichier ebook principal dedans
+            primary = find_primary_ebook(video_path)
+            if primary is not None:
+                analysis_target = primary
+                debug.set("book_inner_file", str(primary.relative_to(video_path)))
+            # Parser le nom du dossier (TOUJOURS, meme si pas de fichier interne)
+            dir_hints = parse_book_dir_name(video_path.name)
+            if dir_hints.notes:
+                debug.set("dir_parse_notes", dir_hints.notes)
+
+        # Sprint D.10 fix : un dossier nomme `[PDF].Foo.Titre.2024` a
+        # `Path.suffix = ".2024"` car Path ignore is_dir(). On force ext=""
+        # pour les dossiers afin de ne pas creer un file_format pourri.
+        if analysis_target.is_dir():
+            ext = ""
+        else:
+            ext = analysis_target.suffix.lower()
+
         if ext == ".epub":
-            meta = extract_epub_metadata(video_path)
+            meta = extract_epub_metadata(analysis_target)
         elif ext == ".pdf":
-            meta = extract_pdf_metadata(video_path)
+            meta = extract_pdf_metadata(analysis_target)
         elif ext == ".cbz":
-            meta = extract_cbz_metadata(video_path)
+            meta = extract_cbz_metadata(analysis_target)
         elif ext == ".cbr":
-            meta = extract_cbr_metadata(video_path)
+            meta = extract_cbr_metadata(analysis_target)
         else:
             meta = BookMetadata(
-                file_path=video_path,
-                file_format=ext.lstrip("."),
+                file_path=analysis_target,
+                file_format=ext.lstrip(".") if ext else "",
             )
+
+        # Sprint D.10 : merger les hints du nom de dossier avec l'extraction
+        # du fichier interne. Le dossier prime sur les conflits (decision
+        # Louis : c'est l'organisation utilisateur qui compte).
+        if dir_hints is not None:
+            meta, conflicts = merge_book_dir_hints(
+                meta, dir_hints, dir_priority=True,
+            )
+            if conflicts:
+                debug.set("dir_merge_conflicts", conflicts)
+                dir_warnings.extend(conflicts)
 
         # === 2. Enrichissement online (BnF + Google Books + OpenLibrary) ===
         # Lookup configure depuis la config app si pas injecte (tests).
@@ -169,9 +208,26 @@ class BookNamingStrategy:
             parts.append(author_token)
 
         # 2. Titre principal (le nom du livre)
-        # Si serie + tome, on prefere le nom de la serie comme titre principal
-        # et on ajoute le sous-titre du livre apres.
-        if meta.series and meta.series_index > 0:
+        # Sprint D.10 v0.5.0 : 3 cas de figure :
+        # (a) Range tomes (intégrale partielle) : Serie.T01-T06
+        # (b) Serie + tome unique : Serie.T<num>.Sous-titre
+        # (c) Tome unique sans serie : juste le titre
+        if meta.series and meta.series_index_range:
+            # (a) Intégrale partielle : on padd les numeros sur 2 chiffres
+            # (convention scene : T01-T06 plutot que T1-T6)
+            series_token = self._tokenize_title(meta.series)
+            if series_token:
+                parts.append(series_token)
+            try:
+                lo, hi = meta.series_index_range.split("-")
+                lo_i, hi_i = int(lo), int(hi)
+                width = max(2, len(str(hi_i)))
+                parts.append(f"T{lo_i:0{width}d}-T{hi_i:0{width}d}")
+            except (ValueError, IndexError):
+                # Fallback : utiliser la string brute
+                parts.append(f"T{meta.series_index_range}")
+        elif meta.series and meta.series_index > 0:
+            # (b) Serie + tome unique
             series_token = self._tokenize_title(meta.series)
             if series_token:
                 parts.append(series_token)
@@ -186,7 +242,7 @@ class BookNamingStrategy:
                 if subtitle_token:
                     parts.append(subtitle_token)
         else:
-            # Pas de serie : juste le titre
+            # (c) Pas de serie : juste le titre
             if meta.title:
                 title_token = self._tokenize_title(meta.title)
                 if title_token:
