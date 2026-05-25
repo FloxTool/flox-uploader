@@ -134,6 +134,17 @@ class BookConfidenceStrategy:
                 3,
             ))
 
+        # 9. Sprint D.37 : flag no_canonical_match -> grosse penalite.
+        # Indique que ni BnF ni Google ni ISBN n'ont matche -> on ne peut
+        # PAS garantir la fiche est correcte. Le release_name est construit
+        # depuis la metadata locale (potentiellement pourrie).
+        if book_meta.get("no_canonical_match"):
+            penalties.append((
+                "⚠️ Aucune correspondance fiable trouvée (BnF/Google Books/ISBN tous KO) — "
+                "le release_name est basé sur la metadata locale uniquement, à valider manuellement",
+                30,
+            ))
+
         # Score final
         score = max(0, 100 - sum(p for _, p in penalties))
 

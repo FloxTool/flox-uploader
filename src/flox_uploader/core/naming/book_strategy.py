@@ -328,6 +328,24 @@ class BookNamingStrategy:
         except Exception:
             pass
 
+        # Sprint D.37 v0.5.0 : detection "aucune correspondance fiable".
+        # Si ce n'est pas un periodique (skip intentionnel) ET qu'on n'a
+        # aucun ID externe (Google Books / BnF) ET pas d'ISBN apres lookup,
+        # on marque no_canonical_match=True. Le confidence score deduit
+        # ce flag pour deguerader. UI affiche badge ⚠️.
+        if not is_periodical:
+            has_match = bool(meta.google_books_id or meta.bnf_ark or meta.isbn_13)
+            if not has_match:
+                meta.no_canonical_match = True
+                try:
+                    debug.set("no_canonical_match", True)
+                    debug.set("no_canonical_reason",
+                              "Aucun provider (BnF / Google Books / OpenLibrary) "
+                              "n'a renvoye d'ID externe ni d'ISBN. Le release_name "
+                              "est construit depuis la metadata locale uniquement.")
+                except Exception:
+                    pass
+
         # Sprint D.34 v0.5.0 : sanitize le title final (apres lookup) pour
         # retirer toute pollution scene/BD residuelle dans le stored title.
         # Cas Louis :
