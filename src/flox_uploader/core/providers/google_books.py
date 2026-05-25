@@ -80,6 +80,13 @@ def lookup_google_books(
         if key in cache:
             cached = cache[key]
             if is_miss(cached):
+                # Sprint D.17 v0.5.0 (note Louis N-Rel-3) : si l'ISBN
+                # est MISS dans le cache mais qu'on a un titre, on
+                # tente le fallback title+author au lieu de retourner
+                # None silencieusement. Cas reel : reedition annuelle
+                # (Petit Fute) ou ISBN ebook vs print divergent.
+                if title:
+                    return _query_by_title_author(title, author, api_key=api_key, http=http)
                 return None
             return book_from_dict(cached)
 
@@ -87,9 +94,15 @@ def lookup_google_books(
         if cache_file is not None:
             cache[key] = book_to_dict(meta) if meta else make_miss()
             save_cache(cache_file, cache)
-        return meta
+        if meta is not None:
+            return meta
+        # Sprint D.17 : ISBN ne match pas en ligne -> fallback titre.
+        if title:
+            return _query_by_title_author(title, author, api_key=api_key, http=http)
+        return None
 
-    # Fallback : titre + auteur (pas de cache pour ce type de query, trop variable)
+    # Pas d'ISBN : fallback direct sur titre + auteur (pas de cache pour
+    # ce type de query, trop variable).
     if title:
         return _query_by_title_author(title, author, api_key=api_key, http=http)
 

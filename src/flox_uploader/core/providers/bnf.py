@@ -82,6 +82,9 @@ def lookup_bnf(
         if key in cache:
             cached = cache[key]
             if is_miss(cached):
+                # Sprint D.17 v0.5.0 : fallback titre si ISBN MISS en cache.
+                if title:
+                    return _query_bnf_by_title(title, author, http=http)
                 return None
             return book_from_dict(cached)
 
@@ -89,7 +92,12 @@ def lookup_bnf(
         if cache_file is not None:
             cache[key] = book_to_dict(meta) if meta else make_miss()
             save_cache(cache_file, cache)
-        return meta
+        if meta is not None:
+            return meta
+        # Sprint D.17 : ISBN ne match pas a la BnF -> fallback titre.
+        if title:
+            return _query_bnf_by_title(title, author, http=http)
+        return None
 
     # === Strategie 2 : titre + auteur (pas de cache pour ce type de query) ===
     if title:
