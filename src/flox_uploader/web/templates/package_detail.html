@@ -890,15 +890,16 @@
         </div>
 
         {# Sprint D.9 v0.5.0 : sections specifiques au profil livre. Visibles
-           dynamiquement par JS quand l'user passe la cat sur Livre. #}
+           dynamiquement par JS quand l'user passe la cat sur Livre.
+           Sprint D.11 v0.5.0 : placeholders 'exemple: ...' + champ Annee. #}
         <div data-profile-section="book" {% if _profile != 'book' %}class="hidden"{% endif %}>
             {%- set _bm = book_metadata or {} -%}
             <!-- ISBN manuel -->
             <div class="mb-4">
                 <label for="manual_isbn" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN forcé</label>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <input type="text" id="manual_isbn" value="{{ _bm.isbn_13 or _bm.isbn_10 or '' }}" placeholder="9782266154116"
-                           class="w-44 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="text" id="manual_isbn" value="{{ _bm.isbn_13 or _bm.isbn_10 or '' }}" placeholder="exemple : 9782266154116"
+                           class="w-56 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <span class="text-xs text-slate-500 dark:text-slate-400">
                         Permet le lookup direct BnF / Google Books / OpenLibrary (saute la recherche par titre).
                     </span>
@@ -910,7 +911,7 @@
                 <label for="manual_author" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Auteur principal forcé</label>
                 <input type="text" id="manual_author"
                        value="{{ _bm.authors[0] if _bm.authors else '' }}"
-                       placeholder="J.R.R. Tolkien"
+                       placeholder="exemple : J.R.R. Tolkien"
                        class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     Utilisé en tête du release_name (<code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Auteur.Titre.Date.FRENCH.EPUB-TEAM</code>).
@@ -922,8 +923,20 @@
                 <label for="manual_book_title" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titre forcé</label>
                 <input type="text" id="manual_book_title"
                        value="{{ _bm.title or '' }}"
-                       placeholder="Le Seigneur des Anneaux"
+                       placeholder="exemple : Le Seigneur des Anneaux"
                        class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Année manuelle (Sprint D.11) -->
+            <div class="mb-4">
+                <label for="manual_book_year" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Année de publication forcée</label>
+                <input type="number" id="manual_book_year"
+                       value="{{ _bm.publication_year if (_bm.publication_year or 0) > 0 else '' }}"
+                       min="1900" max="2099" placeholder="exemple : 1999"
+                       class="w-32 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Année dans le release_name (format Gemini <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Auteur.Titre.<strong>Date</strong>.FRENCH.EPUB-TEAM</code>).
+                </p>
             </div>
 
             <p class="text-xs text-slate-500 dark:text-slate-400 inline-flex items-start gap-1.5 mt-2">
@@ -1267,15 +1280,51 @@
 
 {# Sprint D.8 v0.5.0 : warning si la presentation livre est manifestement
    incomplete (champs critiques manquants). On signale a l'user qu'il
-   ferait mieux d'editer avant l'upload. #}
+   ferait mieux d'editer avant l'upload.
+   Sprint D.11 v0.5.0 : warning enrichi avec format Gemini officiel
+   (Auteur.Titre.Date.Langue.Format) — on liste les champs manquants
+   pour ce format precis, pas juste les champs UI. #}
 {% if _profile == 'book' and book_metadata %}
     {%- set _bm = book_metadata -%}
-    {%- set _missing = [] -%}
-    {%- if not (_bm.authors or []) -%}{%- set _ = _missing.append("auteur") -%}{%- endif -%}
-    {%- if not (_bm.description or '').strip() -%}{%- set _ = _missing.append("résumé") -%}{%- endif -%}
-    {%- if not (_bm.cover_url or '').strip() -%}{%- set _ = _missing.append("couverture") -%}{%- endif -%}
-    {%- if not (_bm.isbn_13 or _bm.isbn_10) -%}{%- set _ = _missing.append("ISBN") -%}{%- endif -%}
-    {% if _missing %}
+    {%- set _missing_gemini = [] -%}
+    {%- if not (_bm.authors or []) -%}{%- set _ = _missing_gemini.append("Auteur") -%}{%- endif -%}
+    {%- if not (_bm.title or '').strip() -%}{%- set _ = _missing_gemini.append("Titre") -%}{%- endif -%}
+    {%- if not (_bm.publication_year or 0) -%}{%- set _ = _missing_gemini.append("Date") -%}{%- endif -%}
+    {%- if not (_bm.language or '').strip() -%}{%- set _ = _missing_gemini.append("Langue") -%}{%- endif -%}
+    {%- if not (_bm.file_format or '').strip() -%}{%- set _ = _missing_gemini.append("Format") -%}{%- endif -%}
+    {%- set _missing_present = [] -%}
+    {%- if not (_bm.description or '').strip() -%}{%- set _ = _missing_present.append("résumé") -%}{%- endif -%}
+    {%- if not (_bm.cover_url or '').strip() -%}{%- set _ = _missing_present.append("couverture") -%}{%- endif -%}
+    {%- if not (_bm.isbn_13 or _bm.isbn_10) -%}{%- set _ = _missing_present.append("ISBN") -%}{%- endif -%}
+
+    {# Panneau Conformite naming Gemini : critique car bloque l'usage scene #}
+    {% if _missing_gemini %}
+    <div class="mb-3 border border-danger-200 dark:border-danger-800 bg-danger-50 dark:bg-danger-900/20 rounded-lg p-3 flex items-start gap-2.5">
+        <span class="text-danger-600 dark:text-danger-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
+        <div class="flex-1 min-w-0 text-sm">
+            <div class="font-semibold text-danger-900 dark:text-danger-200 inline-flex items-center gap-1.5">
+                {{ icon('book-open', size='sm') }}
+                Format de release Gemini incomplet
+            </div>
+            <p class="text-danger-800 dark:text-danger-300 mt-1 text-xs">
+                Le format obligatoire Gemini est <code class="bg-danger-100 dark:bg-danger-900/40 px-1 rounded font-mono">Auteur.Titre.Date.Langue.Format-TEAM</code>.
+                Il manque : <strong>{{ _missing_gemini | join(", ") }}</strong>.
+            </p>
+            <p class="text-danger-700 dark:text-danger-300 mt-1 text-xs">
+                Le release_name est généré à partir de ces champs. Tu peux les compléter manuellement dans la section <strong>Re-préparer le package</strong> ci-dessous, puis relancer.
+            </p>
+            <button type="button"
+                    class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-danger-600 text-white hover:bg-danger-700"
+                    onclick="document.getElementById('toc-override')?.scrollIntoView({behavior:'smooth',block:'start'});const el=document.getElementById('override-naming-body');if(el&&el.classList.contains('hidden')){el.classList.remove('hidden');}">
+                {{ icon('edit', size='sm') }}
+                Compléter manuellement
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Panneau Presentation incomplete : moins critique, juste fiche pauvre #}
+    {% if _missing_present %}
     <div class="mb-3 border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20 rounded-lg p-3 flex items-start gap-2.5">
         <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
         <div class="flex-1 min-w-0 text-sm">
@@ -1283,7 +1332,7 @@
                 Présentation incomplète
             </div>
             <p class="text-warning-800 dark:text-warning-300 mt-0.5 text-xs">
-                Champs manquants : <strong>{{ _missing | join(", ") }}</strong>. La fiche uploadée sera plus pauvre que si tu complètes manuellement. Édite la présentation ci-dessous pour ajouter ce qui manque.
+                Champs manquants pour la fiche tracker : <strong>{{ _missing_present | join(", ") }}</strong>. La fiche uploadée sera plus pauvre que si tu complètes manuellement.
             </p>
             <button type="button"
                     class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-warning-600 text-white hover:bg-warning-700"
@@ -1868,12 +1917,15 @@
             // Sprint D.9 v0.5.0 : champs livre (ISBN/auteur/titre). Envoyes
             // seulement si non-vides ; backend les utilise pour surcharger
             // l'extraction locale dans BookNamingStrategy.
+            // Sprint D.11 v0.5.0 : champ annee (manual_book_year).
             const isbnInput = document.getElementById('manual_isbn');
             const authorInput = document.getElementById('manual_author');
             const bookTitleInput = document.getElementById('manual_book_title');
+            const bookYearInput = document.getElementById('manual_book_year');
             const manual_isbn = (isbnInput && isbnInput.value || '').trim();
             const manual_author = (authorInput && authorInput.value || '').trim();
             const manual_book_title = (bookTitleInput && bookTitleInput.value || '').trim();
+            const manual_book_year = (bookYearInput && bookYearInput.value || '').trim();
 
             btnRe.disabled = true;
             const reLabel = btnRe.querySelector('span');
@@ -1887,6 +1939,7 @@
                         force_fr, append_fr_title, manual_tmdb_id,
                         manual_release_name, category_id_hint,
                         manual_isbn, manual_author, manual_book_title,
+                        manual_book_year,
                     })
                 });
                 if (!resp.ok) {

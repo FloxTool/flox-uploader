@@ -122,6 +122,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         manual_book_title=(
             getattr(args, "manual_book_title", None) or None
         ),
+        manual_book_year=(
+            int(getattr(args, "manual_book_year", 0) or 0) or None
+        ),
     )
 
     # Si --upload demande, on enchaine la boucle upload
@@ -427,6 +430,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_prepare.add_argument(
         "--manual-book-title", dest="manual_book_title", default="",
         help="(Cat Livres) Titre du livre force (override extraction).",
+    )
+    # Sprint D.11 v0.5.0 : annee livre forcee.
+    p_prepare.add_argument(
+        "--manual-book-year", dest="manual_book_year", type=int, default=0,
+        help="(Cat Livres) Annee de publication forcee (1900-2099).",
     )
     _add_upload_options(p_prepare, default_dry_run=True)
     p_prepare.set_defaults(func=cmd_prepare)

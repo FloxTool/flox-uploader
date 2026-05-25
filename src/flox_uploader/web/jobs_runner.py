@@ -447,12 +447,15 @@ def _run_prepare_job(job_id: int) -> None:
     if job.category_id_hint:
         cmd.extend(["--category-hint", str(job.category_id_hint)])
     # Sprint D.9 v0.5.0 : overrides livre (ISBN/auteur/titre).
+    # Sprint D.11 v0.5.0 : annee livre forcee.
     if job.manual_isbn:
         cmd.extend(["--manual-isbn", job.manual_isbn])
     if job.manual_author:
         cmd.extend(["--manual-author", job.manual_author])
     if job.manual_book_title:
         cmd.extend(["--manual-book-title", job.manual_book_title])
+    if job.manual_book_year:
+        cmd.extend(["--manual-book-year", str(job.manual_book_year)])
 
     # Env override : APPEND_FR_TITLE_TO_RELEASE_NAME passe au subprocess
     subprocess_env = dict(os.environ)

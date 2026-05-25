@@ -54,6 +54,9 @@ class PendingJob:
     manual_isbn: str = ""        # ISBN-13 ou ISBN-10 (auto-detect du type)
     manual_author: str = ""      # auteur principal force (1 seul)
     manual_book_title: str = ""  # titre du livre force
+    # Sprint D.11 v0.5.0 : annee de publication forcee (utilisee dans
+    # release_name livre 'Auteur.Titre.YEAR.Langue.Format-TEAM').
+    manual_book_year: int = 0
 
 
 # ============================================================
@@ -148,6 +151,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
         if "manual_book_title" not in cols:
             _add_column_idempotent(conn, "pending_jobs", "manual_book_title",
                                    "TEXT NOT NULL DEFAULT ''")
+        # Sprint D.11 v0.5.0 : annee livre forcee.
+        if "manual_book_year" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "manual_book_year",
+                                   "INTEGER NOT NULL DEFAULT 0")
         # Migration one-shot via PRAGMA user_version pour s'executer
         # une seule fois. Sinon (round 4 bug) on ecraserait les valeurs
         # priority_order=0 valides posees par move_job('top').
@@ -206,6 +213,11 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_book_title = row["manual_book_title"] or ""
     except (IndexError, KeyError):
         manual_book_title = ""
+    # Sprint D.11 : annee livre forcee (bases pre-D.11 = 0).
+    try:
+        manual_book_year = int(row["manual_book_year"] or 0)
+    except (IndexError, KeyError, ValueError, TypeError):
+        manual_book_year = 0
     return PendingJob(
         id=row["id"],
         file_path=row["file_path"],
@@ -226,6 +238,7 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_isbn=manual_isbn,
         manual_author=manual_author,
         manual_book_title=manual_book_title,
+        manual_book_year=manual_book_year,
     )
 
 
@@ -247,14 +260,16 @@ def add_job(
     manual_isbn: str = "",
     manual_author: str = "",
     manual_book_title: str = "",
+    manual_book_year: int = 0,
 ) -> PendingJob:
     """Cree un nouveau job en status 'pending'.
 
     Args:
         category_id_hint : Sprint C.1 — categorie Gemini choisie par l'user dans la
             modal Inbox (0 = auto-detect via extension dans early_category_guess).
-        manual_isbn / manual_author / manual_book_title : Sprint D.9 — overrides
-            livre saisis dans la section Re-preparer. Vides par defaut.
+        manual_isbn / manual_author / manual_book_title / manual_book_year :
+            Sprint D.9 + D.11 — overrides livre saisis dans la section
+            Re-preparer. Vides / 0 par defaut.
     """
     now = _now_iso()
     with _connect() as conn:
@@ -262,13 +277,14 @@ def add_job(
             "INSERT INTO pending_jobs "
             "(file_path, status, force_fr, append_fr_title, tmdb_id_override, "
             "manual_release_name, category_id_hint, "
-            "manual_isbn, manual_author, manual_book_title, "
+            "manual_isbn, manual_author, manual_book_title, manual_book_year, "
             "created_at, updated_at) "
-            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (file_path, force_fr, 1 if append_fr_title else 0,
              int(tmdb_id_override or 0), manual_release_name,
              int(category_id_hint or 0),
              manual_isbn or "", manual_author or "", manual_book_title or "",
+             int(manual_book_year or 0),
              now, now),
         )
         job_id = cur.lastrowid

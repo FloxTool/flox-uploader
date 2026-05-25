@@ -72,27 +72,67 @@ class BookConfidenceStrategy:
                 (f"Compliance ebook bloquante ({blocking_count})", 25),
             )
 
-        # 4. Auteur absent
+        # 4. Auteur absent (champ obligatoire format Gemini)
         if not (book_meta.get("authors") or []):
-            penalties.append(("Auteur manquant", 20))
+            penalties.append((
+                "Auteur manquant — format Gemini incomplet (Auteur.Titre.Date.Langue.Format)",
+                20,
+            ))
 
-        # 5. ISBN absent (13 ou 10)
+        # 4bis. Titre absent (champ obligatoire format Gemini)
+        if not (book_meta.get("title") or "").strip():
+            penalties.append((
+                "Titre manquant — format Gemini incomplet",
+                15,
+            ))
+
+        # 4ter. Date absente (champ obligatoire format Gemini)
+        if not (book_meta.get("publication_year") or 0):
+            penalties.append((
+                "Date de publication manquante — format Gemini incomplet",
+                5,
+            ))
+
+        # 4quater. Langue absente (champ obligatoire format Gemini)
+        if not (book_meta.get("language") or "").strip():
+            penalties.append((
+                "Langue manquante — format Gemini incomplet",
+                5,
+            ))
+
+        # 4quinquies. Format absent (champ obligatoire format Gemini)
+        if not (book_meta.get("file_format") or "").strip():
+            penalties.append((
+                "Format fichier manquant — format Gemini incomplet",
+                3,
+            ))
+
+        # 5. ISBN absent (13 ou 10) — important pour le lookup
         if not book_meta.get("isbn_13") and not book_meta.get("isbn_10"):
-            penalties.append(("ISBN manquant", 15))
+            penalties.append((
+                "ISBN manquant — pas de lookup fiable BnF/Google/OpenLib",
+                15,
+            ))
 
         # 6. Description vide
         if not (book_meta.get("description") or "").strip():
-            penalties.append(("Resume vide", 5))
+            penalties.append(("Résumé vide — fiche tracker pauvre", 5))
 
         # 7. Pas de couverture
         if not (book_meta.get("cover_url") or "").strip():
-            penalties.append(("Couverture absente", 3))
+            penalties.append(("Couverture absente — fiche tracker sans image", 3))
 
         # 8. Aucun provider en ligne consulte
         sources = book_meta.get("sources") or []
-        online_sources = [s for s in sources if s != "local_epub"]
+        online_sources = [
+            s for s in sources
+            if s not in ("local_epub", "local_pdf", "local_cbz", "local_cbr")
+        ]
         if not online_sources and book_meta:
-            penalties.append(("Pas de lookup en ligne (BnF/Google/OpenLib)", 3))
+            penalties.append((
+                "Pas de lookup en ligne (BnF/Google Books/OpenLibrary)",
+                3,
+            ))
 
         # Score final
         score = max(0, 100 - sum(p for _, p in penalties))
