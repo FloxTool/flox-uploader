@@ -231,10 +231,13 @@ def _extract_dc_fields(dc_block: ET.Element) -> BookMetadata:
         elif len(raw) >= 2:
             meta.language = raw[:2]
 
-    # Description
+    # Description : BnF retourne parfois du HTML (<div>, <b>, etc.) qu'on
+    # nettoie pour avoir du plain text propre dans la fiche BBCode et la
+    # page detail web (Sprint D.10 v0.5.0).
     descriptions = _findall_dc(dc_block, "description")
     if descriptions and descriptions[0].text:
-        meta.description = descriptions[0].text.strip()
+        from ._html import strip_html
+        meta.description = strip_html(descriptions[0].text)
 
     # Subjects -> genres
     for subj in _findall_dc(dc_block, "subject"):
