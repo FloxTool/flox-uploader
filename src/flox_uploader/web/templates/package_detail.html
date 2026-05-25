@@ -320,6 +320,71 @@
     {% endif %}
 </section>
 
+{# Sprint D.8 + D.11 v0.5.0 : warnings livre (Format Gemini incomplet +
+   Presentation incomplete). Sprint D.14 v0.5.0 : DEPLACES sous 'Detail
+   du score' (note N-UX-1 Louis) pour que le verdict global soit lu
+   en premier, puis les details d'explication. #}
+{% if _profile == 'book' and book_metadata %}
+    {%- set _bm = book_metadata -%}
+    {%- set _missing_gemini = [] -%}
+    {%- if not (_bm.authors or []) -%}{%- set _ = _missing_gemini.append("Auteur") -%}{%- endif -%}
+    {%- if not (_bm.title or '').strip() -%}{%- set _ = _missing_gemini.append("Titre") -%}{%- endif -%}
+    {%- if not (_bm.publication_year or 0) -%}{%- set _ = _missing_gemini.append("Date") -%}{%- endif -%}
+    {%- if not (_bm.language or '').strip() -%}{%- set _ = _missing_gemini.append("Langue") -%}{%- endif -%}
+    {%- if not (_bm.file_format or '').strip() -%}{%- set _ = _missing_gemini.append("Format") -%}{%- endif -%}
+    {%- set _missing_present = [] -%}
+    {%- if not (_bm.description or '').strip() -%}{%- set _ = _missing_present.append("résumé") -%}{%- endif -%}
+    {%- if not (_bm.cover_url or '').strip() -%}{%- set _ = _missing_present.append("couverture") -%}{%- endif -%}
+    {%- if not (_bm.isbn_13 or _bm.isbn_10) -%}{%- set _ = _missing_present.append("ISBN") -%}{%- endif -%}
+
+    {# Panneau Conformite naming Gemini : critique car bloque l'usage scene #}
+    {% if _missing_gemini %}
+    <div class="mb-3 border border-danger-200 dark:border-danger-800 bg-danger-50 dark:bg-danger-900/20 rounded-lg p-3 flex items-start gap-2.5">
+        <span class="text-danger-600 dark:text-danger-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
+        <div class="flex-1 min-w-0 text-sm">
+            <div class="font-semibold text-danger-900 dark:text-danger-200 inline-flex items-center gap-1.5">
+                {{ icon('book-open', size='sm') }}
+                Format de release Gemini incomplet
+            </div>
+            <p class="text-danger-800 dark:text-danger-300 mt-1 text-xs">
+                Le format obligatoire Gemini est <code class="bg-danger-100 dark:bg-danger-900/40 px-1 rounded font-mono">Auteur.Titre.Date.Langue.Format-TEAM</code>.
+                Il manque : <strong>{{ _missing_gemini | join(", ") }}</strong>.
+            </p>
+            <p class="text-danger-700 dark:text-danger-300 mt-1 text-xs">
+                Le release_name est généré à partir de ces champs. Tu peux les compléter manuellement dans la section <strong>Re-préparer le package</strong> ci-dessous, puis relancer.
+            </p>
+            <button type="button"
+                    class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-danger-600 text-white hover:bg-danger-700"
+                    onclick="document.getElementById('toc-override')?.scrollIntoView({behavior:'smooth',block:'start'});const el=document.getElementById('override-naming-body');if(el&&el.classList.contains('hidden')){el.classList.remove('hidden');}">
+                {{ icon('edit', size='sm') }}
+                Compléter manuellement
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Panneau Presentation incomplete : moins critique, juste fiche pauvre #}
+    {% if _missing_present %}
+    <div class="mb-6 border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20 rounded-lg p-3 flex items-start gap-2.5">
+        <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
+        <div class="flex-1 min-w-0 text-sm">
+            <div class="font-semibold text-warning-900 dark:text-warning-200">
+                Présentation incomplète
+            </div>
+            <p class="text-warning-800 dark:text-warning-300 mt-0.5 text-xs">
+                Champs manquants pour la fiche tracker : <strong>{{ _missing_present | join(", ") }}</strong>. La fiche uploadée sera plus pauvre que si tu complètes manuellement.
+            </p>
+            <button type="button"
+                    class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-warning-600 text-white hover:bg-warning-700"
+                    onclick="document.getElementById('btn-presentation-toggle')?.click();document.getElementById('toc-bbcode')?.scrollIntoView({behavior:'smooth',block:'start'});">
+                {{ icon('edit', size='sm') }}
+                Éditer la présentation
+            </button>
+        </div>
+    </div>
+    {% endif %}
+{% endif %}
+
 {# === Section Upload (visible si state autorise) === #}
 {% if state in ('prepared', 'validated', 'failed') %}
 <section id="toc-upload" class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 mb-6 overflow-hidden">
@@ -1325,73 +1390,6 @@
 
 {% if mediainfo_nfo_text %}
 {{ nfo_block('mediainfo-nfo-body', 'NFO MediaInfo — généré par le pipeline', 'wrench', mediainfo_nfo_text, body_classes='whitespace-pre max-h-96 overflow-y-auto', extra_label='(' ~ mediainfo_nfo_lines ~ ' lignes)') }}
-{% endif %}
-
-{# Sprint D.8 v0.5.0 : warning si la presentation livre est manifestement
-   incomplete (champs critiques manquants). On signale a l'user qu'il
-   ferait mieux d'editer avant l'upload.
-   Sprint D.11 v0.5.0 : warning enrichi avec format Gemini officiel
-   (Auteur.Titre.Date.Langue.Format) — on liste les champs manquants
-   pour ce format precis, pas juste les champs UI. #}
-{% if _profile == 'book' and book_metadata %}
-    {%- set _bm = book_metadata -%}
-    {%- set _missing_gemini = [] -%}
-    {%- if not (_bm.authors or []) -%}{%- set _ = _missing_gemini.append("Auteur") -%}{%- endif -%}
-    {%- if not (_bm.title or '').strip() -%}{%- set _ = _missing_gemini.append("Titre") -%}{%- endif -%}
-    {%- if not (_bm.publication_year or 0) -%}{%- set _ = _missing_gemini.append("Date") -%}{%- endif -%}
-    {%- if not (_bm.language or '').strip() -%}{%- set _ = _missing_gemini.append("Langue") -%}{%- endif -%}
-    {%- if not (_bm.file_format or '').strip() -%}{%- set _ = _missing_gemini.append("Format") -%}{%- endif -%}
-    {%- set _missing_present = [] -%}
-    {%- if not (_bm.description or '').strip() -%}{%- set _ = _missing_present.append("résumé") -%}{%- endif -%}
-    {%- if not (_bm.cover_url or '').strip() -%}{%- set _ = _missing_present.append("couverture") -%}{%- endif -%}
-    {%- if not (_bm.isbn_13 or _bm.isbn_10) -%}{%- set _ = _missing_present.append("ISBN") -%}{%- endif -%}
-
-    {# Panneau Conformite naming Gemini : critique car bloque l'usage scene #}
-    {% if _missing_gemini %}
-    <div class="mb-3 border border-danger-200 dark:border-danger-800 bg-danger-50 dark:bg-danger-900/20 rounded-lg p-3 flex items-start gap-2.5">
-        <span class="text-danger-600 dark:text-danger-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
-        <div class="flex-1 min-w-0 text-sm">
-            <div class="font-semibold text-danger-900 dark:text-danger-200 inline-flex items-center gap-1.5">
-                {{ icon('book-open', size='sm') }}
-                Format de release Gemini incomplet
-            </div>
-            <p class="text-danger-800 dark:text-danger-300 mt-1 text-xs">
-                Le format obligatoire Gemini est <code class="bg-danger-100 dark:bg-danger-900/40 px-1 rounded font-mono">Auteur.Titre.Date.Langue.Format-TEAM</code>.
-                Il manque : <strong>{{ _missing_gemini | join(", ") }}</strong>.
-            </p>
-            <p class="text-danger-700 dark:text-danger-300 mt-1 text-xs">
-                Le release_name est généré à partir de ces champs. Tu peux les compléter manuellement dans la section <strong>Re-préparer le package</strong> ci-dessous, puis relancer.
-            </p>
-            <button type="button"
-                    class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-danger-600 text-white hover:bg-danger-700"
-                    onclick="document.getElementById('toc-override')?.scrollIntoView({behavior:'smooth',block:'start'});const el=document.getElementById('override-naming-body');if(el&&el.classList.contains('hidden')){el.classList.remove('hidden');}">
-                {{ icon('edit', size='sm') }}
-                Compléter manuellement
-            </button>
-        </div>
-    </div>
-    {% endif %}
-
-    {# Panneau Presentation incomplete : moins critique, juste fiche pauvre #}
-    {% if _missing_present %}
-    <div class="mb-3 border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20 rounded-lg p-3 flex items-start gap-2.5">
-        <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
-        <div class="flex-1 min-w-0 text-sm">
-            <div class="font-semibold text-warning-900 dark:text-warning-200">
-                Présentation incomplète
-            </div>
-            <p class="text-warning-800 dark:text-warning-300 mt-0.5 text-xs">
-                Champs manquants pour la fiche tracker : <strong>{{ _missing_present | join(", ") }}</strong>. La fiche uploadée sera plus pauvre que si tu complètes manuellement.
-            </p>
-            <button type="button"
-                    class="mt-1.5 inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-md bg-warning-600 text-white hover:bg-warning-700"
-                    onclick="document.getElementById('btn-presentation-toggle')?.click();document.getElementById('toc-bbcode')?.scrollIntoView({behavior:'smooth',block:'start'});">
-                {{ icon('edit', size='sm') }}
-                Éditer la présentation
-            </button>
-        </div>
-    </div>
-    {% endif %}
 {% endif %}
 
 {% if presentation_text %}
