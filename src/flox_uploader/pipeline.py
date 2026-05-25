@@ -1001,11 +1001,21 @@ def _try_extract_and_upload_previews(
     if extracted.get("warning"):
         print(f"[INFO] Extraction previews : {extracted['warning']}")
 
+    # Sprint D.24 v0.5.0 (note Louis N-LS1) : fallback cover backup depuis
+    # le dossier source. Si un fichier "cover.*" / "couverture.*" / "front.*"
+    # existe a cote du fichier ebook, on le prefere a la cover extraite
+    # du fichier (l'user qui a mis ce fichier l'a fait expres : c'est la
+    # VRAIE cover, pas une 1re page de PDF qui est juste un titre interne).
+    cover_local = extracted.get("cover")
+    folder_cover = _find_folder_cover(input_path, previews_dir)
+    if folder_cover is not None:
+        cover_local = folder_cover
+        print(f"[INFO] Cover backup detectee dans le dossier source : {folder_cover.name}")
+
     # Upload cover si on en a une nouvelle (locale) ET pas deja une externe.
     # Si meta.cover_url est deja https (BnF/Google), on n'override pas.
     current_cover_url = book_meta.get("cover_url", "")
     is_current_external = current_cover_url.startswith(("http://", "https://"))
-    cover_local = extracted.get("cover")
     if cover_local and not is_current_external:
         result = upload_to_imgbb(cover_local, imgbb_api_key)
         if result.success:
@@ -1027,3 +1037,62 @@ def _try_extract_and_upload_previews(
                 print(f"[WARN] Preview {i} upload echec : {result.error}")
         if uploaded_urls:
             book_meta["preview_urls"] = uploaded_urls
+
+
+# Noms de fichiers cover backup reconnus (case-insensitive).
+# On preserve l'extension reelle (jpg/png/webp/...).
+_COVER_BACKUP_STEMS = frozenset({
+    "cover", "couverture", "couv", "front", "frontcover",
+    "folder",  # standard Windows musique/cover
+    "thumb", "thumbnail",
+})
+_COVER_BACKUP_EXTS = frozenset({
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp",
+})
+
+
+def _find_folder_cover(input_path: Path, output_dir: Path) -> Path | None:
+    """Sprint D.24 v0.5.0 (note Louis N-LS1) : cherche un fichier cover de
+    backup a cote du fichier source.
+
+    Strategies (par ordre de priorite) :
+    1. Si input_path est un FICHIER : cherche dans son dossier parent
+       les fichiers cover.* / couverture.* / front.* / folder.*
+    2. Si input_path est un DOSSIER : cherche dedans (root level uniquement,
+       pas recursif).
+
+    Si trouve, copie le fichier dans output_dir et retourne le Path local.
+    Sinon retourne None.
+
+    Le fichier est COPIE (pas link) pour eviter d'avoir des refs vers le
+    dossier source qui pourrait disparaitre (NAS deconnecte, etc.).
+    """
+    try:
+        if input_path.is_file():
+            search_dir = input_path.parent
+        elif input_path.is_dir():
+            search_dir = input_path
+        else:
+            return None
+
+        if not search_dir.is_dir():
+            return None
+
+        # Lister les fichiers a cote (non recursif, sinon trop de bruit)
+        for child in sorted(search_dir.iterdir()):
+            if not child.is_file():
+                continue
+            stem_lower = child.stem.lower()
+            ext_lower = child.suffix.lower()
+            if (stem_lower in _COVER_BACKUP_STEMS
+                    and ext_lower in _COVER_BACKUP_EXTS):
+                # Copie dans output_dir pour traitement
+                output_dir.mkdir(parents=True, exist_ok=True)
+                target = output_dir / f"folder_cover{ext_lower}"
+                import shutil
+                shutil.copyfile(child, target)
+                return target
+        return None
+    except (OSError, PermissionError) as e:
+        print(f"[WARN] _find_folder_cover : {type(e).__name__} {e}")
+        return None
