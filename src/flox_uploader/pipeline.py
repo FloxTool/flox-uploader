@@ -790,6 +790,23 @@ def _process_book(
             book_meta["cover_url"] = cover_extracted
             debug.set("book_metadata", book_meta)
 
+    # ---- Sprint D.19 v0.5.0 : extraction cover + 4 previews + upload imgbb ----
+    # Si IMGBB_API_KEY est configure, on extrait cover + N previews depuis
+    # le fichier source et on upload tout vers imgbb. Les URLs publiques
+    # sont stockees dans book_metadata.preview_urls, utilisees dans le
+    # BBCode pour afficher une galerie tracker-readable.
+    # Si pas de cle ou format non supporte : extraction locale seulement
+    # (visible page detail, mais pas dans la fiche tracker).
+    imgbb_key = config.get_optional_env("IMGBB_API_KEY", "")
+    if imgbb_key:
+        try:
+            _try_extract_and_upload_previews(
+                input_path, package_dir, book_meta, imgbb_key,
+            )
+            debug.set("book_metadata", book_meta)
+        except Exception as e:
+            print(f"[WARN] previews extraction/upload echec : {type(e).__name__} {e}")
+
     # ---- .torrent (cree AVANT BBCode pour Sprint D.12 : enrichissement
     # du BBCode livre avec contenu du torrent / nb fichiers / taille) ----
     torrent_path = package_dir / f"{release_name}.torrent"
@@ -917,3 +934,58 @@ def _try_extract_local_cover(
         print(f"[WARN] cover extraction local ({ext}) : {type(e).__name__} {e}")
         return ""
     return ""
+
+
+def _try_extract_and_upload_previews(
+    input_path: Path,
+    package_dir: Path,
+    book_meta: dict,
+    imgbb_api_key: str,
+) -> None:
+    """Sprint D.19 v0.5.0 (note Louis Q3) : extrait cover + 4 previews et
+    upload sur imgbb. Modifie book_meta in-place :
+      - book_meta['cover_url'] : URL externe imgbb (override cover locale si
+        on en avait extrait une avant)
+      - book_meta['preview_urls'] : liste d'URLs imgbb des previews
+
+    Si l'extraction echoue ou imgbb refuse, on log + on continue (le BBCode
+    sera juste plus pauvre, le pipeline ne plante pas).
+    """
+    from .core.providers.image_extraction import extract_cover_and_previews
+    from .core.providers.image_host import upload_to_imgbb
+
+    previews_dir = package_dir / "_previews"
+    print(f"[INFO] Extraction cover + previews (imgbb upload active)...")
+
+    extracted = extract_cover_and_previews(
+        input_path, previews_dir, preview_count=4,
+    )
+    if extracted.get("warning"):
+        print(f"[INFO] Extraction previews : {extracted['warning']}")
+
+    # Upload cover si on en a une nouvelle (locale) ET pas deja une externe.
+    # Si meta.cover_url est deja https (BnF/Google), on n'override pas.
+    current_cover_url = book_meta.get("cover_url", "")
+    is_current_external = current_cover_url.startswith(("http://", "https://"))
+    cover_local = extracted.get("cover")
+    if cover_local and not is_current_external:
+        result = upload_to_imgbb(cover_local, imgbb_api_key)
+        if result.success:
+            book_meta["cover_url"] = result.url
+            print(f"[OK] Cover uploaded -> {result.url}")
+        else:
+            print(f"[WARN] Cover upload imgbb echec : {result.error}")
+
+    # Upload previews
+    preview_paths = extracted.get("previews") or []
+    if preview_paths:
+        uploaded_urls: list[str] = []
+        for i, p in enumerate(preview_paths, start=1):
+            result = upload_to_imgbb(p, imgbb_api_key)
+            if result.success:
+                uploaded_urls.append(result.url)
+                print(f"[OK] Preview {i}/{len(preview_paths)} uploaded -> {result.url}")
+            else:
+                print(f"[WARN] Preview {i} upload echec : {result.error}")
+        if uploaded_urls:
+            book_meta["preview_urls"] = uploaded_urls

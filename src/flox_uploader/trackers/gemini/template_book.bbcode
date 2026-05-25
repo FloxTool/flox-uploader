@@ -33,6 +33,16 @@
 
 [img=500]https://i.imgur.com/jOSyeDp.png[/img]
 
+{# Sprint D.19 v0.5.0 (note Louis Q3) : ligne de 4 previews (apercu pages)
+   uploadees sur imgbb. Placement equivalent du lien YouTube sur la prez
+   film. Visible seulement si on a au moins 1 preview URL externe. #}
+{%- if meta.preview_urls %}
+{%- for purl in meta.preview_urls[:4] %}[img=150]{{ purl }}[/img] {% endfor %}
+
+[img=500]https://i.imgur.com/jOSyeDp.png[/img]
+
+{% endif %}
+
 {# Section liens externes harmonisee avec films (ratings_section) #}
 {%- if isbn %}
 [color=#8B8680]ISBN :[/color] [b]{{ isbn }}[/b]

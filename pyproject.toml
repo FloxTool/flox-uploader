@@ -28,10 +28,16 @@ dependencies = [
     "python-dotenv>=1.0",
     "platformdirs>=4.0",
     # Sprint D.7 v0.5.0 : extraction metadata PDF (Livre / cat 12 Gemini).
-    # Pur Python, ~270 KB. PyMuPDF (fitz) reste optionnel et est requis
-    # seulement pour extraire la cover PDF en image — sans lui, on degrade
-    # gracieusement (cover URL prise de BnF/Google Books a la place).
+    # Pur Python, ~270 KB.
     "pypdf>=4.0",
+    # Sprint D.19 v0.5.0 (note Louis Q3) : rendering pages PDF en images
+    # pour cover + previews. ~30 MB mais c'est la lib la plus fiable.
+    "pymupdf>=1.24",
+    # Sprint D.19 : cover audiobook (MP3/M4B) depuis ID3/MP4 tags. ~600 KB.
+    "mutagen>=1.47",
+    # Sprint D.19 : support CBR (RAR d'images) pour BD/manga. Necessite
+    # unrar.exe dans le PATH au runtime ; sinon degrade gracieusement.
+    "rarfile>=4.0",
 ]
 
 [project.optional-dependencies]

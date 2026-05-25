@@ -102,6 +102,11 @@ class BookMetadata:
     google_books_id: str = ""
     bnf_ark: str = ""
 
+    # Sprint D.19 v0.5.0 : previews uploadees sur host externe (imgbb).
+    # URLs publiques https://i.ibb.co/... utilisables dans le BBCode tracker.
+    # 4 previews random par defaut (cf. note Louis Q3).
+    preview_urls: list[str] = field(default_factory=list)
+
     @property
     def isbn(self) -> str:
         """Retourne le meilleur ISBN dispo : isbn_13 prioritaire, sinon isbn_10."""
@@ -139,7 +144,7 @@ class BookMetadata:
                 setattr(self, str_field, getattr(other, str_field))
 
         # Listes : on remplit si vide
-        for list_field in ("authors", "genres"):
+        for list_field in ("authors", "genres", "preview_urls"):
             if not getattr(self, list_field) and getattr(other, list_field):
                 setattr(self, list_field, list(getattr(other, list_field)))
 
@@ -193,6 +198,8 @@ def book_to_dict(meta: BookMetadata) -> dict:
         # Sprint D.15 : ids externes pour liens directs vers fiches.
         "google_books_id": meta.google_books_id,
         "bnf_ark": meta.bnf_ark,
+        # Sprint D.19 : previews uploadees externe (imgbb).
+        "preview_urls": list(meta.preview_urls),
         "genres": list(meta.genres),
         "sources": list(meta.sources),
         # Note : on ne cache PAS file_path (chemin local utilisateur) ni
@@ -224,6 +231,8 @@ def book_from_dict(d: dict) -> BookMetadata:
         # Sprint D.15 : ids externes (liens directs fiches).
         google_books_id=str(d.get("google_books_id", "") or ""),
         bnf_ark=str(d.get("bnf_ark", "") or ""),
+        # Sprint D.19 : previews imgbb (URLs externes).
+        preview_urls=[str(u) for u in (d.get("preview_urls") or []) if u],
         genres=[str(g) for g in (d.get("genres") or []) if g],
         sources=[str(s) for s in (d.get("sources") or []) if s],
     )
