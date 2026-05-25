@@ -57,6 +57,7 @@ def lookup_google_books(
     cache_file: Path | None = None,
     api_key: str = "",
     http_get=None,
+    extra_titles: list[str] | None = None,
 ) -> BookMetadata | None:
     """Cherche un livre dans Google Books.
 
@@ -67,6 +68,11 @@ def lookup_google_books(
         cache_file : path du cache JSON. Si None, pas de cache.
         api_key : cle Google Cloud optionnelle (augmente le quota).
         http_get : fonction HTTP injectable (pour les tests).
+        extra_titles : Sprint D.29 v0.5.0. Titres candidats alternatifs
+            essayes si la query avec `title` echoue. Cas typique : la
+            metadata EPUB embarquee a un titre tronque ('POITIERS 2026
+            (avec photos)') mais le filename scene parse contient le
+            vrai titre canonique ('Guide Poitiers Petit Fute').
 
     Returns:
         BookMetadata avec source='google_books' si trouve, None sinon.
@@ -74,6 +80,7 @@ def lookup_google_books(
     """
     http = http_get or _default_http_get
     cache = load_cache(cache_file) if cache_file else {}
+    extras = list(extra_titles or [])
 
     key = cache_key_isbn(isbn)
     if key:
@@ -86,7 +93,10 @@ def lookup_google_books(
                 # None silencieusement. Cas reel : reedition annuelle
                 # (Petit Fute) ou ISBN ebook vs print divergent.
                 if title:
-                    return _query_by_title_author(title, author, api_key=api_key, http=http)
+                    return _query_by_title_author(
+                        title, author, api_key=api_key, http=http,
+                        extra_titles=extras,
+                    )
                 return None
             return book_from_dict(cached)
 
@@ -98,13 +108,19 @@ def lookup_google_books(
             return meta
         # Sprint D.17 : ISBN ne match pas en ligne -> fallback titre.
         if title:
-            return _query_by_title_author(title, author, api_key=api_key, http=http)
+            return _query_by_title_author(
+                title, author, api_key=api_key, http=http,
+                extra_titles=extras,
+            )
         return None
 
     # Pas d'ISBN : fallback direct sur titre + auteur (pas de cache pour
     # ce type de query, trop variable).
     if title:
-        return _query_by_title_author(title, author, api_key=api_key, http=http)
+        return _query_by_title_author(
+            title, author, api_key=api_key, http=http,
+            extra_titles=extras,
+        )
 
     return None
 
@@ -122,21 +138,51 @@ def _query_by_isbn(isbn: str, api_key: str, http) -> BookMetadata | None:
     return _parse_first_item(resp.json())
 
 
-def _query_by_title_author(title: str, author: str, api_key: str, http) -> BookMetadata | None:
+def _query_by_title_author(
+    title: str, author: str, api_key: str, http,
+    extra_titles: list[str] | None = None,
+) -> BookMetadata | None:
     """Recherche Google Books par titre + auteur.
 
     Sprint D.16 v0.5.0 : multi-stratégies. On normalise titre+auteur via
     _query_normalize, puis on essaye plusieurs variantes du plus strict au
     plus permissif jusqu'à trouver un match.
 
+    Sprint D.29 v0.5.0 : si `extra_titles` est fourni (typiquement le
+    scene_parsed.title quand il differe de la metadata EPUB), on construit
+    des variantes additionnelles avec chaque titre alternatif. Cas Louis
+    Petit Fute Poitiers : metadata EPUB = 'POITIERS 2026 (avec photos)'
+    (titre tronque editeur), filename scene = 'Guide Poitiers Petit Fute'
+    (titre canonique cherchable).
+
     Cf. notes Louis N-Rel-1 à N-Rel-6 : nos titres viennent souvent du
     nom de fichier scene avec dots, tokens techniques (FRENCH/EPUB/PDF/...)
     et marqueurs tome. La query strict avec quotes ratait tout.
     """
-    from ._query_normalize import build_query_variants
+    from ._query_normalize import build_query_variants, normalize_title_for_query
     variants = build_query_variants(title, author)
+    # Sprint D.29 : ajouter les variantes pour chaque extra_title different
+    if extra_titles:
+        seen_norm = {normalize_title_for_query(title).lower()}
+        for extra in extra_titles:
+            norm = normalize_title_for_query(extra).lower()
+            if not norm or norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            variants.extend(build_query_variants(extra, author))
     if not variants:
         return None
+
+    # Dedupe global (titre+author+quotes)
+    seen_keys: set[tuple[str, str, bool]] = set()
+    unique_variants = []
+    for v in variants:
+        k = (v.title.lower(), v.author.lower(), v.use_quotes)
+        if k in seen_keys:
+            continue
+        seen_keys.add(k)
+        unique_variants.append(v)
+    variants = unique_variants
 
     for variant in variants:
         # Construire la query selon la variante

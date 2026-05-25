@@ -202,6 +202,16 @@ class BookNamingStrategy:
             meta.series_index_range = scene_parsed.series_index_range
 
         # === 2. Enrichissement online (BnF + Google Books + OpenLibrary) ===
+        # Sprint D.29 v0.5.0 : si le scene parser a un titre DIFFERENT du
+        # titre meta (typiquement metadata EPUB embarquee tronquee comme
+        # 'POITIERS 2026 (avec photos)' vs filename 'Guide Poitiers Petit
+        # Fute'), on passe le titre scene comme candidat alternatif aux
+        # providers. Permet de retrouver des cas ou le filename est PLUS
+        # canonique que la metadata embarquee.
+        extra_titles: list[str] = []
+        if scene_parsed.title and scene_parsed.title.strip().lower() != (meta.title or "").strip().lower():
+            extra_titles.append(scene_parsed.title)
+
         # Lookup configure depuis la config app si pas injecte (tests).
         if _book_lookup is not None:
             meta = _book_lookup(meta)
@@ -213,6 +223,7 @@ class BookNamingStrategy:
                 meta,
                 cache_dir=cache_dir,
                 google_api_key=google_key,
+                extra_titles=extra_titles,
             )
 
         # === 3. Persister les metadonnees dans debug pour la page detail ===
