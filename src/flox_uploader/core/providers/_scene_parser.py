@@ -735,7 +735,11 @@ def _build_title(tokens: list[str], parsed: ParsedBookRelease) -> str:
 
     - Joint avec espaces
     - Capitalize en gardant le mot tel quel si deja propre
-    - Garde les apostrophes (L'Ile, Qu.On.N.Oublie -> rare cas dotted apostrophe)
+    - Sprint D.28 v0.5.0 (cas Louis Tomoji) : reconstruit les apostrophes
+      francaises. Les particules elididees (s/l/d/n/t/m/c/qu/j) qui sont
+      isolees dans le scene name (.s. .l. .d. etc.) sont collees au mot
+      suivant avec apostrophe + lowercase.
+      Ex: ['Elle', 'S', 'Appelait', 'Tomoji'] -> "Elle s'Appelait Tomoji"
     """
     if not tokens:
         return ""
@@ -751,11 +755,27 @@ def _build_title(tokens: list[str], parsed: ParsedBookRelease) -> str:
             # Deja mixte ou capitalize : on garde
             cleaned.append(tok)
 
-    title = " ".join(cleaned)
+    # Sprint D.28 : reconstruire les apostrophes francaises elidees.
+    # Pour chaque mot court particule (s/l/d/n/t/m/c/qu/j) suivi d'un
+    # autre mot, on colle au mot suivant : "S Appelait" -> "s'Appelait".
+    apostrophe_particles = {"s", "l", "d", "n", "t", "m", "c", "qu", "j"}
+    result: list[str] = []
+    i = 0
+    while i < len(cleaned):
+        word = cleaned[i]
+        word_lower = word.lower()
+        if (word_lower in apostrophe_particles
+                and i + 1 < len(cleaned)
+                and cleaned[i + 1][:1].isalpha()):
+            # Coller la particule au mot suivant avec apostrophe
+            # Ex : "S" + "Appelait" -> "s'Appelait"
+            result.append(f"{word_lower}'{cleaned[i + 1]}")
+            i += 2
+        else:
+            result.append(word)
+            i += 1
+
+    title = " ".join(result)
     # Compacter espaces multiples
     title = re.sub(r"\s+", " ", title).strip()
-
-    # Recombiner certains patterns "Qu On" -> "Qu'On" si on detecte le pattern
-    # mot-court + On / N / S / L (residus d'apostrophes scene)
-    # On reste prudent : on ne le fait que si l'ensemble paraît plausible.
     return title

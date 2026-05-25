@@ -110,6 +110,30 @@ def normalize_title_for_query(raw: str) -> str:
     if not raw:
         return ""
 
+    # Étape 0 (Sprint D.28) : reconstruction des apostrophes scene.
+    # Pattern : ".X." où X est une particule française élidée
+    # (s/l/d/n/t/m/c/qu/j) qui était initialement attachée par apostrophe
+    # au mot suivant. Le format scene perd les apostrophes, on les
+    # reconstruit pour que les queries Google Books / BnF matchent
+    # les vrais titres.
+    # Exemples :
+    #   "Elle.s.appelait.Tomoji" -> "Elle s'appelait Tomoji"
+    #   "Le.mythe.de.l.Ossuaire" -> "Le mythe de l'Ossuaire"
+    #   "Aujourd.hui.je.t.aime" -> "Aujourd'hui je t'aime"
+    #
+    # On utilise re.sub avec lambda pour reconstruire " <particule>'"
+    # qui colle au mot suivant. Important : on ne touche PAS les
+    # particules 2-lettres (qu, sf) si elles sont précédées par un
+    # tiret (vrais titres composés "Qu-on-savait", rare mais possible).
+    _APOSTROPHE_PARTICLES_RE = re.compile(
+        r"\.(s|l|d|n|t|m|c|qu|j)\.",
+        re.IGNORECASE,
+    )
+    raw = _APOSTROPHE_PARTICLES_RE.sub(
+        lambda m: f" {m.group(1).lower()}'",
+        raw,
+    )
+
     # Étape 1 : séparateurs scene -> espaces
     s = raw.replace(".", " ").replace("_", " ").replace("-", " ")
 
