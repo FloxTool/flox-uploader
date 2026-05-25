@@ -449,14 +449,38 @@ def merge_book_dir_hints(
 
 
 def _values_match(a, b) -> bool:
-    """Compare 2 valeurs string en mode tolerant (case + dots + spaces)."""
+    """Compare 2 valeurs string en mode tolerant.
+
+    Sprint D.31 v0.5.0 (cas Louis Zep) : on tolere desormais
+    - case insensitive
+    - dots/underscores -> espaces
+    - accents (Découpé == Decoupe)
+    - parentheses + leur contenu (Title (10354) == Title)
+    - whitespace multiple
+
+    Cas Zep : "Découpé en tranches" (PDF /Title) vs "Decoupe en tranches
+    (10354)" (folder name) -> MATCH, pas de conflit, on garde le titre
+    du fichier qui est canonique (avec accents).
+    """
     if a is None or b is None:
         return False
-    sa = str(a).lower().replace(".", " ").replace("_", " ")
-    sb = str(b).lower().replace(".", " ").replace("_", " ")
-    sa = re.sub(r"\s+", " ", sa).strip()
-    sb = re.sub(r"\s+", " ", sb).strip()
-    return sa == sb
+
+    def _norm(s: str) -> str:
+        import unicodedata
+        s = str(s).lower()
+        # Retirer accents : NFKD decompose, on garde que les ASCII
+        s = unicodedata.normalize("NFKD", s)
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        # Retirer le contenu des parentheses ((10354), (avec photos), etc.)
+        s = re.sub(r"\([^)]*\)", " ", s)
+        s = re.sub(r"\[[^\]]*\]", " ", s)
+        # Separateurs scene -> espaces
+        s = s.replace(".", " ").replace("_", " ").replace("-", " ")
+        # Whitespace multiple -> single
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    return _norm(a) == _norm(b)
 
 
 # ============================================================

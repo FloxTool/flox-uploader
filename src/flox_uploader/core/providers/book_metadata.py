@@ -112,6 +112,32 @@ class BookMetadata:
         """Retourne le meilleur ISBN dispo : isbn_13 prioritaire, sinon isbn_10."""
         return self.isbn_13 or self.isbn_10
 
+    def sanitize_cover_url(self) -> None:
+        """Clear cover_url s'il pointe vers un placeholder / logo (Sprint D.31).
+
+        Pattern detectes : 'logo-*', 'placeholder', 'no-image', 'default.*'.
+        Cas Louis Tomoji : chasse-aux-livres met son LOGO comme og:image
+        quand la couverture est absente. Sans ca, on stockait
+        'logo-chasse-aux-livres-square.png' comme cover_url, recupere
+        ensuite du cache meme apres fix du parser. Cette methode peut etre
+        appelee a l'init OU apres book_from_dict (cache load) pour
+        invalider les entries pourries.
+        """
+        if not self.cover_url:
+            return
+        url_lower = self.cover_url.lower()
+        last_seg = url_lower.rsplit("/", 1)[-1] if "/" in url_lower else url_lower
+        if (
+            "/logo-" in url_lower
+            or "/logo." in url_lower
+            or last_seg.startswith("logo")
+            or "placeholder" in url_lower
+            or "no-image" in url_lower
+            or last_seg.startswith("default.")
+            or last_seg.startswith("default-")
+        ):
+            self.cover_url = ""
+
     @property
     def primary_author(self) -> str:
         """Premier auteur de la liste, ou vide si pas d'auteur."""
@@ -121,7 +147,10 @@ class BookMetadata:
         """Vrai si on a au moins titre + auteur (= naming possible)."""
         return bool(self.title and self.authors)
 
-    def merge_from(self, other: "BookMetadata", source_name: str = "") -> None:
+    def merge_from(
+        self, other: "BookMetadata", source_name: str = "",
+        *, authoritative: bool = False,
+    ) -> None:
         """Enrichit self avec les champs de `other`, sans ecraser les non-vides.
 
         Convention : extraction locale = autoritaire. Donc on n'ecrase pas
@@ -131,27 +160,60 @@ class BookMetadata:
         - Nombres = 0 : remplit avec `other.<field>` si > 0
         - sources : append `source_name` si fourni et non-deja-present
 
+        Sprint D.31 v0.5.0 : parametre `authoritative=True` permet d'OVERRIDE
+        les champs title/authors/publisher/publication_year/cover_url avec
+        ceux de `other`. A utiliser SEULEMENT quand `other` vient d'un match
+        haute-confiance (ISBN match BnF/Google, ou title+author+year_match).
+        Cas Louis Petit Fute : local EPUB title 'POITIERS 2026 (avec photos)'
+        doit etre ecrase par le canonique Google 'Guide Poitiers 2026 Petit
+        Fute Escapades dans la Vienne'.
+
         Args:
             other : BookMetadata source d'enrichissement.
             source_name : libelle du provider ("bnf", "google_books", ...).
+            authoritative : si True, override title/authors/cover/etc.
         """
-        # Strings : on remplit si vide
+        # Sprint D.31 : champs override-ables en mode authoritative
+        _AUTHORITATIVE_FIELDS = (
+            "title", "subtitle", "publisher", "language", "cover_url",
+            "isbn_13", "isbn_10",
+        )
+
+        # Strings : on remplit si vide, OU override si authoritative
         for str_field in ("title", "subtitle", "publisher", "language",
                           "description", "cover_url", "isbn_13", "isbn_10",
                           "series", "series_index_range", "file_format",
                           "google_books_id", "bnf_ark"):
-            if not getattr(self, str_field) and getattr(other, str_field):
-                setattr(self, str_field, getattr(other, str_field))
+            other_val = getattr(other, str_field)
+            if not other_val:
+                continue
+            self_val = getattr(self, str_field)
+            if not self_val:
+                setattr(self, str_field, other_val)
+            elif authoritative and str_field in _AUTHORITATIVE_FIELDS:
+                setattr(self, str_field, other_val)
 
-        # Listes : on remplit si vide
+        # Listes : remplit si vide, override authors si authoritative
         for list_field in ("authors", "genres", "preview_urls"):
-            if not getattr(self, list_field) and getattr(other, list_field):
-                setattr(self, list_field, list(getattr(other, list_field)))
+            other_list = getattr(other, list_field)
+            if not other_list:
+                continue
+            self_list = getattr(self, list_field)
+            if not self_list:
+                setattr(self, list_field, list(other_list))
+            elif authoritative and list_field == "authors":
+                setattr(self, list_field, list(other_list))
 
-        # Nombres : on remplit si 0
+        # Nombres : on remplit si 0, override publication_year si authoritative
         for num_field in ("publication_year", "page_count"):
-            if getattr(self, num_field) == 0 and getattr(other, num_field) > 0:
-                setattr(self, num_field, getattr(other, num_field))
+            other_val = getattr(other, num_field)
+            if other_val <= 0:
+                continue
+            self_val = getattr(self, num_field)
+            if self_val == 0:
+                setattr(self, num_field, other_val)
+            elif authoritative and num_field == "publication_year":
+                setattr(self, num_field, other_val)
         if self.series_index == 0.0 and other.series_index > 0:
             self.series_index = other.series_index
 
@@ -208,10 +270,15 @@ def book_to_dict(meta: BookMetadata) -> dict:
 
 
 def book_from_dict(d: dict) -> BookMetadata:
-    """Reconstruit un BookMetadata depuis un dict cache. Tolerant aux types."""
+    """Reconstruit un BookMetadata depuis un dict cache. Tolerant aux types.
+
+    Sprint D.31 v0.5.0 : applique sanitize_cover_url() pour invalider les
+    cover_url pourries (logos, placeholders) qui ont pu etre cachees avant
+    le fix D.30. Les entries cache stale sont ainsi auto-nettoyees au load.
+    """
     if not isinstance(d, dict):
         return BookMetadata()
-    return BookMetadata(
+    meta = BookMetadata(
         title=str(d.get("title", "") or ""),
         subtitle=str(d.get("subtitle", "") or ""),
         authors=[str(a) for a in (d.get("authors") or []) if a],
@@ -236,3 +303,6 @@ def book_from_dict(d: dict) -> BookMetadata:
         genres=[str(g) for g in (d.get("genres") or []) if g],
         sources=[str(s) for s in (d.get("sources") or []) if s],
     )
+    # Sprint D.31 : auto-invalidation des cover_url pourries au load
+    meta.sanitize_cover_url()
+    return meta

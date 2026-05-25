@@ -103,6 +103,9 @@ def lookup_book_metadata(
                     http_get=http_get,
                     extra_titles=extra_titles,
                     trace=trace,
+                    # Sprint D.31 : passe l'annee pour ranking (cas Petit
+                    # Fute : on doit choisir l'edition 2026 pas 2014).
+                    target_year=base.publication_year,
                 )
             elif provider == "openlibrary":
                 # OpenLibrary ne supporte que la recherche par ISBN
@@ -140,6 +143,30 @@ def lookup_book_metadata(
             continue
 
         if enriched is not None:
-            base.merge_from(enriched, source_name=provider)
+            # Sprint D.31 : detection match haute-confiance pour decider du
+            # mode authoritative. On n'OVERRIDE que dans des cas tres
+            # specifiques pour pas casser les cas ou l'extraction locale
+            # est user-provided (cf test_orchestrator_preserves_local_extraction).
+            #
+            # Critere authoritative=True (override title/authors/year/cover) :
+            # 1. base avait une annee >0 ET enriched a une annee proche
+            #    (+/- 1) : signal fort que c'est la meme edition
+            # 2. base n'a ni title ni isbn (extraction locale vide)
+            #
+            # Pas-authoritative : ISBN seul match (les ISBN peuvent etre
+            # ambigus print vs ebook, on respecte le local pour eviter
+            # surprises).
+            authoritative = False
+            if provider in ("bnf", "google_books"):
+                if (
+                    base.publication_year > 0
+                    and enriched.publication_year > 0
+                    and abs(enriched.publication_year - base.publication_year) <= 1
+                ):
+                    authoritative = True
+                elif not base.title and not base.isbn:
+                    authoritative = True
+
+            base.merge_from(enriched, source_name=provider, authoritative=authoritative)
 
     return base
