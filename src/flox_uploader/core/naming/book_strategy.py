@@ -328,6 +328,27 @@ class BookNamingStrategy:
         except Exception:
             pass
 
+        # Sprint D.34 v0.5.0 : sanitize le title final (apres lookup) pour
+        # retirer toute pollution scene/BD residuelle dans le stored title.
+        # Cas Louis :
+        # - Marc Levy MP3 : title="Marc Levy Sept Jours ... FRENCH 128kbps-NOTAG"
+        # - Dawnrunner CBZ : title="Dawnrunner (One Shot) (HiComics...) [Digital-2880] (TCH)"
+        # - Space Brothers : title="2020.FR" (filename tronque)
+        # Le sanitize preserve casse + accents (contrairement a normalize
+        # pour query).
+        from ..providers._query_normalize import sanitize_book_title
+        if meta.title:
+            original_title = meta.title
+            meta.title = sanitize_book_title(meta.title)
+            if meta.title != original_title:
+                try:
+                    debug.set("title_sanitized", {
+                        "before": original_title,
+                        "after": meta.title,
+                    })
+                except Exception:
+                    pass
+
         # === 3. Persister les metadonnees dans debug pour la page detail ===
         try:
             debug.set("book_metadata", book_to_dict(meta))

@@ -107,6 +107,11 @@ def lookup_book_metadata(
                     # Sprint D.31 : passe l'annee pour ranking (cas Petit
                     # Fute : on doit choisir l'edition 2026 pas 2014).
                     target_year=base.publication_year,
+                    # Sprint D.34 : passe le numero de tome pour generer
+                    # des variantes "title + Tome N" (cas Space Brothers
+                    # T33, Miraculous T2, etc. ou Google matche T1 par
+                    # defaut faute de signal volume).
+                    target_volume=base.series_index,
                 )
             elif provider == "openlibrary":
                 # OpenLibrary ne supporte que la recherche par ISBN
