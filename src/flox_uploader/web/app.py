@@ -1016,6 +1016,12 @@ def create_app() -> FastAPI:
         return s
     templates.env.filters["fmt_date"] = _fmt_date
 
+    # Sprint D.35 v0.5.0 : helpers URL Google Books moderne + BnF.
+    # Genere /books/edition/<slug>/<id> au lieu de l'ancien books?id=ID.
+    from ..core.providers._url_helpers import google_books_url, bnf_url
+    templates.env.filters["google_books_url"] = google_books_url
+    templates.env.filters["bnf_url"] = bnf_url
+
     # ------------------------------------------------------------
     # Middleware first-run : redirige vers /setup si la config n'est pas
     # complete (TRACKER_API_*, TMDB_API_KEY, TRACKER_ANNOUNCE manquants).

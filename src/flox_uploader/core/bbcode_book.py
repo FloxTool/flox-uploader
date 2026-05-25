@@ -92,6 +92,12 @@ def render_book_bbcode(
         trim_blocks=False,
         lstrip_blocks=False,
     )
+    # Sprint D.35 v0.5.0 : helpers URL Google Books moderne + BnF.
+    # Permet d'utiliser {{ title | google_books_url(id) }} dans le template.
+    from .providers._url_helpers import google_books_url, bnf_url
+    env.filters["google_books_url"] = google_books_url
+    env.filters["bnf_url"] = bnf_url
+
     template = env.get_template("template_book.bbcode")
 
     # On serialise BookMetadata en dict pour le passer au template (Jinja

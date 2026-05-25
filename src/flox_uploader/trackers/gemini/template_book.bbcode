@@ -50,10 +50,10 @@
 [color=#8B8680]ISBN :[/color] [b]{{ isbn }}[/b]
 {% endif %}
 {%- if meta.bnf_ark %}
-[color=#8B8680]Fiche BnF :[/color] [url=https://catalogue.bnf.fr/ark:/12148/{{ meta.bnf_ark }}]catalogue.bnf.fr[/url]
+[color=#8B8680]Fiche BnF :[/color] [url={{ meta.bnf_ark | bnf_url }}]catalogue.bnf.fr[/url]
 {% endif %}
 {%- if meta.google_books_id %}
-[color=#8B8680]Google Books :[/color] [url=https://books.google.com/books?id={{ meta.google_books_id }}]books.google.com[/url]
+[color=#8B8680]Google Books :[/color] [url={{ meta.title | google_books_url(meta.google_books_id) }}]books.google.com[/url]
 {% endif %}
 
 [img=500]https://i.imgur.com/ZHUrtS7.png[/img]
