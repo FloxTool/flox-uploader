@@ -98,6 +98,7 @@
 {%- set _ti_size = torrent_info.get('size_pretty', '') if torrent_info else '' %}
 {%- set _ti_count = torrent_info.get('file_count', 0) if torrent_info else 0 %}
 {%- set _ti_files = torrent_info.get('files', []) if torrent_info else [] %}
+{%- set _ti_tree_lines = torrent_info.get('tree_lines', []) if torrent_info else [] %}
 {%- set _ti_truncated = torrent_info.get('truncated', false) if torrent_info else false %}
 {%- if _ti_size %}
 [color=#8B8680]Taille totale :[/color] {{ _ti_size }}
@@ -109,13 +110,22 @@
 [color=#8B8680]Métadonnées :[/color] {{ meta.sources | join(", ") }}
 {%- endif %}
 
-{%- if _ti_files and _ti_count and _ti_count > 1 %}
+{%- if _ti_count and _ti_count > 1 %}
 
 [color=#C9B27D][b]Contenu du torrent[/b][/color]
 [code]
+{%- if _ti_tree_lines %}
+{# Sprint D.25 v0.5.0 (note Louis N-R4) : on prefere le tree hierarchique
+   qui montre les sous-dossiers (PDF/, CBZ/, etc.). Fallback liste flat
+   pour les anciens packages dont torrent_info n'a pas tree_lines. #}
+{%- for line in _ti_tree_lines %}
+{{ line }}
+{%- endfor %}
+{%- elif _ti_files %}
 {%- for f in _ti_files %}
 {{ f.name }}{% if f.size_pretty %} ({{ f.size_pretty }}){% endif %}
 {%- endfor %}
+{%- endif %}
 {%- if _ti_truncated %}
 ... (tronqué à 50 fichiers)
 {%- endif %}
