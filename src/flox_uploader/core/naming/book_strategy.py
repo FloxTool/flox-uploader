@@ -151,6 +151,56 @@ class BookNamingStrategy:
                 debug.set("dir_merge_conflicts", conflicts)
                 dir_warnings.extend(conflicts)
 
+        # === 1bis. Parsing scene name (Sprint D.20) ===
+        # On parse le nom du fichier source via le parser scene livre.
+        # Le parser identifie authors / title / year / format / team /
+        # series + tome / lang en filtrant les tokens techniques (MP3,
+        # 128kbps, FRENCH, NoTAG, [Digital-XXXX], etc.).
+        # Le resultat enrichit le meta : on prend les valeurs scene
+        # SEULEMENT si l'extraction local + dir_hints n'a rien trouve.
+        # Convention : extraction locale > dir_hints > parser scene name.
+        # Le parser scene est la SECURITE quand tout le reste rate.
+        from ..providers._scene_parser import parse_book_filename
+        source_name = video_path.name
+        # Pour un fichier, on prend le stem (sans extension). Pour un dossier,
+        # on prend le nom complet (qui peut avoir des "extensions" comme
+        # [EPUB].Foo qui ne sont pas vraies extensions).
+        if video_path.is_file():
+            source_stem = video_path.stem
+        else:
+            source_stem = source_name
+        scene_parsed = parse_book_filename(
+            source_stem,
+            file_format_hint=meta.file_format,
+        )
+        debug.set("scene_parsed", {
+            "authors": scene_parsed.authors,
+            "title": scene_parsed.title,
+            "year": scene_parsed.year,
+            "language": scene_parsed.language,
+            "file_format": scene_parsed.file_format,
+            "team": scene_parsed.team,
+            "series_index": scene_parsed.series_index,
+            "series_index_range": scene_parsed.series_index_range,
+            "is_integrale": scene_parsed.is_integrale,
+        })
+        # Fallback intelligent : on remplit les champs meta vides depuis
+        # le parser scene (ne SURCHARGE pas une extraction reussie).
+        if not meta.title and scene_parsed.title:
+            meta.title = scene_parsed.title
+        if not meta.authors and scene_parsed.authors:
+            meta.authors = list(scene_parsed.authors)
+        if not meta.publication_year and scene_parsed.year:
+            meta.publication_year = scene_parsed.year
+        if not meta.language and scene_parsed.language:
+            meta.language = scene_parsed.language
+        if not meta.file_format and scene_parsed.file_format:
+            meta.file_format = scene_parsed.file_format
+        if meta.series_index == 0.0 and scene_parsed.series_index:
+            meta.series_index = scene_parsed.series_index
+        if not meta.series_index_range and scene_parsed.series_index_range:
+            meta.series_index_range = scene_parsed.series_index_range
+
         # === 2. Enrichissement online (BnF + Google Books + OpenLibrary) ===
         # Lookup configure depuis la config app si pas injecte (tests).
         if _book_lookup is not None:
@@ -172,7 +222,16 @@ class BookNamingStrategy:
             pass  # debug est best-effort
 
         # === 4. Construire le release_name au format Gemini ===
+        # Sprint D.20 : si le parser scene a detecte une team explicite et
+        # non-generique (ex: "COZY" pour les audiobooks Sapkowski), on la
+        # respecte. Sinon on prend le default tracker (typiquement "Flox").
+        # Generic teams (NoTAG / Anonymous) sont skipees ici car egales au
+        # default scene (NoTAG = pas de team) — autant prendre la team
+        # default tracker qui est plus explicite (Flox).
         team = (tracker.default_team or "NoTAG").strip()
+        scene_team = scene_parsed.team or ""
+        if scene_team and scene_team.upper() not in {"NOTAG", "NO-TAG", "NO_TAG", "ANON", "ANONYMOUS"}:
+            team = scene_team
         release_name = self._build_book_release_name(meta, team)
 
         # tmdb_context = None pour les livres (TMDB pas applicable)
