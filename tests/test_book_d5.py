@@ -78,16 +78,28 @@ def _make_book_package(tmp_path: Path, book_meta_dict: dict, state_value: str = 
 # BookConfidenceStrategy : penalites
 # ============================================================
 
-def test_book_score_perfect_metadata(tmp_path):
-    """Metadata complete -> score 100 / parfait."""
-    pkg = _make_book_package(tmp_path, {
+def _full_book_meta(**overrides) -> dict:
+    """Helper Sprint D.11 : metadata complete (tous les champs Gemini
+    obligatoires) qu'on peut surcharger pour declencher 1 penalite a la
+    fois dans les tests."""
+    base = {
         "title": "Le Hobbit",
         "authors": ["J.R.R. Tolkien"],
+        "publication_year": 1937,
+        "language": "fr",
+        "file_format": "epub",
         "isbn_13": "9782266154116",
         "description": "Bilbo Sacquet part a l'aventure.",
         "cover_url": "https://example.com/cover.jpg",
         "sources": ["local_epub", "bnf", "google_books"],
-    })
+    }
+    base.update(overrides)
+    return base
+
+
+def test_book_score_perfect_metadata(tmp_path):
+    """Metadata complete -> score 100 / parfait."""
+    pkg = _make_book_package(tmp_path, _full_book_meta())
     score = BookConfidenceStrategy().compute(pkg)
     assert score.score == 100
     assert score.bucket == "parfait"
@@ -95,97 +107,86 @@ def test_book_score_perfect_metadata(tmp_path):
 
 
 def test_book_score_no_author(tmp_path):
-    """Auteur absent -> -20."""
-    pkg = _make_book_package(tmp_path, {
-        "title": "Solo",
-        "authors": [],
-        "isbn_13": "9782266154116",
-        "description": "Resume",
-        "cover_url": "x",
-        "sources": ["local_epub", "bnf"],
-    })
+    """Auteur absent -> -20 (champ obligatoire Gemini)."""
+    pkg = _make_book_package(tmp_path, _full_book_meta(authors=[]))
     score = BookConfidenceStrategy().compute(pkg)
     assert score.score == 80  # 100 - 20
-    assert "Auteur manquant" in score.reasons
+    assert any("Auteur manquant" in r for r in score.reasons)
 
 
 def test_book_score_no_isbn(tmp_path):
     """ISBN absent -> -15."""
-    pkg = _make_book_package(tmp_path, {
-        "title": "Sans ISBN",
-        "authors": ["Author"],
-        "isbn_13": "",
-        "isbn_10": "",
-        "description": "Resume",
-        "cover_url": "x",
-        "sources": ["local_epub", "bnf"],
-    })
+    pkg = _make_book_package(tmp_path, _full_book_meta(isbn_13="", isbn_10=""))
     score = BookConfidenceStrategy().compute(pkg)
     assert score.score == 85  # 100 - 15
-    assert "ISBN manquant" in score.reasons
+    assert any("ISBN manquant" in r for r in score.reasons)
 
 
 def test_book_score_no_description(tmp_path):
     """Description vide -> -5."""
-    pkg = _make_book_package(tmp_path, {
-        "title": "Sans Resume",
-        "authors": ["Author"],
-        "isbn_13": "9782266154116",
-        "description": "",
-        "cover_url": "x",
-        "sources": ["local_epub", "bnf"],
-    })
+    pkg = _make_book_package(tmp_path, _full_book_meta(description=""))
     score = BookConfidenceStrategy().compute(pkg)
     assert score.score == 95
-    assert "Resume vide" in score.reasons
+    assert any("Résumé vide" in r or "Resume vide" in r for r in score.reasons)
 
 
 def test_book_score_no_cover(tmp_path):
     """Pas de couverture -> -3."""
-    pkg = _make_book_package(tmp_path, {
-        "title": "Sans Cover",
-        "authors": ["Author"],
-        "isbn_13": "9782266154116",
-        "description": "Resume",
-        "cover_url": "",
-        "sources": ["local_epub", "bnf"],
-    })
+    pkg = _make_book_package(tmp_path, _full_book_meta(cover_url=""))
     score = BookConfidenceStrategy().compute(pkg)
     assert score.score == 97
-    assert "Couverture absente" in score.reasons
+    assert any("Couverture absente" in r for r in score.reasons)
 
 
 def test_book_score_no_online_providers(tmp_path):
     """Que extraction locale -> -3 (no online lookup)."""
-    pkg = _make_book_package(tmp_path, {
-        "title": "Local Only",
-        "authors": ["Author"],
-        "isbn_13": "9782266154116",
-        "description": "Resume",
-        "cover_url": "x",
-        "sources": ["local_epub"],
-    })
+    pkg = _make_book_package(tmp_path, _full_book_meta(sources=["local_epub"]))
     score = BookConfidenceStrategy().compute(pkg)
     assert score.score == 97
-    assert "Pas de lookup en ligne" in score.reasons[0] or any(
-        "lookup" in r for r in score.reasons
-    )
+    assert any("lookup en ligne" in r.lower() for r in score.reasons)
+
+
+def test_book_score_no_publication_year(tmp_path):
+    """Sprint D.11 : Date manquante -> -5 (champ Gemini obligatoire)."""
+    pkg = _make_book_package(tmp_path, _full_book_meta(publication_year=0))
+    score = BookConfidenceStrategy().compute(pkg)
+    assert score.score == 95
+    assert any("Date" in r and "manquante" in r for r in score.reasons)
+
+
+def test_book_score_no_language(tmp_path):
+    """Sprint D.11 : Langue manquante -> -5 (champ Gemini obligatoire)."""
+    pkg = _make_book_package(tmp_path, _full_book_meta(language=""))
+    score = BookConfidenceStrategy().compute(pkg)
+    assert score.score == 95
+
+
+def test_book_score_no_file_format(tmp_path):
+    """Sprint D.11 : Format manquant -> -3 (champ Gemini obligatoire)."""
+    pkg = _make_book_package(tmp_path, _full_book_meta(file_format=""))
+    score = BookConfidenceStrategy().compute(pkg)
+    assert score.score == 97
 
 
 def test_book_score_cumulative_penalties(tmp_path):
-    """Plusieurs penalties s'ajoutent."""
+    """Plusieurs penalties s'ajoutent. Sprint D.11 : on inclut les
+    nouveaux champs Gemini obligatoires (Title/Date/Langue/Format)."""
     pkg = _make_book_package(tmp_path, {
-        "title": "Mauvaise Fiche",
-        "authors": [],            # -20
-        "isbn_13": "",            # -15
+        # AUCUN champ rempli : maximum de penalties
+        "title": "",             # -15 (titre Gemini manquant)
+        "authors": [],           # -20 (auteur Gemini manquant)
+        "publication_year": 0,   # -5  (date Gemini manquante)
+        "language": "",          # -5  (langue Gemini manquante)
+        "file_format": "",       # -3  (format Gemini manquant)
+        "isbn_13": "",           # -15 (ISBN manquant)
         "isbn_10": "",
-        "description": "",        # -5
-        "cover_url": "",          # -3
-        "sources": ["local_epub"],  # -3 (no online lookup)
+        "description": "",       # -5  (resume vide)
+        "cover_url": "",         # -3  (cover absente)
+        "sources": ["local_epub"],  # -3  (no online lookup)
     })
     score = BookConfidenceStrategy().compute(pkg)
-    # 100 - 20 - 15 - 5 - 3 - 3 = 54
-    assert score.score == 54
+    # 100 - 15 - 20 - 5 - 5 - 3 - 15 - 5 - 3 - 3 = 26
+    assert score.score == 26
     assert score.bucket == "blocked"  # < 60
 
 
@@ -228,12 +229,14 @@ def test_book_score_compliance_blocking_penalty(tmp_path):
     (debug_dir / "debug.json").write_text(json.dumps({
         "book_metadata": {
             "title": "T", "authors": ["A"], "isbn_13": "9782266154116",
+            "publication_year": 2024, "language": "fr", "file_format": "epub",
             "description": "ok", "cover_url": "x",
             "sources": ["local_epub", "bnf"],
         },
         "compliance_issues": ["[BLOCKED] book_format: Format invalide"],
     }), encoding="utf-8")
     score = BookConfidenceStrategy().compute(pkg)
+    # 100 - 25 (compliance bloquante) = 75
     assert score.score == 75
     assert any("bloquante" in r.lower() or "blocked" in r.lower() for r in score.reasons)
 

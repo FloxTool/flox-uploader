@@ -483,6 +483,19 @@ def _load_package_detail(name: str) -> dict[str, Any]:
             size_bytes = 0
     if not size_bytes:
         size_bytes = debug.get("torrent_size") or 0
+    # Sprint D.11 v0.5.0 : pour les packages livre, mediainfo_data n'est pas
+    # rempli (pas de pipeline video). On lit la taille reelle depuis le
+    # .torrent qui contient bien la taille du contenu (somme info.files).
+    # Reuse le helper existant utilise par l'upload orchestrator.
+    if not size_bytes:
+        from ..core.upload_orchestrator import _extract_size_bytes
+        try:
+            # Cherche le .torrent dans le package dir
+            torrent_files = list(target.glob("*.torrent"))
+            if torrent_files:
+                size_bytes = _extract_size_bytes(debug or {}, torrent_files[0])
+        except Exception as e:
+            print(f"[WARN] taille torrent fallback ({target.name}) : {e}")
 
     # release_name.txt + NFO
     release_name = (state_data.release_name if state_data else "") or target.name
@@ -2205,9 +2218,14 @@ def create_app() -> FastAPI:
         except (TypeError, ValueError):
             category_id_hint = 0
         # Sprint D.9 v0.5.0 : overrides livre (ISBN/auteur/titre).
+        # Sprint D.11 v0.5.0 : annee de publication forcee.
         manual_isbn = (payload.get("manual_isbn") or "").strip()
         manual_author = (payload.get("manual_author") or "").strip()
         manual_book_title = (payload.get("manual_book_title") or "").strip()
+        try:
+            manual_book_year = int(payload.get("manual_book_year") or 0)
+        except (TypeError, ValueError):
+            manual_book_year = 0
         # Supprime l'ancien package + l'ancien job pour laisser place au nouveau.
         jobs_db.delete_job(source_job.id)
         try:
@@ -2224,6 +2242,7 @@ def create_app() -> FastAPI:
             manual_isbn=manual_isbn,
             manual_author=manual_author,
             manual_book_title=manual_book_title,
+            manual_book_year=manual_book_year,
         )
         submit_prepare_job(new_job.id)
         return {

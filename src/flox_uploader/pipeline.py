@@ -80,6 +80,7 @@ def process_one(
     manual_isbn: str | None = None,
     manual_author: str | None = None,
     manual_book_title: str | None = None,
+    manual_book_year: int | None = None,
 ) -> Path:
     config.load_env()
     announce_url = config.get_required_env("TRACKER_ANNOUNCE")
@@ -102,7 +103,7 @@ def process_one(
     )
     if category_id_early == CATEGORY_BOOKS:
         # Sprint D.4 : pipeline Livre dedie (pas de MediaInfo ni TMDB).
-        # Sprint D.9 : forward des overrides livre (ISBN/auteur/titre).
+        # Sprint D.9 + D.11 : forward des overrides livre (ISBN/auteur/titre/annee).
         return _process_book(
             input_path, tracker,
             category_id_early=category_id_early,
@@ -110,6 +111,7 @@ def process_one(
             manual_isbn=manual_isbn or "",
             manual_author=manual_author or "",
             manual_book_title=manual_book_title or "",
+            manual_book_year=int(manual_book_year or 0),
         )
     if (category_id_early not in MEDIAINFO_REQUIRED_CATEGORIES
             and category_id_early not in SUPPORTED_NON_VIDEO_CATEGORIES):
@@ -644,6 +646,7 @@ def _process_book(
     manual_isbn: str = "",
     manual_author: str = "",
     manual_book_title: str = "",
+    manual_book_year: int = 0,
 ) -> Path:
     """Traite un upload livre (cat 12). Pipeline simplifie sans MediaInfo / TMDB.
 
@@ -685,7 +688,8 @@ def _process_book(
     # (au lieu de chercher par titre). Si manual_author/title fournis,
     # ils ecrasent l'extraction locale du fichier.
     _strategy_kwargs = {}
-    if manual_isbn or manual_author or manual_book_title:
+    if (manual_isbn or manual_author or manual_book_title
+            or manual_book_year):
         from .core.providers.book_lookup import lookup_book_metadata
 
         def _book_lookup_with_overrides(meta):
@@ -700,6 +704,9 @@ def _process_book(
                 meta.authors = [manual_author.strip()]
             if manual_book_title:
                 meta.title = manual_book_title.strip()
+            # Sprint D.11 : annee forcee
+            if manual_book_year and 1900 <= manual_book_year <= 2099:
+                meta.publication_year = manual_book_year
             # Cache + Google API key depuis la config
             google_key = config.get_optional_env("GOOGLE_BOOKS_API_KEY", "")
             return lookup_book_metadata(
