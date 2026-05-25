@@ -704,6 +704,11 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         # Consommees par _detail_book.html (couverture, auteur, ISBN, etc.).
         # Pour les packages non-livres, ce dict est vide / non present.
         "book_metadata": (debug or {}).get("book_metadata") if isinstance(debug, dict) else None,
+        # Sprint D.21 fix Bug-2 : on expose scene_parsed pour que le form
+        # Re-preparer pre-remplisse manual_book_title / manual_author avec
+        # les valeurs PROPRES du parser scene (pas le book_metadata qui peut
+        # contenir des residus de l'ancien run avec parser primitif).
+        "scene_parsed": (debug or {}).get("scene_parsed") if isinstance(debug, dict) else None,
     }
 
 

@@ -701,9 +701,37 @@ def _process_book(
                 elif len(isbn_clean) == 10:
                     meta.isbn_10 = isbn_clean.upper()
             if manual_author:
-                meta.authors = [manual_author.strip()]
+                # Sprint D.21 fix : si l'user envoie un manual_author qui
+                # ressemble a un release_name scene complet (avec dots et
+                # tokens techniques), on le parse via scene_parser pour le
+                # nettoyer. Sinon on prend la valeur brute. Cas reel : form
+                # pre-fill ancien avant D.20 qui contenait
+                # "Andrzej.Sapkowski" tokens dots.
+                clean_author = manual_author.strip()
+                if "." in clean_author and len(clean_author.split(".")) >= 2:
+                    # Probablement un input pollue scene-like : on parse
+                    from .core.providers._scene_parser import parse_book_filename
+                    sp_author = parse_book_filename(clean_author)
+                    if sp_author.authors:
+                        clean_author = sp_author.authors[0]
+                    else:
+                        clean_author = clean_author.replace(".", " ").strip()
+                meta.authors = [clean_author]
             if manual_book_title:
-                meta.title = manual_book_title.strip()
+                # Sprint D.21 fix Bug-2 : pareil pour le title. Si l'input
+                # ressemble a un release_name scene pollue (dots + tokens
+                # techniques type 2026/FRENCH/MP3), on le passe au scene
+                # parser pour ne garder que le vrai title. Sinon on prend
+                # tel quel.
+                clean_title = manual_book_title.strip()
+                if "." in clean_title and len(clean_title.split(".")) >= 4:
+                    # Long string avec beaucoup de dots : probablement un
+                    # release_name scene mal-saisi (ou pre-fill ancien).
+                    from .core.providers._scene_parser import parse_book_filename
+                    sp = parse_book_filename(clean_title)
+                    if sp.title:
+                        clean_title = sp.title
+                meta.title = clean_title
             # Sprint D.11 : annee forcee
             if manual_book_year and 1900 <= manual_book_year <= 2099:
                 meta.publication_year = manual_book_year
@@ -860,14 +888,24 @@ def _process_book(
     debug.output_dir = final_debug_dir
     debug.save()
     from .core.package_state import init_state, transition, PackageState
+    from .core.package_state import read_state, write_state
     init_state(package_dir, release_name, tracker.key)
 
-    # Persist le hint user dans manual_category_id (Sprint C.1bis fix)
-    if category_hint is not None and category_hint > 0:
-        from .core.package_state import read_state, write_state
-        _state_data = read_state(package_dir)
-        if _state_data is not None and _state_data.manual_category_id != int(category_hint):
-            _state_data.manual_category_id = int(category_hint)
+    # Sprint D.21 fix Bug-1 : on persiste TOUJOURS manual_category_id =
+    # CATEGORY_BOOKS pour les livres. Sinon resolve_effective_category lit
+    # debug.json {media_type: "book"} qui n'est pas un MediaType enum
+    # (qui n'a que movie/tv_*), tombe en ValueError, fallback CATEGORY_MOVIE.
+    # Resultat avant fix : un livre re-prepare passait en categorie "Film"
+    # apres re-prepare meme sans changement de l'user.
+    _state_data = read_state(package_dir)
+    if _state_data is not None:
+        new_cat_id = (
+            int(category_hint)
+            if (category_hint is not None and category_hint > 0)
+            else int(category_id_early)  # = CATEGORY_BOOKS pour _process_book
+        )
+        if _state_data.manual_category_id != new_cat_id:
+            _state_data.manual_category_id = new_cat_id
             write_state(package_dir, _state_data)
 
     # Si compliance bloquante -> state FAILED
