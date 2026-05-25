@@ -111,19 +111,33 @@ def _query_bnf_by_isbn(isbn: str, http) -> BookMetadata | None:
 
 
 def _query_bnf_by_title(title: str, author: str, http) -> BookMetadata | None:
-    """Recherche BnF par titre + auteur optionnel."""
-    # CQL : bib.title adj "..." AND bib.author adj "..."
-    parts = [f'bib.title adj "{title}"']
-    if author:
-        parts.append(f'bib.author adj "{author}"')
-    cql_query = " AND ".join(parts)
-    params = {**_DEFAULT_PARAMS, "query": cql_query}
-    try:
-        resp = http(BNF_SRU_URL, params=params)
-    except Exception as e:
-        print(f"[WARN] BnF lookup title {title!r} : {type(e).__name__} {e}")
+    """Recherche BnF par titre + auteur optionnel.
+
+    Sprint D.16 v0.5.0 : multi-strategies via _query_normalize. La BnF SRU
+    (protocole CQL) est moins permissive que Google Books — on essaye
+    plusieurs variantes du plus strict au plus large jusqu'a un match.
+    """
+    from ._query_normalize import build_query_variants
+    variants = build_query_variants(title, author)
+    if not variants:
         return None
-    return _parse_first_record(resp.text)
+
+    for variant in variants:
+        # Pour BnF on garde toujours les quotes CQL (la syntaxe adj le requiert)
+        parts = [f'bib.title adj "{variant.title}"']
+        if variant.author:
+            parts.append(f'bib.author adj "{variant.author}"')
+        cql_query = " AND ".join(parts)
+        params = {**_DEFAULT_PARAMS, "query": cql_query}
+        try:
+            resp = http(BNF_SRU_URL, params=params)
+        except Exception as e:
+            print(f"[WARN] BnF variant {variant.label!r} : {type(e).__name__} {e}")
+            continue
+        result = _parse_first_record(resp.text)
+        if result is not None:
+            return result
+    return None
 
 
 def _parse_first_record(xml_text: str) -> BookMetadata | None:
