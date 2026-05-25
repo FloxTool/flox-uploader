@@ -90,7 +90,9 @@ class FileEntry:
     is_dir: bool
     size_pretty: str     # vide si dossier
     is_video: bool       # True si extension video (release candidate)
-    kind: str = "other"  # 'dir' | 'video' | 'image' | 'subtitle' | 'nfo' | 'archive' | 'torrent' | 'other'
+    # Sprint D.32 v0.5.0 : 'book' ajoute pour visualiser livres/BD/manga
+    # (epub/pdf/cbz/cbr/mobi/azw/djvu) avec une icone livre verte.
+    kind: str = "other"  # 'dir' | 'video' | 'book' | 'audiobook' | 'image' | 'subtitle' | 'nfo' | 'archive' | 'torrent' | 'other'
 
 
 @dataclass
@@ -165,6 +167,12 @@ def _format_size(size_bytes: int) -> str:
 
 _KIND_BY_EXT = {
     **{ext: "video"    for ext in VIDEO_EXTS},
+    # Sprint D.32 v0.5.0 : livres / BD / manga (kind='book') avec icone verte
+    # dans l'inbox pour visualiser d'un coup d'oeil.
+    **{ext: "book"     for ext in {".epub", ".pdf", ".cbz", ".cbr", ".mobi",
+                                    ".azw3", ".azw", ".djvu"}},
+    # Audiobooks separes (m4b est livre audio, mp3 ambigu mais on l'inclut)
+    **{ext: "audiobook" for ext in {".m4b"}},
     **{ext: "image"    for ext in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}},
     **{ext: "subtitle" for ext in {".srt", ".sub", ".idx", ".ass", ".ssa", ".vtt", ".usf"}},
     **{ext: "nfo"      for ext in {".nfo", ".txt", ".md"}},
@@ -226,8 +234,14 @@ def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
         else:
             ext = "." + name.rsplit(".", 1)[-1].lower()
         is_video = (not is_dir) and (ext in VIDEO_EXTS)
-        # Filter : dossier OU video (sauf si show_all coche -> on affiche tout).
-        if not show_all and not is_dir and not is_video:
+        # Sprint D.32 v0.5.0 : les fichiers livre (epub/pdf/cbz/cbr/mobi/...)
+        # sont AUSSI visibles par defaut. Avant ils ne l'etaient que via
+        # 'Tous les fichiers'. Inutile maintenant que le pipeline livre est
+        # mature.
+        kind_for_filter = _KIND_BY_EXT.get(ext, "other") if not is_dir else "dir"
+        is_book = kind_for_filter in {"book", "audiobook"}
+        # Filter : dossier OU video OU livre (sauf si show_all coche).
+        if not show_all and not is_dir and not is_video and not is_book:
             continue
         # Size : stat() sur DirEntry est cached → 0 syscall supplementaire.
         size = 0

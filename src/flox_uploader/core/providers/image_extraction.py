@@ -102,6 +102,10 @@ def extract_cover_and_previews(
 # EPUB (cover via OPF + previews depuis images embedded)
 # ============================================================
 
+class _EmptyEPUB(Exception):
+    """Marqueur interne : EPUB sans pages -> fallback legacy."""
+
+
 def _extract_from_epub(
     source: Path,
     output_dir: Path,
@@ -109,18 +113,112 @@ def _extract_from_epub(
     rng_seed: int | None,
     result: dict,
 ) -> dict:
-    """Extrait cover (OPF manifest) + N previews depuis les images du ZIP.
+    """Extrait cover + N previews EPUB en RENDANT les pages complètes.
 
-    Sprint D.22 v0.5.0 (note Louis B1) : pour les EPUB illustres (BD en EPUB,
-    livres avec photos comme Petit Fute, etc.), on extrait quelques images
-    embedded en plus de la cover. Pour un roman texte pur sans illustration,
-    on aura juste la cover (les XHTML CSS pages ne sont pas extractibles
-    sans rendre du HTML).
+    Sprint D.32 v0.5.0 (UX Louis) : avant on extrayait des images embedded
+    (illustrations brutes hors contexte). Maintenant on rend chaque page
+    EPUB complete via PyMuPDF (qui ouvre EPUB nativement comme PDF).
+    On voit donc la mise en page reelle : texte + images dans leur contexte.
+
+    Fallback : si PyMuPDF echoue (rare), on bascule sur l'ancienne strategie
+    (cover via OPF manifest + images ZIP embedded). Defensif.
 
     Strategie :
-    1. Cover via extract_epub_cover (D.7) — meta name='cover' + manifest
-    2. Lister TOUTES les images du ZIP (.jpg/.png/.webp/.gif), exclure cover
-    3. Selectionner N images uniformement espacees (pas que le debut)
+    1. fitz.open(epub) -> doc paginated
+    2. Cover : page 0 rendue en image
+    3. Previews : N pages random dans [1, page_count-1]
+    """
+    # === Tentative principale : PyMuPDF (rend les pages comme PDF) ===
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        return _extract_from_epub_legacy(
+            source, output_dir, preview_count, rng_seed, result,
+        )
+
+    try:
+        doc = fitz.open(str(source))
+    except Exception as e:
+        # Echec ouverture EPUB par fitz -> fallback legacy
+        print(f"[WARN] EPUB fitz ouverture echec ({source.name}) : {type(e).__name__} {e}")
+        return _extract_from_epub_legacy(
+            source, output_dir, preview_count, rng_seed, result,
+        )
+
+    try:
+        if doc.page_count == 0:
+            # On laisse le finally fermer doc avant le fallback
+            raise _EmptyEPUB()
+
+        # ~120 dpi : equilibre qualite / taille fichier
+        zoom = 1.7
+        mat = fitz.Matrix(zoom, zoom)
+
+        # Cover : page 0 rendue
+        cover_path = output_dir / "cover.jpg"
+        try:
+            page = doc.load_page(0)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            pix.save(str(cover_path))
+            result["cover"] = cover_path
+        except Exception as e:
+            print(f"[WARN] EPUB cover render echec : {type(e).__name__} {e}")
+            # Fallback cover via OPF manifest si render rate
+            from .epub_metadata import extract_epub_cover
+            if extract_epub_cover(source, cover_path):
+                result["cover"] = cover_path
+
+        # Previews : pages random dans [1, page_count-1] (skip page 1 = cover,
+        # skip derniere = souvent table des matieres / mentions legales).
+        # Skip aussi les ~10 premieres pages (souvent intro / sommaire) et
+        # les ~5 dernieres pour livres assez longs.
+        if doc.page_count >= 3:
+            if doc.page_count >= 30:
+                skip_start = 10
+                skip_end = 5
+            else:
+                skip_start = 1
+                skip_end = 1
+            available = list(range(skip_start, max(skip_start + 1, doc.page_count - skip_end)))
+            if len(available) > preview_count:
+                if rng_seed is not None:
+                    random.seed(rng_seed)
+                preview_indices = sorted(random.sample(available, preview_count))
+            else:
+                preview_indices = available
+
+            for i, page_idx in enumerate(preview_indices, start=1):
+                try:
+                    page = doc.load_page(page_idx)
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    p = output_dir / f"preview_{i}.jpg"
+                    pix.save(str(p))
+                    result["previews"].append(p)
+                except Exception as e:
+                    print(f"[WARN] EPUB page {page_idx} render echec : {e}")
+    except _EmptyEPUB:
+        # Bascule sur le fallback legacy (cover via OPF + images ZIP)
+        doc.close()
+        return _extract_from_epub_legacy(
+            source, output_dir, preview_count, rng_seed, result,
+        )
+    finally:
+        if not doc.is_closed:
+            doc.close()
+    return result
+
+
+def _extract_from_epub_legacy(
+    source: Path,
+    output_dir: Path,
+    preview_count: int,
+    rng_seed: int | None,
+    result: dict,
+) -> dict:
+    """Fallback EPUB : cover via OPF + previews via images embedded ZIP.
+
+    Sprint D.22 (legacy) — strategie precedente conservee pour les cas ou
+    PyMuPDF echoue sur un EPUB exotique.
     """
     from .epub_metadata import extract_epub_cover
 
@@ -131,31 +229,23 @@ def _extract_from_epub(
     # Previews : explorer le ZIP a la recherche d'images embedded
     try:
         with zipfile.ZipFile(source, "r") as zf:
-            # Toutes les images, exclure les Apple metadata
             image_names = sorted([
                 n for n in zf.namelist()
                 if Path(n).suffix.lower() in _IMAGE_EXTS
                 and not n.startswith("__MACOSX/")
                 and not n.lower().endswith("/.ds_store")
             ])
-            # Retirer la cover (1re image souvent, ou contient 'cover')
             non_cover = [
                 n for n in image_names
                 if "cover" not in Path(n).name.lower()
                 and "couv" not in Path(n).name.lower()
             ]
-            # Si la cover EPUB n'a pas le mot 'cover' dans son nom mais qu'on
-            # l'a quand meme extraite, on retire la 1re image triee comme
-            # heuristique (souvent c'est la cover).
             if result["cover"] is not None and non_cover and non_cover == image_names:
                 non_cover = non_cover[1:]
 
             if not non_cover:
-                # EPUB roman pur : pas d'images embedded autres que cover.
-                # Pas de warning : c'est legitime.
                 return result
 
-            # Picker uniformement espace (pareil que CBZ)
             preview_picks = _pick_evenly_spaced(
                 non_cover, preview_count, skip_start=0, skip_end=0,
             )
