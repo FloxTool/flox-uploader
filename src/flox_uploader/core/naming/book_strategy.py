@@ -66,6 +66,76 @@ _LANG_TOKENS: dict[str, str] = {
 }
 
 
+# Sprint D.33 v0.5.0 : detection des periodiques (magazines / journaux).
+# Ces publications NE sont PAS dans Google Books / BnF (sauf reliures
+# annuelles rares). Inutile de lancer une recherche qui matchera un livre
+# random et polluera le titre.
+#
+# Heuristiques :
+#  1. Noms de publications connus (insensible casse)
+#  2. Pattern date dans le filename (mois+annee : "Mai 2026", "23 Mai 2026")
+import re as _re
+_KNOWN_PERIODICALS = frozenset({
+    # Magazines FR
+    "rolling stone", "le temps magazine", "diverto", "telerama", "le point",
+    "l'obs", "le nouvel obs", "courrier international", "valeurs actuelles",
+    "marianne", "society", "geo", "national geographic", "science et vie",
+    "ca m'interesse", "60 millions", "que choisir",
+    # Journaux quotidiens FR
+    "ouest-france", "ouest france", "le monde", "le figaro", "liberation",
+    "le parisien", "la croix", "l'humanite", "la depeche", "sud ouest",
+    "la voix du nord", "le progres", "nice matin", "var matin", "midi libre",
+    "20 minutes", "metro",
+    # Sport
+    "l'equipe", "lequipe", "france football", "auto plus", "moto magazine",
+    "auto moto",
+    # Eco/Tech
+    "les echos", "challenges", "capital", "01 net", "01net", "micro hebdo",
+    "stuff", "geek mag",
+    # International EN
+    "the economist", "time magazine", "newsweek", "vanity fair", "vogue",
+    "wired", "forbes", "fortune",
+})
+# Pattern date dans filename : "23 Mai 2026", "Mai 2026", "23-24 Mai 2026"
+_PERIODICAL_DATE_RE = _re.compile(
+    r"\b(?:\d{1,2}[-\s]+)?\d{0,2}\s*"
+    r"(?:janv|f[eé]v|mars|avril|mai|juin|juil|ao[uû]t|sept|oct|nov|d[eé]c)"
+    r"[a-z]*\s+\d{4}\b",
+    _re.IGNORECASE,
+)
+# Pattern "MAG NN" (numero de magazine)
+_PERIODICAL_NUM_RE = _re.compile(r"\bN[°ºo]?\s*\d{2,4}\b", _re.IGNORECASE)
+
+
+def _looks_like_periodical(filename: str, title: str = "", publisher: str = "") -> bool:
+    """Heuristique : ce fichier est-il un periodique (magazine/journal) ?
+
+    Si oui, on skip la lookup Google Books/BnF qui matchera un livre random.
+    Cas Louis : Diverto, Rolling Stone, Le Temps Magazine, Ouest-France,
+    L'Equipe.
+    """
+    # Normaliser separateurs scene -> espaces pour faciliter le match des
+    # noms de publications avec espaces.
+    combined = f"{filename} {title} {publisher}".lower()
+    combined_normalized = combined.replace("_", " ").replace(".", " ").replace("-", " ")
+    combined_normalized = _re.sub(r"\s+", " ", combined_normalized)
+    # Test 1 : nom de publication connu
+    for known in _KNOWN_PERIODICALS:
+        if known in combined or known in combined_normalized:
+            return True
+    # Test 2 : pattern date + mot 'magazine' / 'journal' / 'hebdo'
+    has_date = bool(_PERIODICAL_DATE_RE.search(filename))
+    has_periodical_marker = any(
+        m in combined_normalized for m in (
+            "magazine", " mag ", "journal", "hebdo", "mensuel",
+            "quotidien", "weekly", "monthly",
+        )
+    )
+    if has_date and has_periodical_marker:
+        return True
+    return False
+
+
 class BookNamingStrategy:
     """Strategy de naming pour Livres / BD / Manga (cat Gemini 12)."""
 
@@ -217,9 +287,30 @@ class BookNamingStrategy:
         # cette liste. Persiste dans debug.json pour debug post-mortem.
         lookup_trace: list[dict] = []
 
+        # Sprint D.33 v0.5.0 : detecter les periodiques (Diverto, Rolling
+        # Stone, L'Equipe, Ouest-France, Le Temps Magazine, etc.) qui ne
+        # sont PAS dans Google Books / BnF et qui produisent des matchs
+        # foireux ("Rolling Stone Juin 2026" -> matched "Les Rolling Stones").
+        # On skip le lookup et on marque dans trace.
+        is_periodical = _looks_like_periodical(
+            video_path.name, meta.title, meta.publisher,
+        )
+        if is_periodical:
+            lookup_trace.append({
+                "provider": "periodical_detector",
+                "outcome": "skipped_lookup",
+                "reason": "periodique detecte (magazine/journal) - skip BnF/Google Books pour eviter faux match",
+                "filename": video_path.name,
+                "title": meta.title,
+            })
+            debug.set("is_periodical", True)
+
         # Lookup configure depuis la config app si pas injecte (tests).
         if _book_lookup is not None:
             meta = _book_lookup(meta)
+        elif is_periodical:
+            # Pas de lookup en ligne pour les periodiques - on garde meta tel quel.
+            pass
         else:
             from ... import config
             google_key = config.get_optional_env("GOOGLE_BOOKS_API_KEY", "")

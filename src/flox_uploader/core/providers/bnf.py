@@ -60,6 +60,7 @@ def lookup_bnf(
     cache_file: Path | None = None,
     http_get=None,
     trace: list | None = None,
+    extra_titles: list[str] | None = None,
 ) -> BookMetadata | None:
     """Cherche un livre dans le catalogue BnF.
 
@@ -124,8 +125,11 @@ def lookup_bnf(
 
     # === Strategie 2 : titre + auteur (pas de cache pour ce type de query) ===
     if title:
-        return _query_bnf_by_title(title, author, http=http, trace_entry=entry)
-
+        result = _query_bnf_by_title(
+            title, author, http=http, trace_entry=entry, extra_titles=extra_titles,
+        )
+        if result:
+            return result
     return None
 
 
@@ -162,16 +166,28 @@ def _query_bnf_by_isbn(
 def _query_bnf_by_title(
     title: str, author: str, http,
     trace_entry: dict | None = None,
+    extra_titles: list[str] | None = None,
 ) -> BookMetadata | None:
     """Recherche BnF par titre + auteur optionnel.
 
     Sprint D.16 v0.5.0 : multi-strategies via _query_normalize. La BnF SRU
     (protocole CQL) est moins permissive que Google Books — on essaye
     plusieurs variantes du plus strict au plus large jusqu'a un match.
+
+    Sprint D.33 v0.5.0 : `extra_titles` (scene parsed title etc.) sont
+    aussi essayes comme variantes additionnelles pour augmenter les chances.
     """
     import time
-    from ._query_normalize import build_query_variants
+    from ._query_normalize import build_query_variants, normalize_title_for_query
     variants = build_query_variants(title, author)
+    if extra_titles:
+        seen_norm = {normalize_title_for_query(title).lower()}
+        for extra in extra_titles:
+            norm = normalize_title_for_query(extra).lower()
+            if not norm or norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            variants.extend(build_query_variants(extra, author))
     if not variants:
         return None
 
@@ -273,10 +289,18 @@ def _extract_dc_fields(dc_block: ET.Element) -> BookMetadata:
     meta = BookMetadata()
     meta.sources.append("bnf")
 
-    # Titre
+    # Titre — Sprint D.33 : strip le suffix BnF " / Auteur ; traduit..."
+    # qui apparait dans dc:title. Sans ca, le titre stocke est
+    #   "Les vents furieux / Mercedes Lackey ; traduit de l'anglais..."
+    # au lieu de juste "Les vents furieux".
     titles = _findall_dc(dc_block, "title")
     if titles and titles[0].text:
-        meta.title = titles[0].text.strip()
+        raw_title = titles[0].text.strip()
+        # Strip "/ ..." (auteurs/traducteurs ajoutes par la BnF)
+        clean_title = re.sub(r"\s+/\s+.+$", "", raw_title).strip()
+        # Strip ";" terminal au cas ou
+        clean_title = clean_title.rstrip(" ;,.").strip()
+        meta.title = clean_title or raw_title
 
     # Auteurs : dc:creator (1er) + dc:contributor (suivants)
     for creator in _findall_dc(dc_block, "creator"):
@@ -403,6 +427,17 @@ _BNF_ROLE_ANNOTATIONS = (
     "Compilateur",
     "Photographe",
     "Cartographe",
+    # Sprint D.33 v0.5.0 : roles BD/jeux video (LucasArts, etc.)
+    "Developpeur",
+    "Développeur",
+    "Producteur",
+    "Productrice",
+    "Scenariste",
+    "Scénariste",
+    "Dessinateur",
+    "Dessinatrice",
+    "Coloriste",
+    "Lettreur",
 )
 
 
@@ -419,18 +454,45 @@ def _clean_author_name(raw: str) -> str:
     BnF d'abord, puis on inverse.
     """
     name = raw.strip()
-    # Sprint D.30 : retirer les annotations de role BnF EN PREMIER (peuvent
-    # cacher les parentheses de dates qui sont avant). Pattern : ". Role" en
-    # fin de chaine (la BnF colle souvent role apres prenom + dates).
+    # Sprint D.33 v0.5.0 : retirer la parenthese de DATES (n'importe ou
+    # dans le nom). Cas Mercedes Lackey :
+    #   "Mercedes (1950-....). Auteur du texte Lackey"
+    # On retire "(1950-....)" partout. On garde ".  Role" pour le strip
+    # role suivant.
+    name = re.sub(r"\s*\(\s*\d{4}\s*-[^)]*\)\s*", " ", name)
+    name = re.sub(r"\s*\(\s*\d{4}\s*\)\s*", " ", name)  # juste (1950)
+    # Sprint D.30+D.33 : retirer les annotations de role BnF.
+    # 3 positions possibles :
+    #   - fin de chaine "Foo, Bar. Auteur du texte" -> end-strip
+    #   - milieu apres dot "Foo. Auteur du texte Bar" -> mid-dot-strip
+    #   - milieu nu (dot retire avec dates) "Foo Auteur du texte Bar"
+    #     -> mid-bare-strip
     for role in _BNF_ROLE_ANNOTATIONS:
+        # Position 1 : ". Role" en fin
         name = re.sub(
             rf"\s*[\.,]\s*{re.escape(role)}\s*$",
             "",
             name,
             flags=re.IGNORECASE,
         )
+        # Position 2 : ". Role" au milieu (avant Lastname)
+        name = re.sub(
+            rf"\s*[\.,]\s+{re.escape(role)}\s+",
+            " ",
+            name,
+            flags=re.IGNORECASE,
+        )
+        # Position 3 : "Role" nu au milieu (la dot a ete retiree par strip dates)
+        name = re.sub(
+            rf"\s+{re.escape(role)}\s+",
+            " ",
+            name,
+            flags=re.IGNORECASE,
+        )
     name = name.strip().rstrip(",.")
-    # Retirer parenthese de dates (apres avoir vire le role)
+    # Compacter espaces multiples
+    name = re.sub(r"\s+", " ", name)
+    # Retirer parenthese restante en fin (au cas ou)
     name = re.sub(r"\s*\([^)]+\)\s*$", "", name)
     name = name.strip().rstrip(",.")
     # Inverser "Nom, Prenom" -> "Prenom Nom"
