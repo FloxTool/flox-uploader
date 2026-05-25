@@ -359,7 +359,11 @@ def _query_by_title_author(
         # Fute : 5 editions (2014, 2020, 2023, 2025, 2026), on veut celle
         # la plus proche de target_year. Sans ranking, on prenait la 1ere
         # retournee par Google qui n'est pas forcement la bonne.
-        meta = _parse_best_item(data, target_year=target_year)
+        # Sprint D.37 : ranking par volume aussi (mangas), volume_score
+        # domine year_distance car le bon tome est plus important que
+        # l'annee.
+        meta = _parse_best_item(data, target_year=target_year,
+                                target_volume=target_volume)
         if meta is None:
             continue
 
@@ -407,10 +411,58 @@ def _query_by_title_author(
     return None
 
 
-def _parse_best_item(data, target_year: int = 0) -> BookMetadata | None:
+def _title_volume_match_score(title: str, target_vol: float) -> int:
+    """Sprint D.37 : score de match volume dans un titre Google Books.
+
+    Retourne :
+        0 = match exact du volume (ex target=30, title contient "T30" ou "Tome 30")
+        50 = mauvais volume detecte (target=30 mais title="40")
+        100 = pas d'info volume dans title (neutre)
+
+    Utilise par ranker pour PREFERER les candidats avec le bon volume.
+    """
+    if not target_vol or target_vol <= 0 or not title:
+        return 100
+    vol_int = int(target_vol) if target_vol == int(target_vol) else None
+    if vol_int is None:
+        return 100
+    title_lower = title.lower()
+    # Patterns d'expression du volume : T<n>, Tome <n>, Vol <n>, vol.<n>,
+    # #<n>, "Volume <n>"
+    patterns_ok = [
+        rf"\bt0*{vol_int}\b",
+        rf"\btome\s*0*{vol_int}\b",
+        rf"\bvol(?:ume)?\.?\s*0*{vol_int}\b",
+        rf"#0*{vol_int}\b",
+        rf"\bchapitre\s*0*{vol_int}\b",
+    ]
+    for pat in patterns_ok:
+        if re.search(pat, title_lower):
+            return 0  # match exact
+    # Si on trouve un AUTRE numero de volume dans le titre -> wrong volume
+    other_vol_patterns = [
+        r"\bt0*(\d+)\b",
+        r"\btome\s*0*(\d+)\b",
+        r"\bvol(?:ume)?\.?\s*0*(\d+)\b",
+        r"#0*(\d+)\b",
+        r"\bchapitre\s*0*(\d+)\b",
+    ]
+    for pat in other_vol_patterns:
+        m = re.search(pat, title_lower)
+        if m:
+            other_vol = int(m.group(1))
+            if other_vol != vol_int:
+                return 50  # wrong volume signal
+    return 100  # no info
+
+
+def _parse_best_item(data, target_year: int = 0,
+                     target_volume: float = 0.0) -> BookMetadata | None:
     """Parse une reponse Google Books et choisit le meilleur item.
 
     Sprint D.31 : si target_year > 0, ranking par proximite d'annee.
+    Sprint D.37 : si target_volume > 0, BOOST les candidats dont le titre
+    contient le bon volume (penalise ceux avec un autre volume).
     Sinon comportement legacy (1er item).
     """
     if not isinstance(data, dict):
@@ -418,27 +470,39 @@ def _parse_best_item(data, target_year: int = 0) -> BookMetadata | None:
     items = data.get("items") or []
     if not items:
         return None
-    if not target_year or len(items) == 1:
+    if not target_year and not target_volume:
+        return _parse_first_item({"items": items[:1]})
+    if len(items) == 1:
         return _parse_first_item({"items": items[:1]})
 
-    # Ranking par proximite d'annee
-    scored: list[tuple[int, dict]] = []
+    # Ranking compose : volume_score + year_distance
+    # Sprint D.37 : volume_score domine (multiplie x10) car un mauvais
+    # volume est inutile meme si l'annee est proche.
+    scored: list[tuple[int, int, dict]] = []
     for item in items:
         info = item.get("volumeInfo") or {}
         date_str = str(info.get("publishedDate") or "")
         m = re.search(r"\b(1[89]|20)\d{2}\b", date_str)
         item_year = int(m.group()) if m else 0
-        # Score : distance a target_year (plus petite = meilleur)
-        # Si pas d'annee : penalite 100 ans
-        if item_year == 0:
-            distance = 100
-        else:
-            distance = abs(item_year - target_year)
-        scored.append((distance, item))
+        year_distance = (
+            abs(item_year - target_year) if item_year and target_year else
+            100 if target_year else 0
+        )
+        title = str(info.get("title") or "")
+        vol_score = _title_volume_match_score(title, target_volume)
+        # Total : volume * 10 + year_distance pour que volume domine
+        total = vol_score * 10 + year_distance
+        scored.append((total, vol_score, item))
 
     scored.sort(key=lambda x: x[0])
-    best_item = scored[0][1]
-    return _parse_first_item({"items": [best_item]})
+    best = scored[0]
+    # Sprint D.37 : si meme le meilleur a volume_score = 50 (wrong volume),
+    # et target_volume > 0, on considere que rien ne matche correctement.
+    # Mieux vaut retourner None que de claim un mauvais tome.
+    if target_volume > 0 and best[1] >= 50:
+        # Wrong volume → ne pas retourner ce mauvais match
+        return None
+    return _parse_first_item({"items": [best[2]]})
 
 
 def _parse_first_item(data) -> BookMetadata | None:

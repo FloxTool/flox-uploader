@@ -107,6 +107,15 @@ class BookMetadata:
     # 4 previews random par defaut (cf. note Louis Q3).
     preview_urls: list[str] = field(default_factory=list)
 
+    # Sprint D.37 v0.5.0 : flag explicite "aucune correspondance fiable
+    # trouvee". Setter quand TOUS les providers ratent ou retournent
+    # wrong-volume. Le confidence score deduit ce flag pour deguerader le
+    # score (au lieu de pretendre que c'est OK). UI affiche un badge
+    # ⚠️ "Pas de correspondance fiable" sur le package.
+    # Cas typiques : fanscans (One Piece chapitres), auto-publies non
+    # indexes (Historica Cosmos), mauvais volume malgre fixes.
+    no_canonical_match: bool = False
+
     @property
     def isbn(self) -> str:
         """Retourne le meilleur ISBN dispo : isbn_13 prioritaire, sinon isbn_10."""
@@ -264,6 +273,8 @@ def book_to_dict(meta: BookMetadata) -> dict:
         "preview_urls": list(meta.preview_urls),
         "genres": list(meta.genres),
         "sources": list(meta.sources),
+        # Sprint D.37 : flag no-canonical-match (penalite score + UI badge)
+        "no_canonical_match": meta.no_canonical_match,
         # Note : on ne cache PAS file_path (chemin local utilisateur) ni
         # cover_local_path (regenerable). Le cache est partage entre runs / users.
     }
@@ -302,6 +313,8 @@ def book_from_dict(d: dict) -> BookMetadata:
         preview_urls=[str(u) for u in (d.get("preview_urls") or []) if u],
         genres=[str(g) for g in (d.get("genres") or []) if g],
         sources=[str(s) for s in (d.get("sources") or []) if s],
+        # Sprint D.37 : flag no-canonical (lecture cache)
+        no_canonical_match=bool(d.get("no_canonical_match", False)),
     )
     # Sprint D.31 : auto-invalidation des cover_url pourries au load
     meta.sanitize_cover_url()

@@ -63,6 +63,35 @@ def extract_cover_and_previews(
         "warning": "",
     }
 
+    # Sprint D.37 v0.5.0 : si source est un DOSSIER (audiobook MP3
+    # multi-chapitres typiquement), on trouve le 1er fichier audio
+    # dedans et on extrait depuis ce fichier-la.
+    if source.is_dir():
+        # Chercher 1er fichier audio (MP3/M4B) dans le dossier
+        audio_files = sorted([
+            p for p in source.rglob("*")
+            if p.is_file() and p.suffix.lower() in (".mp3", ".m4b")
+        ])
+        if audio_files:
+            source = audio_files[0]
+            ext = source.suffix.lower().lstrip(".")
+            result["format"] = ext
+        else:
+            # Pas d'audio, fallback : chercher 1er ebook
+            ebook_files = sorted([
+                p for p in source.rglob("*")
+                if p.is_file() and p.suffix.lower() in (
+                    ".epub", ".pdf", ".cbz", ".cbr"
+                )
+            ])
+            if ebook_files:
+                source = ebook_files[0]
+                ext = source.suffix.lower().lstrip(".")
+                result["format"] = ext
+            else:
+                result["warning"] = f"Aucun fichier livre/audio dans : {source}"
+                return result
+
     if not source.is_file():
         result["warning"] = f"Fichier source absent : {source}"
         return result
