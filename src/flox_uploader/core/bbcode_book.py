@@ -57,10 +57,10 @@ def render_book_bbcode(
 
     # On serialise BookMetadata en dict pour le passer au template (Jinja
     # n'aime pas les dataclasses avec property en filtres).
+    # Sprint D.14 : book_to_dict serialise maintenant file_format aussi,
+    # plus besoin du patch post-serialize.
     from .providers.book_metadata import book_to_dict
     meta_dict = book_to_dict(meta)
-    # On ajoute file_format qui n'est pas dans book_to_dict
-    meta_dict["file_format"] = meta.file_format
 
     return template.render(
         meta=meta_dict,

@@ -804,7 +804,8 @@ def _process_book(
     from .core.bbcode_book import render_book_bbcode, build_torrent_info
     from .core.providers.book_metadata import book_from_dict
     book_meta_obj = book_from_dict(book_meta)
-    book_meta_obj.file_format = book_meta.get("file_format", "")
+    # Sprint D.14 : file_format est maintenant proprement (de)serialise dans
+    # book_to_dict/book_from_dict. Plus besoin de patcher en post.
     # Sprint D.12 : compute torrent contents (file count, list, total size).
     # Le .torrent existe deja (cree juste avant), on peut le lire.
     torrent_info = build_torrent_info(torrent_path)

@@ -175,6 +175,10 @@ def book_to_dict(meta: BookMetadata) -> dict:
         "series_index_range": meta.series_index_range,
         "description": meta.description,
         "cover_url": meta.cover_url,
+        # Sprint D.14 fix : file_format DOIT etre serialise — sinon le
+        # warning 'Format manquant' apparait alors qu'on a bien
+        # l'extension du fichier source (cf. note Louis N-Log-1, N-Log-3).
+        "file_format": meta.file_format,
         "genres": list(meta.genres),
         "sources": list(meta.sources),
         # Note : on ne cache PAS file_path (chemin local utilisateur) ni
@@ -201,6 +205,8 @@ def book_from_dict(d: dict) -> BookMetadata:
         series_index_range=str(d.get("series_index_range", "") or ""),
         description=str(d.get("description", "") or ""),
         cover_url=str(d.get("cover_url", "") or ""),
+        # Sprint D.14 fix : file_format aussi rechargee depuis le cache.
+        file_format=str(d.get("file_format", "") or ""),
         genres=[str(g) for g in (d.get("genres") or []) if g],
         sources=[str(s) for s in (d.get("sources") or []) if s],
     )
