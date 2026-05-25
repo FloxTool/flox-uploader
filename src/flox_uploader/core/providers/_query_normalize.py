@@ -61,6 +61,43 @@ _VOLUME_PATTERNS_FOR_REMOVAL = [
 # Année 1900-2099
 _YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
+# Sprint D.33 v0.5.0 : patterns de pollution scene BD/manga numerique :
+#   "(One Shot)", "[Digital-NNNN]", "(TCH)", "(PapriKa+)", "[Scan SP-NNNN]",
+#   "(Delcourt)", "(Ankama)", etc.
+# On strippe AVANT normalisation pour eviter que ces tokens polluent le titre.
+# Cas Louis : "L où gisait le corps (One Shot) (Delcourt) [Digital-2984] (TCH)"
+#   -> "L où gisait le corps"
+_DIGITAL_RIP_PATTERNS = [
+    re.compile(r"\(One\s+Shot\)", re.IGNORECASE),
+    re.compile(r"\[Digital(?:-\d+)?\]", re.IGNORECASE),
+    re.compile(r"\(TCH\)", re.IGNORECASE),
+    re.compile(r"\(PapriKa\+?\)", re.IGNORECASE),
+    re.compile(r"\[Scan\s+SP-\d+\]", re.IGNORECASE),
+    re.compile(r"\bNEO\.RIP-Club\b", re.IGNORECASE),
+    re.compile(r"\beBook-?NEO\b", re.IGNORECASE),
+]
+# Editeurs BD/manga frequents en (Editeur) entre parens dans noms scene.
+# Volontairement liste blanche pour eviter de stripper du contenu titre.
+_PUBLISHER_PAREN_PATTERNS = [
+    re.compile(r"\(Delcourt\)", re.IGNORECASE),
+    re.compile(r"\(Ankama\)", re.IGNORECASE),
+    re.compile(r"\(HiComics(?:\s*-\s*HiGraphics)?\)", re.IGNORECASE),
+    re.compile(r"\(Glenat\)", re.IGNORECASE),
+    re.compile(r"\(Dargaud\)", re.IGNORECASE),
+    re.compile(r"\(Dupuis\)", re.IGNORECASE),
+    re.compile(r"\(Casterman\)", re.IGNORECASE),
+    re.compile(r"\(Soleil\)", re.IGNORECASE),
+    re.compile(r"\(Bamboo\)", re.IGNORECASE),
+    re.compile(r"\(Kana\)", re.IGNORECASE),
+    re.compile(r"\(Pika\)", re.IGNORECASE),
+    re.compile(r"\(Kurokawa\)", re.IGNORECASE),
+    re.compile(r"\(Nobi\s*Nobi\)", re.IGNORECASE),
+    re.compile(r"\(Bragelonne\)", re.IGNORECASE),
+]
+# Suffix BnF "Titre / Auteur ; traduit de l'X par Y" — on garde que la
+# partie avant " / "
+_BNF_TITLE_SUFFIX_RE = re.compile(r"\s+/\s+.+$")
+
 # Séparateurs "X et autres", "et al.", etc.
 _MULTI_AUTHOR_SUFFIX_RE = re.compile(
     r"\b(?:et\s+(?:autres|al\.?)|&\s*autres)\s*$",
@@ -109,6 +146,16 @@ def normalize_title_for_query(raw: str) -> str:
     """
     if not raw:
         return ""
+
+    # Étape -1 (Sprint D.33) : strip suffix BnF "/ Auteur ; traduit..."
+    # Cas Mercedes Lackey : "Les vents furieux / Mercedes Lackey ; traduit
+    # de l'anglais (États-Unis) par..." -> "Les vents furieux"
+    raw = _BNF_TITLE_SUFFIX_RE.sub("", raw)
+
+    # Étape -0.5 (Sprint D.33) : strip patterns de pollution scene
+    # BD/manga numerique (One Shot, [Digital-XXXX], (TCH), editeurs)
+    for pat in _DIGITAL_RIP_PATTERNS + _PUBLISHER_PAREN_PATTERNS:
+        raw = pat.sub("", raw)
 
     # Étape 0 (Sprint D.28) : reconstruction des apostrophes scene.
     # Pattern : ".X." où X est une particule française élidée

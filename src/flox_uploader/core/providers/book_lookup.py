@@ -92,6 +92,7 @@ def lookup_book_metadata(
                     cache_file=bnf_cache,
                     http_get=http_get,
                     trace=trace,
+                    extra_titles=extra_titles,
                 )
             elif provider == "google_books":
                 enriched = lookup_google_books(
