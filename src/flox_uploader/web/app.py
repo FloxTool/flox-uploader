@@ -2182,6 +2182,150 @@ def create_app() -> FastAPI:
             raise HTTPException(500, f"Echec suppression : {e}")
         return {"ok": True, "deleted": target.name}
 
+    @app.post("/api/packages/bulk-reprepare")
+    def api_packages_bulk_reprepare(payload: dict[str, Any]):
+        """Sprint D.13 v0.5.0 — relance la pipeline sur TOUS les packages
+        d'une categorie effective donnee.
+
+        Use case : apres une evolution majeure de l'extracteur (ex: D.10
+        qui a fixe l'extraction depuis dossier), on veut re-traiter les
+        packages preexistants sans intervention manuelle un par un.
+
+        Body :
+            {
+              "category_id": 12,         # categorie filtree (ex: 12=Livres)
+              "include_uploaded": false, # si False, skip les packages
+                                         #   deja uploades (defaut)
+              "dry_run": false           # si True, retourne ce qui serait
+                                         #   fait mais ne lance rien
+            }
+        """
+        import shutil
+        from ..core import jobs_db
+        from ..core.category_resolver import resolve_effective_category
+        from .jobs_runner import submit_prepare_job
+
+        try:
+            target_cat = int(payload.get("category_id") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "category_id doit etre un entier (ex: 12)")
+        if target_cat <= 0:
+            raise HTTPException(
+                400,
+                "category_id requis. Ex: 12 pour Livres, 1 pour Films.",
+            )
+        include_uploaded = bool(payload.get("include_uploaded", False))
+        dry_run = bool(payload.get("dry_run", False))
+
+        packages_root = config.packages_dir()
+        if not packages_root.is_dir():
+            return {
+                "ok": True, "scanned": 0, "matching": 0,
+                "skipped_uploaded": 0, "skipped_no_source": 0,
+                "relaunched": [], "skipped_other": [],
+                "dry_run": dry_run,
+                "message": "Aucun package present.",
+            }
+
+        scanned = 0
+        matching = 0
+        skipped_uploaded = 0
+        skipped_no_source = 0
+        relaunched: list[dict] = []
+        skipped_other: list[dict] = []
+
+        for pkg_dir in sorted(packages_root.iterdir()):
+            if not pkg_dir.is_dir():
+                continue
+            scanned += 1
+            try:
+                eff_cat = resolve_effective_category(pkg_dir)
+            except Exception:
+                skipped_other.append({
+                    "name": pkg_dir.name,
+                    "reason": "resolve_effective_category a echoue",
+                })
+                continue
+            if eff_cat != target_cat:
+                continue
+            matching += 1
+
+            state_data = read_state(pkg_dir)
+            if (
+                state_data is not None
+                and state_data.state == PackageState.UPLOADED
+                and not include_uploaded
+            ):
+                skipped_uploaded += 1
+                continue
+
+            source_job = jobs_db.find_job_for_package(str(pkg_dir))
+            if not source_job:
+                skipped_no_source += 1
+                skipped_other.append({
+                    "name": pkg_dir.name,
+                    "reason": "Pas de job source (package legacy)",
+                })
+                continue
+            if not Path(source_job.file_path).exists():
+                skipped_no_source += 1
+                skipped_other.append({
+                    "name": pkg_dir.name,
+                    "reason": f"Fichier source absent : {source_job.file_path}",
+                })
+                continue
+
+            if dry_run:
+                relaunched.append({
+                    "name": pkg_dir.name,
+                    "job_id": None,
+                    "source": source_job.file_path,
+                })
+                continue
+
+            # Supprime l'ancien package + le job, recree un job avec les
+            # MEMES overrides existants (preserve les choix user).
+            try:
+                jobs_db.delete_job(source_job.id)
+                shutil.rmtree(pkg_dir)
+            except OSError as e:
+                skipped_other.append({
+                    "name": pkg_dir.name,
+                    "reason": f"rmtree echec : {e}",
+                })
+                continue
+
+            new_job = jobs_db.add_job(
+                source_job.file_path,
+                force_fr=source_job.force_fr,
+                append_fr_title=source_job.append_fr_title,
+                tmdb_id_override=source_job.tmdb_id_override,
+                manual_release_name=source_job.manual_release_name,
+                category_id_hint=source_job.category_id_hint or target_cat,
+                manual_isbn=source_job.manual_isbn,
+                manual_author=source_job.manual_author,
+                manual_book_title=source_job.manual_book_title,
+                manual_book_year=source_job.manual_book_year,
+            )
+            submit_prepare_job(new_job.id)
+            relaunched.append({"name": pkg_dir.name, "job_id": new_job.id})
+
+        return {
+            "ok": True,
+            "scanned": scanned,
+            "matching": matching,
+            "skipped_uploaded": skipped_uploaded,
+            "skipped_no_source": skipped_no_source,
+            "relaunched": relaunched,
+            "skipped_other": skipped_other,
+            "dry_run": dry_run,
+            "message": (
+                f"{'Dry-run : ' if dry_run else ''}"
+                f"{len(relaunched)} package(s) {'seraient ' if dry_run else ''}"
+                f"relance(s) sur {matching} matching la cat {target_cat}."
+            ),
+        }
+
     @app.post("/api/packages/{name}/reprepare")
     def api_package_reprepare(name: str, payload: dict[str, Any]):
         """Cree un nouveau job de prepare avec des overrides, en supprimant
