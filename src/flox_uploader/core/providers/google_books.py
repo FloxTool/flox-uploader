@@ -236,31 +236,39 @@ def _query_by_title_author(
     # Sans volume dans la query, Google retourne A volume de la serie (souvent
     # T1 ou le plus populaire) plutot que LE volume cible. On ajoute donc
     # 3 formats : "Tome N", "T0N", "Vol N".
+    #
+    # IMPORTANT : on construit les QueryVariant directement (PAS via
+    # build_query_variants) car celui-ci re-applique normalize_title_for_query
+    # qui STRIP les marqueurs Tome / T0N / Vol (paradoxalement utile pour les
+    # queries series-only mais ici contre-productif).
+    from ._query_normalize import normalize_author_for_query, QueryVariant
     if target_volume and target_volume > 0:
         vol_int = int(target_volume) if target_volume == int(target_volume) else target_volume
         vol_str = str(vol_int)
-        # Construire des variantes "title + Tome N" / "title + T0N" / etc.
+        # 3 formats de suffix volume
         volume_suffixes = [f"Tome {vol_str}", f"T{int(vol_int):02d}", f"Vol {vol_str}"]
-        base_title_norm = normalize_title_for_query(title)
-        added_titles = set()
-        for vsuf in volume_suffixes:
-            title_with_vol = f"{base_title_norm} {vsuf}"
-            if title_with_vol.lower() in added_titles:
-                continue
-            added_titles.add(title_with_vol.lower())
-            variants.extend(build_query_variants(title_with_vol, author))
-        # Aussi pour les extra_titles
+        norm_author = normalize_author_for_query(author)
+        added_titles: set[str] = set()
+        # Liste des titres a essayer (primary + extras)
+        title_candidates = [title]
         if extra_titles:
-            for extra in extra_titles:
-                extra_norm = normalize_title_for_query(extra)
-                if not extra_norm:
+            title_candidates.extend(extra_titles)
+        for cand_title in title_candidates:
+            cand_norm = normalize_title_for_query(cand_title)
+            if not cand_norm:
+                continue
+            for vsuf in volume_suffixes:
+                title_with_vol = f"{cand_norm} {vsuf}"
+                if title_with_vol.lower() in added_titles:
                     continue
-                for vsuf in volume_suffixes:
-                    title_with_vol = f"{extra_norm} {vsuf}"
-                    if title_with_vol.lower() in added_titles:
-                        continue
-                    added_titles.add(title_with_vol.lower())
-                    variants.extend(build_query_variants(title_with_vol, author))
+                added_titles.add(title_with_vol.lower())
+                # Souple (sans quotes) - plus permissif
+                variants.append(QueryVariant(
+                    title=title_with_vol,
+                    author=norm_author,
+                    use_quotes=False,
+                    label=f"volume signal '{vsuf}' souple : {title_with_vol} + {norm_author}",
+                ))
 
     if not variants:
         return None
