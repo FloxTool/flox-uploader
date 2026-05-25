@@ -17,11 +17,47 @@ from ..trackers.base import Tracker
 from .providers.book_metadata import BookMetadata
 
 
+def is_external_cover_url(cover_url: str) -> bool:
+    """Sprint D.18 v0.5.0 : True si l'URL de la cover est accessible
+    publiquement (http/https), False si c'est un chemin local
+    (/packages/.../cover) que le tracker ne peut pas atteindre.
+
+    Le BBCode ne doit inclure que les covers EXTERNES, sinon le `[img]`
+    apparaitrait casse sur la fiche tracker."""
+    if not cover_url:
+        return False
+    return cover_url.startswith(("http://", "https://"))
+
+
+def pick_bbcode_cover_url(meta: BookMetadata, manual_cover_url: str = "") -> str:
+    """Sprint D.18 v0.5.0 : choisit la cover a inclure dans le BBCode.
+
+    Ordre de priorite :
+    1. manual_cover_url (override user via Options upload, D.12) si externe
+    2. meta.cover_url si externe (BnF / Google Books / OpenLibrary)
+    3. "" sinon — la cover locale extraite (D.7) n'est PAS incluse car
+       le tracker ne peut pas atteindre /packages/... du serveur local
+
+    Args:
+        meta : BookMetadata.
+        manual_cover_url : URL override saisie par l'user dans Options upload.
+
+    Returns:
+        URL externe a utiliser dans le BBCode, ou "" si rien d'utilisable.
+    """
+    if is_external_cover_url(manual_cover_url):
+        return manual_cover_url
+    if is_external_cover_url(meta.cover_url):
+        return meta.cover_url
+    return ""
+
+
 def render_book_bbcode(
     meta: BookMetadata,
     release_name: str,
     tracker: Tracker,
     torrent_info: dict | None = None,
+    manual_cover_url: str = "",
 ) -> str:
     """Rend le BBCode livre.
 
@@ -32,6 +68,9 @@ def render_book_bbcode(
         torrent_info : Sprint D.12 — dict optionnel avec infos torrent
             {'size_pretty': '12 Mo', 'file_count': 2, 'files': [{'name':..., 'size':...}]}.
             Si fourni, le template affiche taille + contenu du torrent.
+        manual_cover_url : Sprint D.18 — URL override saisie par l'user
+            dans Options upload (priorite sur meta.cover_url). Si elle
+            est externe (https), elle est utilisee dans le BBCode.
 
     Returns:
         BBCode rendu pret a poster sur Gemini. Jamais vide : si le template
@@ -61,6 +100,13 @@ def render_book_bbcode(
     # plus besoin du patch post-serialize.
     from .providers.book_metadata import book_to_dict
     meta_dict = book_to_dict(meta)
+
+    # Sprint D.18 : on remplace cover_url dans le dict par celle qui
+    # convient pour le BBCode (externe uniquement). Les covers locales
+    # extraites (cover_url = /packages/.../cover) sont videes pour
+    # eviter un [img] casse dans la fiche tracker.
+    bbcode_cover = pick_bbcode_cover_url(meta, manual_cover_url)
+    meta_dict["cover_url"] = bbcode_cover
 
     return template.render(
         meta=meta_dict,

@@ -2182,6 +2182,104 @@ def create_app() -> FastAPI:
             raise HTTPException(500, f"Echec suppression : {e}")
         return {"ok": True, "deleted": target.name}
 
+    @app.post("/api/packages/{name}/regenerate-presentation")
+    def api_regenerate_presentation(name: str):
+        """Sprint D.18 v0.5.0 — re-render la fiche BBCode du package livre
+        avec les Options upload actuelles (notamment manual_cover_url).
+
+        Use case : l'user a saisi une cover URL externe dans Options upload
+        APRES la prepare initiale. Au lieu de relancer toute la prepare,
+        ce endpoint regenere juste presentation.txt avec la nouvelle cover.
+
+        Limite : reserve aux packages livre (profile == 'book').
+        """
+        from ..core.category_resolver import resolve_effective_category, category_profile
+        from ..core.bbcode_book import render_book_bbcode, build_torrent_info
+        from ..core.providers.book_metadata import book_from_dict
+        from ..trackers import get_tracker
+        import json as _json
+
+        target = _resolve_package_dir(name)
+        state_data = read_state(target)
+        if state_data is None:
+            raise HTTPException(422, "Package sans state. Re-prepare d'abord.")
+
+        eff_cat = resolve_effective_category(target)
+        if category_profile(eff_cat) != "book":
+            raise HTTPException(
+                400,
+                "Ce endpoint est reserve aux packages livre (cat 12). "
+                "Pour les autres categories, edite la presentation manuellement.",
+            )
+
+        # Lire le book_metadata depuis le debug
+        debug_path = target / "_debug" / "debug.json"
+        book_meta_dict: dict[str, Any] = {}
+        if debug_path.is_file():
+            try:
+                debug_data = _json.loads(debug_path.read_text(encoding="utf-8"))
+                book_meta_dict = debug_data.get("book_metadata") or {}
+            except (OSError, _json.JSONDecodeError):
+                book_meta_dict = {}
+        if not book_meta_dict:
+            raise HTTPException(
+                422,
+                "Aucune metadonnee livre dans debug.json. Re-prepare le package "
+                "pour extraire les metadonnees du fichier source.",
+            )
+
+        meta = book_from_dict(book_meta_dict)
+
+        # torrent_info depuis le .torrent existant
+        torrent_files = list(target.glob("*.torrent"))
+        torrent_info = (
+            build_torrent_info(torrent_files[0]) if torrent_files else {}
+        )
+
+        announce_url = config.get_required_env("TRACKER_ANNOUNCE")
+        tracker = get_tracker(state_data.tracker_key or "gemini", announce_url)
+
+        try:
+            bbcode = render_book_bbcode(
+                meta,
+                state_data.release_name or name,
+                tracker,
+                torrent_info=torrent_info,
+                manual_cover_url=state_data.manual_cover_url,
+            )
+        except Exception as e:
+            raise HTTPException(500, f"Echec rendu BBCode : {e}")
+
+        # Ecrit presentation.txt. Si presentation_user.txt existait (override
+        # manuel), on le retire car la regen prime maintenant.
+        presentation_path = target / "presentation.txt"
+        presentation_path.write_text(bbcode, encoding="utf-8")
+        user_path = target / "presentation_user.txt"
+        if user_path.is_file():
+            try:
+                user_path.unlink()
+            except OSError:
+                pass
+
+        cover_used = (
+            state_data.manual_cover_url
+            if state_data.manual_cover_url
+            else (meta.cover_url if meta.cover_url.startswith("http") else "")
+        )
+        return {
+            "ok": True,
+            "message": (
+                "Presentation BBCode regeneree avec la cover URL actuelle. "
+                "Rafraichis la page pour la voir."
+            ),
+            "cover_used": cover_used,
+            "cover_is_local": (
+                bool(meta.cover_url)
+                and not meta.cover_url.startswith("http")
+                and not state_data.manual_cover_url
+            ),
+        }
+
     @app.post("/api/packages/bulk-reprepare")
     def api_packages_bulk_reprepare(payload: dict[str, Any]):
         """Sprint D.13 v0.5.0 — relance la pipeline sur TOUS les packages
