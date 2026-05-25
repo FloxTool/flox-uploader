@@ -59,6 +59,7 @@ def lookup_bnf(
     author: str = "",
     cache_file: Path | None = None,
     http_get=None,
+    trace: list | None = None,
 ) -> BookMetadata | None:
     """Cherche un livre dans le catalogue BnF.
 
@@ -76,55 +77,99 @@ def lookup_bnf(
     http = http_get or _default_http_get
     cache = load_cache(cache_file) if cache_file else {}
 
+    # Sprint D.30 : trace diagnostique
+    entry: dict | None = None
+    if trace is not None:
+        entry = {
+            "provider": "bnf",
+            "isbn": isbn,
+            "title": title,
+            "author": author,
+            "queries": [],
+            "outcome": "no_match",
+        }
+        trace.append(entry)
+
+    def _set(name: str, **extra):
+        if entry is not None:
+            entry["outcome"] = name
+            for k, v in extra.items():
+                entry[k] = v
+
     # === Strategie 1 : ISBN prioritaire ===
     key = cache_key_isbn(isbn)
     if key:
         if key in cache:
             cached = cache[key]
             if is_miss(cached):
+                _set("cached_miss")
                 # Sprint D.17 v0.5.0 : fallback titre si ISBN MISS en cache.
                 if title:
-                    return _query_bnf_by_title(title, author, http=http)
+                    return _query_bnf_by_title(title, author, http=http, trace_entry=entry)
                 return None
+            _set("cached_hit", matched_id=cached.get("bnf_ark", ""))
             return book_from_dict(cached)
 
-        meta = _query_bnf_by_isbn(key, http=http)
+        meta = _query_bnf_by_isbn(key, http=http, trace_entry=entry)
         if cache_file is not None:
             cache[key] = book_to_dict(meta) if meta else make_miss()
             save_cache(cache_file, cache)
         if meta is not None:
+            _set("matched_isbn", matched_id=meta.bnf_ark or "", matched_title=meta.title)
             return meta
         # Sprint D.17 : ISBN ne match pas a la BnF -> fallback titre.
         if title:
-            return _query_bnf_by_title(title, author, http=http)
+            return _query_bnf_by_title(title, author, http=http, trace_entry=entry)
         return None
 
     # === Strategie 2 : titre + auteur (pas de cache pour ce type de query) ===
     if title:
-        return _query_bnf_by_title(title, author, http=http)
+        return _query_bnf_by_title(title, author, http=http, trace_entry=entry)
 
     return None
 
 
-def _query_bnf_by_isbn(isbn: str, http) -> BookMetadata | None:
+def _query_bnf_by_isbn(
+    isbn: str, http,
+    trace_entry: dict | None = None,
+) -> BookMetadata | None:
     """Recherche BnF par ISBN. Retourne None si pas trouve ou erreur."""
+    import time
     cql_query = f'bib.isbn adj "{isbn}"'
     params = {**_DEFAULT_PARAMS, "query": cql_query}
+    t0 = time.monotonic()
+    q_entry = {"q": cql_query, "phase": "isbn"}
     try:
         resp = http(BNF_SRU_URL, params=params)
     except Exception as e:
+        q_entry.update({
+            "error": f"{type(e).__name__}: {e}",
+            "ms": int((time.monotonic() - t0) * 1000),
+        })
+        if trace_entry is not None:
+            trace_entry["queries"].append(q_entry)
         print(f"[WARN] BnF lookup ISBN {isbn} : {type(e).__name__} {e}")
         return None
+    q_entry.update({
+        "http_status": getattr(resp, "status_code", 200),
+        "ms": int((time.monotonic() - t0) * 1000),
+    })
+    if trace_entry is not None:
+        trace_entry["queries"].append(q_entry)
     return _parse_first_record(resp.text)
 
 
-def _query_bnf_by_title(title: str, author: str, http) -> BookMetadata | None:
+def _query_bnf_by_title(
+    title: str, author: str, http,
+    trace_entry: dict | None = None,
+) -> BookMetadata | None:
     """Recherche BnF par titre + auteur optionnel.
 
     Sprint D.16 v0.5.0 : multi-strategies via _query_normalize. La BnF SRU
     (protocole CQL) est moins permissive que Google Books — on essaye
     plusieurs variantes du plus strict au plus large jusqu'a un match.
     """
+    import time
     from ._query_normalize import build_query_variants
     variants = build_query_variants(title, author)
     if not variants:
@@ -137,14 +182,36 @@ def _query_bnf_by_title(title: str, author: str, http) -> BookMetadata | None:
             parts.append(f'bib.author adj "{variant.author}"')
         cql_query = " AND ".join(parts)
         params = {**_DEFAULT_PARAMS, "query": cql_query}
+        t0 = time.monotonic()
+        q_entry = {"q": cql_query, "phase": "title_author", "label": variant.label}
         try:
             resp = http(BNF_SRU_URL, params=params)
         except Exception as e:
+            q_entry.update({
+                "error": f"{type(e).__name__}: {e}",
+                "ms": int((time.monotonic() - t0) * 1000),
+            })
+            if trace_entry is not None:
+                trace_entry["queries"].append(q_entry)
             print(f"[WARN] BnF variant {variant.label!r} : {type(e).__name__} {e}")
             continue
+        q_entry.update({
+            "http_status": getattr(resp, "status_code", 200),
+            "ms": int((time.monotonic() - t0) * 1000),
+        })
         result = _parse_first_record(resp.text)
         if result is not None:
+            q_entry["matched"] = True
+            if trace_entry is not None:
+                trace_entry["queries"].append(q_entry)
+                trace_entry["outcome"] = "matched_title"
+                trace_entry["matched_id"] = result.bnf_ark or ""
+                trace_entry["matched_title"] = result.title
+                trace_entry["matched_via_variant"] = variant.label
             return result
+        q_entry["matched"] = False
+        if trace_entry is not None:
+            trace_entry["queries"].append(q_entry)
     return None
 
 
@@ -316,14 +383,56 @@ def _extract_dc_fields(dc_block: ET.Element) -> BookMetadata:
     return meta
 
 
+_BNF_ROLE_ANNOTATIONS = (
+    "Auteur du texte",
+    "Auteur",
+    "Illustrateur",
+    "Illustratrice",
+    "Traducteur",
+    "Traductrice",
+    "Préfacier",
+    "Préfacière",
+    "Editeur scientifique",
+    "Éditeur scientifique",
+    "Editrice scientifique",
+    "Éditrice scientifique",
+    "Adaptateur",
+    "Adaptatrice",
+    "Postfacier",
+    "Annotateur",
+    "Compilateur",
+    "Photographe",
+    "Cartographe",
+)
+
+
 def _clean_author_name(raw: str) -> str:
     """Nettoie un nom d'auteur BnF (souvent format 'Nom, Prenom (dates)').
 
     Exemple : "Tolkien, John Ronald Reuel (1892-1973)" -> "John Ronald Reuel Tolkien"
+
+    Sprint D.30 v0.5.0 (cas Louis Tomoji) : la BnF ajoute SOUVENT le ROLE
+    de l'auteur dans le champ creator/contributor, ex:
+    'Ogihara, Miwako. Auteur du texte' (sequence Nom, Prenom. Role).
+    Sans retirer ce role, l'inversion comma donne le bouilli
+    'Miwako. Auteur du texte Ogihara'. On strip donc les role annotations
+    BnF d'abord, puis on inverse.
     """
     name = raw.strip()
-    # Retirer parenthese de dates
+    # Sprint D.30 : retirer les annotations de role BnF EN PREMIER (peuvent
+    # cacher les parentheses de dates qui sont avant). Pattern : ". Role" en
+    # fin de chaine (la BnF colle souvent role apres prenom + dates).
+    for role in _BNF_ROLE_ANNOTATIONS:
+        name = re.sub(
+            rf"\s*[\.,]\s*{re.escape(role)}\s*$",
+            "",
+            name,
+            flags=re.IGNORECASE,
+        )
+    name = name.strip().rstrip(",.")
+    # Retirer parenthese de dates (apres avoir vire le role)
     name = re.sub(r"\s*\([^)]+\)\s*$", "", name)
+    name = name.strip().rstrip(",.")
     # Inverser "Nom, Prenom" -> "Prenom Nom"
     if "," in name:
         parts = name.split(",", 1)

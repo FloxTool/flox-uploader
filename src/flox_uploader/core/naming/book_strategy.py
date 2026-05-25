@@ -212,6 +212,11 @@ class BookNamingStrategy:
         if scene_parsed.title and scene_parsed.title.strip().lower() != (meta.title or "").strip().lower():
             extra_titles.append(scene_parsed.title)
 
+        # Sprint D.30 v0.5.0 : trace diagnostique. Chaque provider note ses
+        # tentatives (queries, http_status, items_returned, errors) dans
+        # cette liste. Persiste dans debug.json pour debug post-mortem.
+        lookup_trace: list[dict] = []
+
         # Lookup configure depuis la config app si pas injecte (tests).
         if _book_lookup is not None:
             meta = _book_lookup(meta)
@@ -224,7 +229,13 @@ class BookNamingStrategy:
                 cache_dir=cache_dir,
                 google_api_key=google_key,
                 extra_titles=extra_titles,
+                trace=lookup_trace,
             )
+        # Persiste le trace (memo de toutes les queries provider) dans debug
+        try:
+            debug.set("lookup_trace", lookup_trace)
+        except Exception:
+            pass
 
         # === 3. Persister les metadonnees dans debug pour la page detail ===
         try:

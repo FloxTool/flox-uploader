@@ -134,15 +134,33 @@ def normalize_title_for_query(raw: str) -> str:
         raw,
     )
 
+    # Étape 1bis (Sprint D.30) : strip les tokens techniques DOT/UNDERSCORE-
+    # BOUNDED dans le raw AVANT de remplacer les dots par espace. Ainsi
+    # ".FR.NoTag" est bien strippe MAIS le mot "en" (preposition francaise)
+    # reste intact dans "Decoupe en tranches" car non-dot-bounded.
+    # Cas Louis Zep : 'Decoupe en tranches (10354)' devenait 'Decoupe
+    # tranches' (perte du 'en') car 'EN' est code langue scene.
+    for tok in _TECH_TOKENS:
+        # Strip si entoure de separateurs scene (. _ -) ou en debut/fin
+        raw = re.sub(
+            rf"(?:(?<=[._-])|^){re.escape(tok)}(?=[._-]|$)",
+            "",
+            raw,
+            flags=re.IGNORECASE,
+        )
+
     # Étape 1 : séparateurs scene -> espaces
     s = raw.replace(".", " ").replace("_", " ").replace("-", " ")
 
-    # Étape 2 : retire les tokens techniques (mot complet uniquement)
+    # Étape 2 (legacy fallback) : retire les tokens techniques whole-word
+    # qui auraient survecu (cas filename a espaces deja, ex: "POITIERS 2026
+    # FRENCH EPUB"). On garde uniquement la suppression de tokens 3+ chars
+    # pour eviter de retirer 'EN' / 'FR' naked qui peuvent etre des mots.
     words = s.split()
     cleaned_words: list[str] = []
     for w in words:
-        # On compare en uppercase mais on garde la casse originale
-        if w.upper() in _TECH_TOKENS:
+        upper = w.upper()
+        if len(upper) >= 3 and upper in _TECH_TOKENS:
             continue
         cleaned_words.append(w)
     s = " ".join(cleaned_words)
@@ -153,6 +171,15 @@ def normalize_title_for_query(raw: str) -> str:
 
     # Étape 4 : retire l'année
     s = _YEAR_RE.sub(" ", s)
+
+    # Étape 4bis (Sprint D.30) : retire les IDs numeriques 4+ digits qui
+    # NE SONT PAS une annee 19xx/20xx. Cas Louis Zep : 'Decoupe en tranches
+    # (10354)' -> '10354' restait dans la query car != annee. Resultat :
+    # Google Books cherchait litteralement '10354' dans le titre, rien
+    # matchait. D.27 fait deja cette absorption cote scene parser mais
+    # le meta.title (de PDF/EPUB embarque) court-circuite cette etape :
+    # il faut donc nettoyer aussi cote query.
+    s = re.sub(r"\b\d{4,}\b", " ", s)
 
     # Étape 5 : ponctuation - on garde apostrophes (L'Ile, l'Ossuaire), tirets internes
     # On retire parentheses, crochets, accolades, virgules, points-virgules

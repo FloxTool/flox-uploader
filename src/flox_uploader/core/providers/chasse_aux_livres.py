@@ -121,7 +121,22 @@ def _parse_chasse_html(html: str, isbn: str) -> BookMetadata | None:
         r'<meta\s+property="og:image"\s+content="([^"]+)"',
     )
     if cover_url and cover_url.startswith(("http://", "https://")):
-        meta.cover_url = cover_url
+        # Sprint D.30 v0.5.0 (cas Louis Tomoji) : si l'URL pointe vers le
+        # LOGO du site lui-meme au lieu d'une vraie couverture, on rejete.
+        # Cas reel : chasse-aux-livres renvoie 'logo-chasse-aux-livres-
+        # square.png' comme og:image quand la couverture n'est pas
+        # disponible -> on prenait le logo comme cover. Pattern : "logo"
+        # ou "placeholder" dans l'URL = rejet.
+        cover_lower = cover_url.lower()
+        is_logo = (
+            "/logo-" in cover_lower
+            or "logo." in cover_lower.rsplit("/", 1)[-1]
+            or "placeholder" in cover_lower
+            or "no-image" in cover_lower
+            or "default" in cover_lower.rsplit("/", 1)[-1]
+        )
+        if not is_logo:
+            meta.cover_url = cover_url
 
     # Si on n'a rien recupere (page "non trouve"), on retourne None
     if not meta.title and not meta.authors:
