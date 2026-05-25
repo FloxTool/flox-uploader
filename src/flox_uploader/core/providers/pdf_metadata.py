@@ -101,7 +101,10 @@ def extract_pdf_metadata(pdf_path: Path) -> BookMetadata:
         if subject:
             # Si subject ressemble a une description (texte long) -> description
             if len(subject) > 50:
-                meta.description = subject
+                # Sprint D.22 : nettoyage HTML eventuel (PDF /Subject peut
+                # contenir du HTML dans certains cas rares).
+                from ._html import strip_html
+                meta.description = strip_html(subject)
             _extract_isbn_from_text(subject, meta)
 
         # Producer / Creator : on n'utilise pas (souvent juste le logiciel).

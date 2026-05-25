@@ -35,9 +35,11 @@
 
 {# Sprint D.19 v0.5.0 (note Louis Q3) : ligne de 4 previews (apercu pages)
    uploadees sur imgbb. Placement equivalent du lien YouTube sur la prez
-   film. Visible seulement si on a au moins 1 preview URL externe. #}
+   film. Visible seulement si on a au moins 1 preview URL externe.
+   Sprint D.22 (note Louis N-UX1) : taille augmentee a 250 pour mieux
+   voir les previews sur la fiche tracker. #}
 {%- if meta.preview_urls %}
-{%- for purl in meta.preview_urls[:4] %}[img=150]{{ purl }}[/img] {% endfor %}
+{%- for purl in meta.preview_urls[:4] %}[img=250]{{ purl }}[/img] {% endfor %}
 
 [img=500]https://i.imgur.com/jOSyeDp.png[/img]
 

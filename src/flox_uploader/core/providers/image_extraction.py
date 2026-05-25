@@ -68,12 +68,9 @@ def extract_cover_and_previews(
         return result
 
     if ext == "epub":
-        from .epub_metadata import extract_epub_cover
-        cover_path = output_dir / "cover.jpg"
-        if extract_epub_cover(source, cover_path):
-            result["cover"] = cover_path
-        # EPUB : pas de previews (XHTML+CSS, pas des pages images)
-        return result
+        return _extract_from_epub(
+            source, output_dir, preview_count, rng_seed, result,
+        )
 
     if ext == "cbz":
         return _extract_from_zip(
@@ -98,6 +95,82 @@ def extract_cover_and_previews(
         f"Extraction non supportee pour .{ext}. "
         "Saisis une cover URL externe dans Options upload."
     )
+    return result
+
+
+# ============================================================
+# EPUB (cover via OPF + previews depuis images embedded)
+# ============================================================
+
+def _extract_from_epub(
+    source: Path,
+    output_dir: Path,
+    preview_count: int,
+    rng_seed: int | None,
+    result: dict,
+) -> dict:
+    """Extrait cover (OPF manifest) + N previews depuis les images du ZIP.
+
+    Sprint D.22 v0.5.0 (note Louis B1) : pour les EPUB illustres (BD en EPUB,
+    livres avec photos comme Petit Fute, etc.), on extrait quelques images
+    embedded en plus de la cover. Pour un roman texte pur sans illustration,
+    on aura juste la cover (les XHTML CSS pages ne sont pas extractibles
+    sans rendre du HTML).
+
+    Strategie :
+    1. Cover via extract_epub_cover (D.7) — meta name='cover' + manifest
+    2. Lister TOUTES les images du ZIP (.jpg/.png/.webp/.gif), exclure cover
+    3. Selectionner N images uniformement espacees (pas que le debut)
+    """
+    from .epub_metadata import extract_epub_cover
+
+    cover_path = output_dir / "cover.jpg"
+    if extract_epub_cover(source, cover_path):
+        result["cover"] = cover_path
+
+    # Previews : explorer le ZIP a la recherche d'images embedded
+    try:
+        with zipfile.ZipFile(source, "r") as zf:
+            # Toutes les images, exclure les Apple metadata
+            image_names = sorted([
+                n for n in zf.namelist()
+                if Path(n).suffix.lower() in _IMAGE_EXTS
+                and not n.startswith("__MACOSX/")
+                and not n.lower().endswith("/.ds_store")
+            ])
+            # Retirer la cover (1re image souvent, ou contient 'cover')
+            non_cover = [
+                n for n in image_names
+                if "cover" not in Path(n).name.lower()
+                and "couv" not in Path(n).name.lower()
+            ]
+            # Si la cover EPUB n'a pas le mot 'cover' dans son nom mais qu'on
+            # l'a quand meme extraite, on retire la 1re image triee comme
+            # heuristique (souvent c'est la cover).
+            if result["cover"] is not None and non_cover and non_cover == image_names:
+                non_cover = non_cover[1:]
+
+            if not non_cover:
+                # EPUB roman pur : pas d'images embedded autres que cover.
+                # Pas de warning : c'est legitime.
+                return result
+
+            # Picker uniformement espace (pareil que CBZ)
+            preview_picks = _pick_evenly_spaced(
+                non_cover, preview_count, skip_start=0, skip_end=0,
+            )
+            for i, name in enumerate(preview_picks, start=1):
+                try:
+                    data = zf.read(name)
+                    ext_img = Path(name).suffix.lower()
+                    p = output_dir / f"preview_{i}{ext_img}"
+                    p.write_bytes(data)
+                    result["previews"].append(p)
+                except (KeyError, OSError) as e:
+                    print(f"[WARN] EPUB preview {name} : {type(e).__name__} {e}")
+    except (zipfile.BadZipFile, OSError) as e:
+        if result["cover"] is None:
+            result["warning"] = f"EPUB lecture echec : {type(e).__name__} {e}"
     return result
 
 

@@ -190,11 +190,18 @@ def _extract_dublin_core(metadata_elem: ET.Element, meta: BookMetadata) -> None:
             _extract_isbn_from_identifier(ident_elem, meta)
 
     # Description (resume)
+    # Sprint D.22 v0.5.0 (note Louis N-R5) : on strip_html car de nombreux
+    # EPUB stockent une description riche en HTML (<div><p>...</p></div>,
+    # <i>, <b>, <br>, &nbsp;) dans dc:description. Sans nettoyage, ces tags
+    # apparaissent crus dans le BBCode tracker et sur la page detail.
+    # Cf. cas Louis "Le.Massacre.De.Crac.H" qui contenait
+    # "<div><p>Quand le c...</p></div>" verbatim.
     desc_elem = metadata_elem.find("dc:description", _NS)
     if desc_elem is None:
         desc_elem = metadata_elem.find("{*}description")
     if desc_elem is not None and desc_elem.text:
-        meta.description = desc_elem.text.strip()
+        from ._html import strip_html
+        meta.description = strip_html(desc_elem.text)
 
     # Subject = genre / tags
     for subj_elem in metadata_elem.findall("dc:subject", _NS):
