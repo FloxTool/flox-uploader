@@ -971,11 +971,19 @@
                 </div>
             </div>
 
+            {# Sprint D.21 fix Bug-2 : on pre-remplit avec scene_parsed (propre)
+               en priorite, sinon book_metadata (peut etre pollue par anciens
+               runs). Si l'user a deja saisi un override manuel, ça reste
+               dans le state.manual_* qui prend la priorite (cf. _bm valeurs). #}
+            {%- set _sp = scene_parsed or {} -%}
+            {%- set _prefill_author = (_bm.authors[0] if _bm.authors else "") or (_sp.authors[0] if _sp.get("authors") else "") -%}
+            {%- set _prefill_title = _bm.title or _sp.get("title") or "" -%}
+
             <!-- Auteur manuel -->
             <div class="mb-4">
                 <label for="manual_author" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Auteur principal forcé</label>
                 <input type="text" id="manual_author"
-                       value="{{ _bm.authors[0] if _bm.authors else '' }}"
+                       value="{{ _prefill_author }}"
                        placeholder="exemple : J.R.R. Tolkien"
                        class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -987,7 +995,7 @@
             <div class="mb-4">
                 <label for="manual_book_title" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titre forcé</label>
                 <input type="text" id="manual_book_title"
-                       value="{{ _bm.title or '' }}"
+                       value="{{ _prefill_title }}"
                        placeholder="exemple : Le Seigneur des Anneaux"
                        class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
