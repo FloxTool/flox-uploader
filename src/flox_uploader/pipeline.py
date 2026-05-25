@@ -790,13 +790,29 @@ def _process_book(
             book_meta["cover_url"] = cover_extracted
             debug.set("book_metadata", book_meta)
 
-    # ---- BBCode livre (Sprint D.5) ----
-    from .core.bbcode_book import render_book_bbcode
+    # ---- .torrent (cree AVANT BBCode pour Sprint D.12 : enrichissement
+    # du BBCode livre avec contenu du torrent / nb fichiers / taille) ----
+    torrent_path = package_dir / f"{release_name}.torrent"
+    create_torrent(
+        input_path, torrent_path,
+        announce_url=tracker.announce_url,
+        source=tracker.torrent_source,
+        private=tracker.private,
+    )
+
+    # ---- BBCode livre (Sprint D.5 + D.12 enrichi avec contenu torrent) ----
+    from .core.bbcode_book import render_book_bbcode, build_torrent_info
     from .core.providers.book_metadata import book_from_dict
     book_meta_obj = book_from_dict(book_meta)
     book_meta_obj.file_format = book_meta.get("file_format", "")
+    # Sprint D.12 : compute torrent contents (file count, list, total size).
+    # Le .torrent existe deja (cree juste avant), on peut le lire.
+    torrent_info = build_torrent_info(torrent_path)
     try:
-        bbcode = render_book_bbcode(book_meta_obj, release_name, tracker)
+        bbcode = render_book_bbcode(
+            book_meta_obj, release_name, tracker,
+            torrent_info=torrent_info,
+        )
         (package_dir / "presentation.txt").write_text(bbcode, encoding="utf-8")
         print(f"[OK] BBCode livre genere : presentation.txt ({len(bbcode)} chars)")
     except Exception as e:
@@ -805,15 +821,6 @@ def _process_book(
         (package_dir / "presentation.txt").write_text(
             "\n".join(nfo_lines), encoding="utf-8",
         )
-
-    # ---- .torrent ----
-    torrent_path = package_dir / f"{release_name}.torrent"
-    create_torrent(
-        input_path, torrent_path,
-        announce_url=tracker.announce_url,
-        source=tracker.torrent_source,
-        private=tracker.private,
-    )
 
     # ---- Compliance ebook ----
     from .core.compliance import (

@@ -74,8 +74,31 @@
 {%- if meta.page_count %}
 [color=#8B8680]Pages :[/color] {{ meta.page_count }}
 {%- endif %}
+{%- set _ti_size = torrent_info.get('size_pretty', '') if torrent_info else '' %}
+{%- set _ti_count = torrent_info.get('file_count', 0) if torrent_info else 0 %}
+{%- set _ti_files = torrent_info.get('files', []) if torrent_info else [] %}
+{%- set _ti_truncated = torrent_info.get('truncated', false) if torrent_info else false %}
+{%- if _ti_size %}
+[color=#8B8680]Taille totale :[/color] {{ _ti_size }}
+{%- endif %}
+{%- if _ti_count and _ti_count > 1 %}
+[color=#8B8680]Nombre de fichiers :[/color] {{ _ti_count }}
+{%- endif %}
 {%- if meta.sources %}
 [color=#8B8680]Métadonnées :[/color] {{ meta.sources | join(", ") }}
+{%- endif %}
+
+{%- if _ti_files and _ti_count and _ti_count > 1 %}
+
+[color=#C9B27D][b]Contenu du torrent[/b][/color]
+[code]
+{%- for f in _ti_files %}
+{{ f.name }}{% if f.size_pretty %} ({{ f.size_pretty }}){% endif %}
+{%- endfor %}
+{%- if _ti_truncated %}
+... (tronqué à 50 fichiers)
+{%- endif %}
+[/code]
 {%- endif %}
 
 [img=500]https://i.imgur.com/ZHUrtS7.png[/img]

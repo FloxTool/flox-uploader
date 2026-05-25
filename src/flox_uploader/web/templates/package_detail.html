@@ -1139,7 +1139,11 @@
             </div>
 
             <!-- IDs externes : IMDB / TVDB / MAL (controles par la checkbox
-                 Override globale au-dessus, Round 4) -->
+                 Override globale au-dessus, Round 4)
+                 Sprint D.12 v0.5.0 : caches pour profile=book (inadaptes
+                 a un livre). Le wrapper data-profile-section permet le
+                 toggle dynamique cote JS si l'user change la cat. -->
+            <div data-profile-section="video" {% if _profile == 'book' %}class="hidden"{% endif %}>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                     <label for="manual_imdb_id" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">IMDB ID</label>
@@ -1193,7 +1197,52 @@
             </div>
 
             <p id="extra-fields-status" class="text-xs text-slate-500 dark:text-slate-400"></p>
-        </div>
+            </div> {# fin data-profile-section=video #}
+
+            {# Sprint D.12 v0.5.0 — N8 officiel : Options upload specifiques
+               aux livres. Affichees seulement pour cat 12 (toggle dynamique
+               cote JS via data-profile-section). #}
+            {%- set _bm = book_metadata or {} -%}
+            <div data-profile-section="book" {% if _profile != 'book' %}class="hidden"{% endif %}>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label for="manual_cover_url" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                            Cover URL forcée
+                            {% if _bm.cover_url %}<span class="text-slate-400 italic">(auto : {{ _bm.cover_url[:50] }}{% if _bm.cover_url|length > 50 %}…{% endif %})</span>{% endif %}
+                        </label>
+                        <input type="url" id="manual_cover_url"
+                               class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600"
+                               data-key="manual_cover_url"
+                               value="{{ manual_cover_url or '' }}"
+                               placeholder="exemple : https://exemple.com/cover.jpg">
+                        <p class="text-[10px] text-slate-400 mt-0.5">
+                            URL d'une couverture personnalisée si BnF / Google Books / OpenLibrary n'en a pas fourni. Override l'auto-extraction.
+                        </p>
+                    </div>
+                    <div>
+                        <label for="manual_book_subtype" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                            Sous-type (informationnel)
+                        </label>
+                        <select id="manual_book_subtype"
+                                class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                                data-key="manual_book_subtype">
+                            {% set _current_subtype = manual_book_subtype or '' %}
+                            <option value="" {% if not _current_subtype %}selected{% endif %}>Auto (depuis ISBN 978-X)</option>
+                            <option value="roman" {% if _current_subtype == 'roman' %}selected{% endif %}>Roman</option>
+                            <option value="bd" {% if _current_subtype == 'bd' %}selected{% endif %}>BD</option>
+                            <option value="manga" {% if _current_subtype == 'manga' %}selected{% endif %}>Manga</option>
+                            <option value="comics" {% if _current_subtype == 'comics' %}selected{% endif %}>Comics</option>
+                            <option value="audiobook" {% if _current_subtype == 'audiobook' %}selected{% endif %}>Livre audio</option>
+                            <option value="essai" {% if _current_subtype == 'essai' %}selected{% endif %}>Essai / Documentaire</option>
+                            <option value="manuel" {% if _current_subtype == 'manuel' %}selected{% endif %}>Manuel scolaire / Pratique</option>
+                        </select>
+                        <p class="text-[10px] text-slate-400 mt-0.5">
+                            Inclus dans la fiche BBCode. L'auto-detect lit le préfixe ISBN (978-1=Comics anglo, 978-2=BD/Roman FR, 978-4=Manga JP).
+                        </p>
+                    </div>
+                </div>
+                <p id="book-options-status" class="text-xs text-slate-500 dark:text-slate-400 mt-2"></p>
+            </div>
 
         <!-- Lot R-B : Drapeaux upload deplaces EN BAS (apres tous les champs).
              Sans sous-titre, juste les checkboxes. -->
