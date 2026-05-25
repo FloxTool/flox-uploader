@@ -44,6 +44,7 @@ def lookup_book_metadata(
         "chasse_aux_livres", "leslibraires_ca",
     ),
     extra_titles: list[str] | None = None,
+    trace: list | None = None,
 ) -> BookMetadata:
     """Enrichit `base` avec les metadonnees BnF, Google Books, OpenLibrary.
 
@@ -90,6 +91,7 @@ def lookup_book_metadata(
                     author=base.primary_author,
                     cache_file=bnf_cache,
                     http_get=http_get,
+                    trace=trace,
                 )
             elif provider == "google_books":
                 enriched = lookup_google_books(
@@ -100,6 +102,7 @@ def lookup_book_metadata(
                     api_key=google_api_key,
                     http_get=http_get,
                     extra_titles=extra_titles,
+                    trace=trace,
                 )
             elif provider == "openlibrary":
                 # OpenLibrary ne supporte que la recherche par ISBN

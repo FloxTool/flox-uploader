@@ -229,13 +229,41 @@ _VOLUME_PATTERNS = [
 ]
 
 
+_SCENE_TOKENS_HINT = frozenset({
+    "FRENCH", "ENGLISH", "MULTI", "EPUB", "PDF", "CBZ", "CBR", "MOBI",
+    "NOTAG", "VFF", "VFQ", "VFB", "VOSTFR", "VF", "VO",
+})
+
+
+def _looks_scene_style(stem: str) -> bool:
+    """Detecte un nom de fichier scene-style : dots + tech tokens.
+
+    Cas Louis Tomoji : 'Elle.s.appelait.Tomoji.FR.NoTag' -> True (dots +
+    FR + NoTag). Sans ce check, le fallback "_parse_cbz_filename" assigne
+    le stem brut comme title, polluant la query Google Books.
+    """
+    if "." not in stem:
+        return False
+    upper_tokens = {t.upper() for t in re.split(r"[._\-]", stem) if t}
+    return bool(upper_tokens & _SCENE_TOKENS_HINT)
+
+
 def _parse_cbz_filename(stem: str) -> dict:
     """Parse un nom de fichier CBZ/CBR pour extraire title/series/volume/author.
 
     Retourne un dict {title, series, volume, author} (vides si non-detectes).
     Conservateur : retourne le minimum sur, et le caller decide quoi faire.
+
+    Sprint D.30 v0.5.0 : si le stem est manifestement scene-style (dots +
+    tokens techniques FR/NoTag/etc.), on retourne TOUT vide pour laisser
+    le scene parser (BookNamingStrategy) faire le boulot proprement.
+    Evite de stocker 'Elle.s.appelait.Tomoji.FR.NoTag' comme title.
     """
     result = {"title": "", "series": "", "volume": 0, "author": ""}
+
+    # Sprint D.30 : skip si scene-style (laisse le scene parser gerer)
+    if _looks_scene_style(stem):
+        return result
 
     # Normaliser separateurs (underscore -> espace, garder dots pour T1.5)
     clean = stem.replace("_", " ").strip()

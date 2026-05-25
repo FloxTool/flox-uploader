@@ -58,6 +58,7 @@ def lookup_google_books(
     api_key: str = "",
     http_get=None,
     extra_titles: list[str] | None = None,
+    trace: list | None = None,
 ) -> BookMetadata | None:
     """Cherche un livre dans Google Books.
 
@@ -82,11 +83,35 @@ def lookup_google_books(
     cache = load_cache(cache_file) if cache_file else {}
     extras = list(extra_titles or [])
 
+    # Sprint D.30 v0.5.0 : trace diagnostique. Chaque tentative est loggee
+    # dans debug.json via BookNamingStrategy pour permettre de diagnostiquer
+    # les 429 / no_match / etc. sans avoir a re-instrumenter.
+    entry: dict | None = None
+    if trace is not None:
+        entry = {
+            "provider": "google_books",
+            "isbn": isbn,
+            "title": title,
+            "author": author,
+            "extra_titles": list(extras),
+            "queries": [],
+            "outcome": "no_match",
+            "has_api_key": bool(api_key),
+        }
+        trace.append(entry)
+
+    def _set_outcome(name: str, **extra):
+        if entry is not None:
+            entry["outcome"] = name
+            for k, v in extra.items():
+                entry[k] = v
+
     key = cache_key_isbn(isbn)
     if key:
         if key in cache:
             cached = cache[key]
             if is_miss(cached):
+                _set_outcome("cached_miss")
                 # Sprint D.17 v0.5.0 (note Louis N-Rel-3) : si l'ISBN
                 # est MISS dans le cache mais qu'on a un titre, on
                 # tente le fallback title+author au lieu de retourner
@@ -95,22 +120,25 @@ def lookup_google_books(
                 if title:
                     return _query_by_title_author(
                         title, author, api_key=api_key, http=http,
-                        extra_titles=extras,
+                        extra_titles=extras, trace_entry=entry,
                     )
                 return None
+            _set_outcome("cached_hit", matched_id=cached.get("google_books_id", ""))
             return book_from_dict(cached)
 
-        meta = _query_by_isbn(key, api_key=api_key, http=http)
+        meta = _query_by_isbn(key, api_key=api_key, http=http, trace_entry=entry)
         if cache_file is not None:
             cache[key] = book_to_dict(meta) if meta else make_miss()
             save_cache(cache_file, cache)
         if meta is not None:
+            _set_outcome("matched_isbn", matched_id=meta.google_books_id or "",
+                         matched_title=meta.title)
             return meta
         # Sprint D.17 : ISBN ne match pas en ligne -> fallback titre.
         if title:
             return _query_by_title_author(
                 title, author, api_key=api_key, http=http,
-                extra_titles=extras,
+                extra_titles=extras, trace_entry=entry,
             )
         return None
 
@@ -119,28 +147,54 @@ def lookup_google_books(
     if title:
         return _query_by_title_author(
             title, author, api_key=api_key, http=http,
-            extra_titles=extras,
+            extra_titles=extras, trace_entry=entry,
         )
 
     return None
 
 
-def _query_by_isbn(isbn: str, api_key: str, http) -> BookMetadata | None:
+def _query_by_isbn(
+    isbn: str, api_key: str, http,
+    trace_entry: dict | None = None,
+) -> BookMetadata | None:
     """Recherche Google Books par ISBN."""
+    import time
     params = {"q": f"isbn:{isbn}", "maxResults": "1"}
     if api_key:
         params["key"] = api_key
+    t0 = time.monotonic()
+    q_entry = {"q": f"isbn:{isbn}", "phase": "isbn"}
     try:
         resp = http(GOOGLE_BOOKS_URL, params=params)
     except Exception as e:
+        q_entry.update({
+            "error": f"{type(e).__name__}: {e}",
+            "ms": int((time.monotonic() - t0) * 1000),
+        })
+        if trace_entry is not None:
+            trace_entry["queries"].append(q_entry)
+            if "429" in str(e):
+                trace_entry["outcome"] = "rate_limited"
         print(f"[WARN] Google Books lookup ISBN {isbn} : {type(e).__name__} {e}")
         return None
-    return _parse_first_item(resp.json())
+    q_entry.update({
+        "http_status": getattr(resp, "status_code", 200),
+        "ms": int((time.monotonic() - t0) * 1000),
+    })
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
+    q_entry["items_returned"] = len(data.get("items", []) or [])
+    if trace_entry is not None:
+        trace_entry["queries"].append(q_entry)
+    return _parse_first_item(data)
 
 
 def _query_by_title_author(
     title: str, author: str, api_key: str, http,
     extra_titles: list[str] | None = None,
+    trace_entry: dict | None = None,
 ) -> BookMetadata | None:
     """Recherche Google Books par titre + auteur.
 
@@ -184,6 +238,8 @@ def _query_by_title_author(
         unique_variants.append(v)
     variants = unique_variants
 
+    import time
+    rate_limited = False
     for variant in variants:
         # Construire la query selon la variante
         if variant.use_quotes:
@@ -197,30 +253,64 @@ def _query_by_title_author(
             query_parts = [f"intitle:{variant.title}"]
             if variant.author:
                 query_parts.append(f"inauthor:{variant.author}")
+        q_str = " ".join(query_parts)
         params = {
-            "q": " ".join(query_parts),
+            "q": q_str,
             "maxResults": "1",
             "langRestrict": "fr",  # privilegier l'edition FR
         }
         if api_key:
             params["key"] = api_key
+        t0 = time.monotonic()
+        q_entry = {"q": q_str, "phase": "title_author", "label": variant.label}
         try:
             resp = http(GOOGLE_BOOKS_URL, params=params)
         except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+            q_entry.update({
+                "error": err,
+                "ms": int((time.monotonic() - t0) * 1000),
+            })
+            if trace_entry is not None:
+                trace_entry["queries"].append(q_entry)
+            if "429" in str(e):
+                rate_limited = True
+                # Si on est rate-limite, inutile de continuer a hammer
+                print(f"[WARN] Google Books rate-limited (429), abandon des variants suivants.")
+                break
             print(f"[WARN] Google Books variant {variant.label!r} : {type(e).__name__} {e}")
             continue
 
+        q_entry.update({
+            "http_status": getattr(resp, "status_code", 200),
+            "ms": int((time.monotonic() - t0) * 1000),
+        })
         try:
             data = resp.json()
         except Exception:
+            q_entry["error"] = "invalid_json"
+            if trace_entry is not None:
+                trace_entry["queries"].append(q_entry)
             continue
+
+        items_count = len(data.get("items", []) or [])
+        q_entry["items_returned"] = items_count
+        if trace_entry is not None:
+            trace_entry["queries"].append(q_entry)
 
         meta = _parse_first_item(data)
         if meta is not None:
             # Match trouvé : on s'arrête sur la 1re variante qui fonctionne
+            if trace_entry is not None:
+                trace_entry["outcome"] = "matched_title"
+                trace_entry["matched_id"] = meta.google_books_id or ""
+                trace_entry["matched_title"] = meta.title
+                trace_entry["matched_via_variant"] = variant.label
             return meta
 
     # Aucune variante n'a matché
+    if trace_entry is not None and rate_limited:
+        trace_entry["outcome"] = "rate_limited"
     return None
 
 
