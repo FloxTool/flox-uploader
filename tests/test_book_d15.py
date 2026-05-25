@@ -192,8 +192,10 @@ def test_detail_book_renders_direct_google_books_link(client, tmp_path):
     resp = client.get("/packages/Direct.GB.Link-Flox")
     assert resp.status_code == 200
     html = resp.text
-    # Lien direct doit etre present
-    assert "books.google.com/books?id=Nw2eEQAAQBAJ" in html
+    # Sprint D.35 v0.5.0 : format moderne /books/edition/<slug>/<id>?hl=fr
+    # (au lieu de l'ancien books?id= qui ouvre une page basique).
+    assert "www.google.com/books/edition/" in html
+    assert "/Nw2eEQAAQBAJ?hl=fr" in html
     # Plus de lien de recherche generique
     assert "google.com/search?tbm=bks" not in html
 
@@ -212,6 +214,7 @@ def test_detail_book_no_google_books_link_without_id(client, tmp_path):
     html = resp.text
     # Pas de lien direct (volumeId absent)
     assert "books.google.com/books?id=" not in html
+    assert "www.google.com/books/edition/" not in html
     # Pas non plus de lien de recherche (on a retire le fallback search)
     assert "google.com/search?tbm=bks" not in html
 
@@ -274,7 +277,9 @@ def test_bbcode_includes_direct_links_when_ids_present(monkeypatch):
     )
     bbcode = render_book_bbcode(meta, "Test.Release", tracker)
     assert "[url=https://catalogue.bnf.fr/ark:/12148/cb45123456p]" in bbcode
-    assert "[url=https://books.google.com/books?id=Nw2eEQAAQBAJ]" in bbcode
+    # Sprint D.35 : format moderne /books/edition/<slug>/<id>?hl=fr
+    assert "[url=https://www.google.com/books/edition/" in bbcode
+    assert "/Nw2eEQAAQBAJ?hl=fr]" in bbcode
 
 
 def test_bbcode_no_direct_links_without_ids(monkeypatch):
@@ -291,3 +296,4 @@ def test_bbcode_no_direct_links_without_ids(monkeypatch):
     bbcode = render_book_bbcode(meta, "Test.Release", tracker)
     assert "catalogue.bnf.fr/ark" not in bbcode
     assert "books.google.com/books?id=" not in bbcode
+    assert "www.google.com/books/edition/" not in bbcode
