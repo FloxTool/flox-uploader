@@ -92,6 +92,16 @@ class BookMetadata:
     # Trace des providers qui ont enrichi
     sources: list[str] = field(default_factory=list)
 
+    # Sprint D.15 v0.5.0 : identifiants externes pour generer des liens
+    # DIRECTS vers les fiches (pas des liens de recherche).
+    # - google_books_id : volumeId Google Books, ex "Nw2eEQAAQBAJ" ->
+    #   https://books.google.com/books?id={volumeId}
+    # - bnf_ark : identifiant ARK BnF, ex "cb12345678p" ->
+    #   https://catalogue.bnf.fr/ark:/12148/{ark}
+    # Vides si le provider n'a pas matche.
+    google_books_id: str = ""
+    bnf_ark: str = ""
+
     @property
     def isbn(self) -> str:
         """Retourne le meilleur ISBN dispo : isbn_13 prioritaire, sinon isbn_10."""
@@ -123,7 +133,8 @@ class BookMetadata:
         # Strings : on remplit si vide
         for str_field in ("title", "subtitle", "publisher", "language",
                           "description", "cover_url", "isbn_13", "isbn_10",
-                          "series", "series_index_range", "file_format"):
+                          "series", "series_index_range", "file_format",
+                          "google_books_id", "bnf_ark"):
             if not getattr(self, str_field) and getattr(other, str_field):
                 setattr(self, str_field, getattr(other, str_field))
 
@@ -179,6 +190,9 @@ def book_to_dict(meta: BookMetadata) -> dict:
         # warning 'Format manquant' apparait alors qu'on a bien
         # l'extension du fichier source (cf. note Louis N-Log-1, N-Log-3).
         "file_format": meta.file_format,
+        # Sprint D.15 : ids externes pour liens directs vers fiches.
+        "google_books_id": meta.google_books_id,
+        "bnf_ark": meta.bnf_ark,
         "genres": list(meta.genres),
         "sources": list(meta.sources),
         # Note : on ne cache PAS file_path (chemin local utilisateur) ni
@@ -207,6 +221,9 @@ def book_from_dict(d: dict) -> BookMetadata:
         cover_url=str(d.get("cover_url", "") or ""),
         # Sprint D.14 fix : file_format aussi rechargee depuis le cache.
         file_format=str(d.get("file_format", "") or ""),
+        # Sprint D.15 : ids externes (liens directs fiches).
+        google_books_id=str(d.get("google_books_id", "") or ""),
+        bnf_ark=str(d.get("bnf_ark", "") or ""),
         genres=[str(g) for g in (d.get("genres") or []) if g],
         sources=[str(s) for s in (d.get("sources") or []) if s],
     )

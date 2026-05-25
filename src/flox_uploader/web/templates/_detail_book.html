@@ -137,20 +137,37 @@
                 </div>
             </div>
 
-            {# IDs externes — pilules subtilement contrastantes (style carte Media). #}
-            <div class="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap gap-2 text-xs">
+            {# IDs externes — pilules subtilement contrastantes (style carte Media).
+               Sprint D.15 v0.5.0 (notes Louis N-Bug-1, N-Log-2) : on prefere les
+               liens DIRECTS vers les fiches (volumeId Google Books, ARK BnF)
+               plutot que des liens de recherche generiques. Si on n'a pas
+               l'id direct, on retire le lien (decision Louis) — l'ISBN
+               apparait juste en texte. #}
+            <div class="pt-3 border-t border-slate-100 dark:border-slate-700/60 flex flex-wrap gap-2 text-xs items-center">
+                {# ISBN : lien direct catalogue BnF via ARK si dispo, sinon texte brut. #}
                 {% if isbn %}
-                <a href="https://www.bnf.fr/fr/recherche/general?query={{ isbn }}"
-                   target="_blank" rel="noopener noreferrer"
-                   class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-fast">
-                    {{ icon('external-link', size='sm') }}
-                    ISBN <span class="font-mono">{{ isbn }}</span>
-                </a>
+                    {% if bm.bnf_ark %}
+                    <a href="https://catalogue.bnf.fr/ark:/12148/{{ bm.bnf_ark }}"
+                       target="_blank" rel="noopener noreferrer"
+                       data-tu-tooltip="Fiche BnF (catalogue)"
+                       class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-fast">
+                        {{ icon('external-link', size='sm') }}
+                        ISBN <span class="font-mono">{{ isbn }}</span>
+                    </a>
+                    {% else %}
+                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60"
+                          data-tu-tooltip="Pas de lien fiche BnF direct disponible">
+                        ISBN <span class="font-mono">{{ isbn }}</span>
+                    </span>
+                    {% endif %}
                 {% endif %}
-                {% if bm.title %}
-                {%- set _q = (bm.title ~ (' ' ~ (bm.authors[0] if bm.authors else ''))) | urlencode -%}
-                <a href="https://www.google.com/search?tbm=bks&q={{ _q }}"
+
+                {# Google Books : lien direct fiche via volumeId si dispo,
+                   sinon on retire (pas de fallback search inutile). #}
+                {% if bm.google_books_id %}
+                <a href="https://books.google.com/books?id={{ bm.google_books_id }}"
                    target="_blank" rel="noopener noreferrer"
+                   data-tu-tooltip="Fiche Google Books"
                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-fast">
                     {{ icon('external-link', size='sm') }}
                     Google Books

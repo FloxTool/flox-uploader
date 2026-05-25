@@ -255,6 +255,28 @@ def _extract_dc_fields(dc_block: ET.Element) -> BookMetadata:
             elif len(clean) == 10 and not meta.isbn_10:
                 meta.isbn_10 = clean
 
+    # Sprint D.15 v0.5.0 : capturer l'ARK BnF pour generer un lien direct
+    # vers la fiche catalogue (https://catalogue.bnf.fr/ark:/12148/{ark}).
+    # Format typique : "ark:/12148/cb12345678p" trouve dans dc:identifier ou
+    # n'importe quel descendant de l'XML.
+    if not meta.bnf_ark:
+        ark_regex = re.compile(r"ark:/12148/(cb[a-zA-Z0-9]+)")
+        for elem in dc_block.iter():
+            if elem.text:
+                m = ark_regex.search(elem.text)
+                if m:
+                    meta.bnf_ark = m.group(1)
+                    break
+            # Verifier aussi les attributs (parfois l'ARK est dans rdf:about)
+            for attr_val in (elem.attrib or {}).values():
+                if attr_val and "ark:/12148/" in str(attr_val):
+                    m = ark_regex.search(str(attr_val))
+                    if m:
+                        meta.bnf_ark = m.group(1)
+                        break
+            if meta.bnf_ark:
+                break
+
     # Pages (dcterms:extent)
     for elem in dc_block.iter():
         if elem.tag.endswith("}extent") and elem.text:

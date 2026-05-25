@@ -136,12 +136,20 @@ def _parse_first_item(data) -> BookMetadata | None:
     items = data.get("items") or []
     if not items:
         return None
-    info = items[0].get("volumeInfo") or {}
+    first_item = items[0]
+    info = first_item.get("volumeInfo") or {}
     if not isinstance(info, dict):
         return None
 
     meta = BookMetadata()
     meta.sources.append("google_books")
+
+    # Sprint D.15 v0.5.0 : capturer le volumeId pour generer un lien
+    # direct vers la fiche Google Books (https://books.google.com/books?id={id})
+    # au lieu d'un lien de recherche generique.
+    volume_id = str(first_item.get("id") or "").strip()
+    if volume_id:
+        meta.google_books_id = volume_id
 
     # Titre + sous-titre
     if info.get("title"):
