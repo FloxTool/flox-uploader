@@ -327,6 +327,19 @@ def _extract_team(release: str) -> tuple[str, str]:
         candidate = s[last_dash + 1:].strip().rstrip(".")
         if _is_plausible_team(candidate):
             return s[:last_dash].strip().rstrip(" ."), candidate
+        # Sprint D.29 v0.5.0 : si le candidat post-dash a des espaces ou si
+        # le dash est entoure d'espaces, c'est un subtitle separator
+        # editorial (ex: "Guide Petit Fute- Escapades dans la Vienne"),
+        # PAS un scene team marker. On TRONQUE le titre au dash (le
+        # sous-titre apres est drop, la partie avant est plus
+        # canonique pour la recherche).
+        has_space_adjacent = (
+            (last_dash > 0 and s[last_dash - 1].isspace())
+            or (last_dash + 1 < len(s) and s[last_dash + 1].isspace())
+        )
+        candidate_has_spaces = candidate and any(c.isspace() for c in candidate)
+        if has_space_adjacent or candidate_has_spaces:
+            return s[:last_dash].strip().rstrip(" ."), ""
 
     return s, ""
 
@@ -337,11 +350,20 @@ def _is_plausible_team(s: str) -> bool:
     Critères :
     - Longueur 2-30 caracteres
     - Au moins 1 lettre
+    - PAS d'espaces internes (les teams scene sont des blobs alphanum :
+      'NoTAG', 'Frosties', 'Punisher694', 'PopHD'). Sprint D.29 v0.5.0
+      (cas Louis 'Guide Poitiers 2026 Petit Fute- Escapades dans la
+      Vienne.epub' qui captait 'Escapades dans la Vienne' comme team).
     - PAS un token connu (format/lang/audio/scene noise/HS/integrale/year/tome)
     """
     if not s or len(s) < 2 or len(s) > 30:
         return False
     if not any(c.isalpha() for c in s):
+        return False
+    # Sprint D.29 : un team scene n'a JAMAIS d'espace. Une sequence comme
+    # "Escapades dans la Vienne" est un sous-titre (separe par "- " typique
+    # editorial), pas une team.
+    if any(c.isspace() for c in s):
         return False
     upper = s.upper()
     if upper in _FORMAT_TOKENS:
