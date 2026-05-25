@@ -59,6 +59,7 @@ def lookup_google_books(
     http_get=None,
     extra_titles: list[str] | None = None,
     trace: list | None = None,
+    target_year: int = 0,
 ) -> BookMetadata | None:
     """Cherche un livre dans Google Books.
 
@@ -121,6 +122,7 @@ def lookup_google_books(
                     return _query_by_title_author(
                         title, author, api_key=api_key, http=http,
                         extra_titles=extras, trace_entry=entry,
+                        target_year=target_year,
                     )
                 return None
             _set_outcome("cached_hit", matched_id=cached.get("google_books_id", ""))
@@ -148,6 +150,7 @@ def lookup_google_books(
         return _query_by_title_author(
             title, author, api_key=api_key, http=http,
             extra_titles=extras, trace_entry=entry,
+            target_year=target_year,
         )
 
     return None
@@ -195,6 +198,7 @@ def _query_by_title_author(
     title: str, author: str, api_key: str, http,
     extra_titles: list[str] | None = None,
     trace_entry: dict | None = None,
+    target_year: int = 0,
 ) -> BookMetadata | None:
     """Recherche Google Books par titre + auteur.
 
@@ -240,6 +244,14 @@ def _query_by_title_author(
 
     import time
     rate_limited = False
+    # Sprint D.31 : si target_year fourni, on collecte les MEILLEURS candidats
+    # de chaque variante puis on rank globalement. Sans ca, on baille sur la
+    # 1ere variante meme si son meilleur candidat est tres loin de target_year
+    # (cas Petit Fute : variante "POITIERS avec photos" renvoie edition 2013,
+    # mais variante "Guide Poitiers Petit Fute" aurait renvoye 2026).
+    best_so_far: BookMetadata | None = None
+    best_distance: int = 9999
+    best_via_variant: str = ""
     for variant in variants:
         # Construire la query selon la variante
         if variant.use_quotes:
@@ -254,9 +266,12 @@ def _query_by_title_author(
             if variant.author:
                 query_parts.append(f"inauthor:{variant.author}")
         q_str = " ".join(query_parts)
+        # Sprint D.31 : maxResults=5 pour avoir un pool a ranker (cas Petit
+        # Fute : 5 editions annuelles, on doit choisir celle qui matche
+        # target_year). Si target_year=0, on prend juste le 1er.
         params = {
             "q": q_str,
-            "maxResults": "1",
+            "maxResults": "5" if target_year else "1",
             "langRestrict": "fr",  # privilegier l'edition FR
         }
         if api_key:
@@ -298,20 +313,90 @@ def _query_by_title_author(
         if trace_entry is not None:
             trace_entry["queries"].append(q_entry)
 
-        meta = _parse_first_item(data)
-        if meta is not None:
-            # Match trouvé : on s'arrête sur la 1re variante qui fonctionne
+        # Sprint D.31 : ranking par annee si target_year fourni. Cas Petit
+        # Fute : 5 editions (2014, 2020, 2023, 2025, 2026), on veut celle
+        # la plus proche de target_year. Sans ranking, on prenait la 1ere
+        # retournee par Google qui n'est pas forcement la bonne.
+        meta = _parse_best_item(data, target_year=target_year)
+        if meta is None:
+            continue
+
+        # Sprint D.31 : si pas de target_year, on retourne immediatement
+        # (comportement legacy). Sinon, on calcule la distance et on
+        # garde le meilleur GLOBAL, continuant les variantes suivantes
+        # SI le best courant est encore loin (>5 ans).
+        if not target_year:
             if trace_entry is not None:
                 trace_entry["outcome"] = "matched_title"
                 trace_entry["matched_id"] = meta.google_books_id or ""
                 trace_entry["matched_title"] = meta.title
                 trace_entry["matched_via_variant"] = variant.label
+                trace_entry["candidates_count"] = items_count
             return meta
+
+        # On a un target_year : ranking global
+        year = meta.publication_year or 0
+        distance = abs(year - target_year) if year else 100
+        if distance < best_distance:
+            best_so_far = meta
+            best_distance = distance
+            best_via_variant = variant.label
+
+        # Si match parfait (distance <= 1 an), on s'arrete
+        if distance <= 1:
+            break
+        # Sinon on continue aux autres variantes pour voir si on trouve mieux
+
+    # Fin de boucle : si on a un best_so_far, on le retourne
+    if best_so_far is not None:
+        if trace_entry is not None:
+            trace_entry["outcome"] = "matched_title"
+            trace_entry["matched_id"] = best_so_far.google_books_id or ""
+            trace_entry["matched_title"] = best_so_far.title
+            trace_entry["matched_via_variant"] = best_via_variant
+            trace_entry["matched_year"] = best_so_far.publication_year
+            trace_entry["target_year"] = target_year
+            trace_entry["best_year_distance"] = best_distance
+        return best_so_far
 
     # Aucune variante n'a matché
     if trace_entry is not None and rate_limited:
         trace_entry["outcome"] = "rate_limited"
     return None
+
+
+def _parse_best_item(data, target_year: int = 0) -> BookMetadata | None:
+    """Parse une reponse Google Books et choisit le meilleur item.
+
+    Sprint D.31 : si target_year > 0, ranking par proximite d'annee.
+    Sinon comportement legacy (1er item).
+    """
+    if not isinstance(data, dict):
+        return None
+    items = data.get("items") or []
+    if not items:
+        return None
+    if not target_year or len(items) == 1:
+        return _parse_first_item({"items": items[:1]})
+
+    # Ranking par proximite d'annee
+    scored: list[tuple[int, dict]] = []
+    for item in items:
+        info = item.get("volumeInfo") or {}
+        date_str = str(info.get("publishedDate") or "")
+        m = re.search(r"\b(1[89]|20)\d{2}\b", date_str)
+        item_year = int(m.group()) if m else 0
+        # Score : distance a target_year (plus petite = meilleur)
+        # Si pas d'annee : penalite 100 ans
+        if item_year == 0:
+            distance = 100
+        else:
+            distance = abs(item_year - target_year)
+        scored.append((distance, item))
+
+    scored.sort(key=lambda x: x[0])
+    best_item = scored[0][1]
+    return _parse_first_item({"items": [best_item]})
 
 
 def _parse_first_item(data) -> BookMetadata | None:
