@@ -112,6 +112,15 @@ _TOME_RANGE_RE = re.compile(
 # faux positifs avec "[Digital-2984]" ou annees.
 _IMPLICIT_TOME_RE = re.compile(r"^([0-9]{1,2})$")  # 1 a 99 seul
 
+# Sprint D.27 v0.5.0 : IDs numeriques internes (tracker, digital, ref).
+# Pattern : 4+ digits SEULS, qui ne sont pas une annee (1900-2099 deja
+# capturee par _YEAR_RE). Ex : "10354", "29384", "100123".
+# On les absorbe (pas dans le title) car ce sont des identifiants
+# internes : numero tracker, ID digital, reference editoriale, etc.
+# Cas reel Louis : "Zep.Decoupe.En.Tranches.10354.PDF" -> 10354 est
+# un ID tracker, pas une partie du titre.
+_NUMERIC_ID_RE = re.compile(r"^[0-9]{4,}$")
+
 # Integrale / Compilation / Coffret
 _INTEGRALE_TOKENS = {
     "INTEGRALE", "INTÉGRALE", "INTEGRAL",
@@ -213,6 +222,10 @@ def parse_book_filename(
 
     # Etape 4 : classifier chaque token et retirer les techniques
     title_tokens, classified = _classify_tokens(raw_tokens, parsed)
+    # Sprint D.27 : on persiste les tokens absorbes (langue, format, year,
+    # tome, ID numerique, etc.) dans parsed.absorbed_tokens pour traceabilite
+    # debug + tests.
+    parsed.absorbed_tokens.extend(classified)
 
     # Etape 5 : detecter les auteurs en debut des title_tokens
     title_tokens = _extract_authors(title_tokens, parsed)
@@ -499,6 +512,15 @@ def _classify_tokens(
             except ValueError:
                 pass
 
+        # Sprint D.27 v0.5.0 : ID numerique 4+ digits qui n'est pas une
+        # annee (deja gere plus haut par _YEAR_RE). Typiquement des IDs
+        # tracker / digital / reference editoriale. On absorbe.
+        # Cas Louis "Zep.Decoupe.En.Tranches.10354.PDF" : 10354 est un
+        # ID tracker, pas une partie du titre.
+        if _NUMERIC_ID_RE.match(tok):
+            absorbed.append(tok)
+            continue
+
         # Token de titre / auteur : on garde
         title_tokens.append(tok)
 
@@ -577,6 +599,72 @@ def _extract_authors(
         # Limiter a 5 tokens en mode prudent (typiquement 2 auteurs)
         if n_taken >= 5:
             break
+
+    # Sprint D.27 v0.5.0 : detection pseudonyme 1-mot (Zep, Hergé, Loisel,
+    # Mœbius, Tintin, Goscinny, etc.). Avant on demandait >= 2 tokens cap
+    # consecutifs, ce qui ratait les auteurs BD/manga 1-mot tres communs.
+    #
+    # Heuristique pour 1 token seul :
+    # - Le 1er token est Cap court (3-15 chars typique pseudo)
+    # - PAS un mot tout-uppercase de plus de 3 lettres (= title style genre TINTIN)
+    # - Au moins 2 tokens restants apres (pour avoir un titre plausible)
+    # - Le 2e token est aussi cap (sinon "Zep mange" en lower, pas un release)
+    # - Cas Louis "Zep.Decoupe.En.Tranches.10354" : Zep + Decoupe (cap)
+    if n_taken == 1 and len(title_tokens) >= 3:
+        first_tok = title_tokens[0]
+        second_tok = title_tokens[1]
+        if (len(first_tok) <= 15
+                and not (first_tok.isupper() and len(first_tok) > 3)
+                and second_tok[:1].isupper()):
+            # On accepte le 1er token seul comme pseudo auteur
+            parsed.authors = [first_tok]
+            return title_tokens[1:]
+
+    # Sprint D.27 v0.5.0 : detection de pattern de titre francais.
+    # Si on a n_taken >= 3 (chaine longue cap), on cherche dans la SUITE
+    # une preposition francaise (En, De, Des, Du, La, Le, Les, Et, Au,
+    # Aux, L', D'...). Si trouvee, c'est probablement un TITRE qui contient
+    # cette preposition, pas une suite de noms d'auteur.
+    #
+    # On limite ce check a n_taken >= 3 pour preserver les co-auteurs
+    # type "Lemire Sorrentino" (n_taken=2) qui ne contient pas de
+    # preposition au milieu.
+    #
+    # Cas Louis "Zep.Decoupe.En.Tranches" : n_taken=4, "En" detectee a
+    # position 2 -> reculer a 1 (auteur = Zep seul, titre = Decoupe En Tranches).
+    french_prepositions = {
+        "EN", "DE", "DU", "DES", "LA", "LE", "LES",
+        "UN", "UNE", "AU", "AUX", "ET", "OU",
+        "L", "D",  # apostrophes scene-style : L'Ile -> "L"
+    }
+    was_reculed_by_french_prep = False
+    if n_taken >= 3:
+        for j in range(1, min(n_taken, len(title_tokens))):
+            if title_tokens[j].upper() in french_prepositions:
+                # On recule a j-1 : la preposition fait partie d'un titre
+                # francais qui inclut le mot juste AVANT (cas "X En Y" :
+                # "X En Y" est le titre, l'auteur est ce qui precede X).
+                # Cas Louis "Zep Decoupe En Tranches" :
+                #   j=2 (position de "En") -> new_n_taken=1
+                #   -> author = [Zep], title = [Decoupe, En, Tranches] ✓
+                new_n_taken = max(1, j - 1)
+                # Au minimum 1 token auteur, et au minimum 2 tokens de
+                # titre restants pour considerer ce decoupage valide.
+                if len(title_tokens) - new_n_taken >= 2:
+                    n_taken = new_n_taken
+                    was_reculed_by_french_prep = True
+                    break
+
+    # Apres recul french_prep, si on a 1 token seul, on bascule sur pseudo
+    # 1-mot avec confiance (le recul a deja valide le contexte).
+    # On ne touche PAS au cas n_taken=1 initial qui n'a pas pris le recul
+    # (cas Tomoji "Elle.s.appelait..." ou 'Elle' est le titre, pas un auteur).
+    if (was_reculed_by_french_prep and n_taken == 1
+            and len(title_tokens) >= 3):
+        first_tok = title_tokens[0]
+        if len(first_tok) <= 15 and not (first_tok.isupper() and len(first_tok) > 3):
+            parsed.authors = [first_tok]
+            return title_tokens[1:]
 
     # Si on a pris 0 ou 1 token : pas assez pour un auteur (un nom seul
     # est ambigu : pourrait etre un titre 1-mot). On laisse tout en titre.
