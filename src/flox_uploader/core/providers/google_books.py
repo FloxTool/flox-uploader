@@ -60,6 +60,7 @@ def lookup_google_books(
     extra_titles: list[str] | None = None,
     trace: list | None = None,
     target_year: int = 0,
+    target_volume: float = 0.0,
 ) -> BookMetadata | None:
     """Cherche un livre dans Google Books.
 
@@ -122,7 +123,7 @@ def lookup_google_books(
                     return _query_by_title_author(
                         title, author, api_key=api_key, http=http,
                         extra_titles=extras, trace_entry=entry,
-                        target_year=target_year,
+                        target_year=target_year, target_volume=target_volume,
                     )
                 return None
             _set_outcome("cached_hit", matched_id=cached.get("google_books_id", ""))
@@ -150,7 +151,7 @@ def lookup_google_books(
         return _query_by_title_author(
             title, author, api_key=api_key, http=http,
             extra_titles=extras, trace_entry=entry,
-            target_year=target_year,
+            target_year=target_year, target_volume=target_volume,
         )
 
     return None
@@ -199,6 +200,7 @@ def _query_by_title_author(
     extra_titles: list[str] | None = None,
     trace_entry: dict | None = None,
     target_year: int = 0,
+    target_volume: float = 0.0,
 ) -> BookMetadata | None:
     """Recherche Google Books par titre + auteur.
 
@@ -228,6 +230,38 @@ def _query_by_title_author(
                 continue
             seen_norm.add(norm)
             variants.extend(build_query_variants(extra, author))
+
+    # Sprint D.34 v0.5.0 : variantes avec VOLUME signal pour series/manga.
+    # Cas Louis Miraculous T2, Space Brothers T33, One Piece, Vanessa Vale T2.
+    # Sans volume dans la query, Google retourne A volume de la serie (souvent
+    # T1 ou le plus populaire) plutot que LE volume cible. On ajoute donc
+    # 3 formats : "Tome N", "T0N", "Vol N".
+    if target_volume and target_volume > 0:
+        vol_int = int(target_volume) if target_volume == int(target_volume) else target_volume
+        vol_str = str(vol_int)
+        # Construire des variantes "title + Tome N" / "title + T0N" / etc.
+        volume_suffixes = [f"Tome {vol_str}", f"T{int(vol_int):02d}", f"Vol {vol_str}"]
+        base_title_norm = normalize_title_for_query(title)
+        added_titles = set()
+        for vsuf in volume_suffixes:
+            title_with_vol = f"{base_title_norm} {vsuf}"
+            if title_with_vol.lower() in added_titles:
+                continue
+            added_titles.add(title_with_vol.lower())
+            variants.extend(build_query_variants(title_with_vol, author))
+        # Aussi pour les extra_titles
+        if extra_titles:
+            for extra in extra_titles:
+                extra_norm = normalize_title_for_query(extra)
+                if not extra_norm:
+                    continue
+                for vsuf in volume_suffixes:
+                    title_with_vol = f"{extra_norm} {vsuf}"
+                    if title_with_vol.lower() in added_titles:
+                        continue
+                    added_titles.add(title_with_vol.lower())
+                    variants.extend(build_query_variants(title_with_vol, author))
+
     if not variants:
         return None
 
