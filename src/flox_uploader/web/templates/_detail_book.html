@@ -196,9 +196,9 @@
                 {% endif %}
 
                 {# Google Books : lien direct fiche via volumeId si dispo.
-                   Sprint D.35 : on utilise le format moderne /books/edition/<slug>/<id>
-                   qui pointe sur la page detaille (preview + infos), pas l'ancien
-                   /books?id= qui redirige vers une page basique. #}
+                   Sprint D.35 : format moderne /books/edition/<slug>/<id>?hl=fr
+                   qui pointe sur la page detaille avec preview integre
+                   (au lieu de l'ancien /books?id= qui ouvre une page basique). #}
                 {% if bm.google_books_id %}
                 <a href="{{ bm.title | google_books_url(bm.google_books_id) }}"
                    target="_blank" rel="noopener noreferrer"

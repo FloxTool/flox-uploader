@@ -197,6 +197,19 @@ def parse_book_filename(
 
     parsed = ParsedBookRelease()
 
+    # Etape 0 (Sprint D.36) : detecter le team en SUFFIX `(TEAM)` ou
+    # `[TEAM]` AVANT le preprocess brackets, sinon il serait absorbe.
+    # Cas Louis : "Tokyo Alien Bros. (...) [...] (PapriKa+)" doit
+    # capturer "PapriKa+" comme team.
+    early_team = ""
+    early_team_match = _TEAM_BRACKETED_END_RE.match(stem_or_release.strip())
+    if early_team_match:
+        candidate = early_team_match.group(2).strip().rstrip(".")
+        if _is_plausible_team(candidate):
+            # On retire ce groupe du raw input AVANT preprocess
+            stem_or_release = early_team_match.group(1).strip().rstrip(" -.")
+            early_team = candidate
+
     # Etape 1 : pre-traiter les marqueurs entre [] ou ().
     # ORDRE D.20 : on fait ça AVANT _extract_team car les bracketed
     # peuvent contenir un tiret interne (ex: [Digital-2984]) qui ferait
@@ -211,7 +224,7 @@ def parse_book_filename(
     # On fait ça AVANT de splitter en tokens pour preserver la team
     # multi-cap (ex: "Punisher694", "COZY", "Flox").
     base, team = _extract_team(base_after_brackets)
-    parsed.team = team
+    parsed.team = team or early_team  # Sprint D.36 : fallback early_team
 
     # Etape 3 : tokenize sur dots + spaces + underscores
     # On garde les tirets internes (Jean-Paul, E-Book).
@@ -295,7 +308,9 @@ _TEAM_SUFFIX_DASH_RE = re.compile(
     r"^(.+?)[-]\s*([A-Za-z][A-Za-z0-9._-]{1,30}?)\s*$"
 )
 _TEAM_BRACKETED_END_RE = re.compile(
-    r"^(.+?)\s*[\[\(]\s*([A-Za-z][A-Za-z0-9.-]{1,30})\s*[\]\)]\s*$"
+    # Sprint D.36 : '+' autorise dans team name (cas Tokyo Alien Bros team
+    # "(PapriKa+)"). Aussi underscore et apostrophe pour les noms exotiques.
+    r"^(.+?)\s*[\[\(]\s*([A-Za-z][A-Za-z0-9.\-_+'!]{1,30})\s*[\]\)]\s*$"
 )
 
 
