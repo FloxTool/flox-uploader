@@ -105,6 +105,67 @@ _MULTI_AUTHOR_SUFFIX_RE = re.compile(
 )
 
 
+# Sprint D.34 v0.5.0 : patterns de tokens scene en SUFFIX du title local.
+# Cas Louis Marc Levy : title="Marc Levy Sept Jours Pour Une Eternite 2024
+# FRENCH 128kbps-NOTAG" -> doit etre "Marc Levy Sept Jours Pour Une Eternite".
+# Strippe : .FRENCH / .EPUB / .128kbps / .NoTAG / -COZY / etc. en fin de titre.
+_SCENE_TRAILING_TOKENS_RE = re.compile(
+    r"[\s._-]+"
+    r"(?:FRENCH|ENGLISH|MULTI|VFF|VOSTFR|VF|VO|FR|EN|NOTAG|NO-TAG"
+    r"|EPUB|PDF|CBZ|CBR|MOBI|AZW3?|DJVU|MP3|M4B|TXT"
+    r"|\d{2,3}kbps|VBR|HD|VBR)"
+    r"(?:[\s._-]+(?:FRENCH|ENGLISH|MULTI|VFF|VOSTFR|VF|VO|FR|EN|NOTAG|NO-TAG"
+    r"|EPUB|PDF|CBZ|CBR|MOBI|AZW3?|DJVU|MP3|M4B|TXT"
+    r"|\d{2,3}kbps|VBR|HD))*"
+    r"(?:[\s._-]*-[\s._-]*[A-Za-z][A-Za-z0-9._-]{0,30})?"
+    r"\s*$",
+    re.IGNORECASE,
+)
+
+
+def sanitize_book_title(title: str) -> str:
+    """Strippe les pollutions scene/BD du titre POUR LE STOCKAGE.
+
+    Sprint D.34 v0.5.0 — extension de la logique normalize_title_for_query
+    mais en mode "preserve casse + accents" (pour affichage / release name).
+    Le query normalizer reste pour les recherches API ; ce sanitize est pour
+    book_metadata.title stocke.
+
+    Strippe :
+    - Pollution scene BD numerique : (One Shot), [Digital-NNNN], (TCH), etc.
+    - Editeurs entre parens : (Delcourt), (Ankama), ...
+    - Suffix BnF " / Auteur ; traduit..."
+    - Tokens scene trailing : .FRENCH, .NoTAG, .128kbps, -COZY, -NoTAG, etc.
+
+    Conserve :
+    - La casse originale
+    - Les accents
+    - La ponctuation interne (apostrophes, deux-points, virgules)
+
+    Cas Louis :
+    - "Marc Levy Sept Jours Pour Une Eternite 2024 FRENCH 128kbps-NOTAG"
+      -> "Marc Levy Sept Jours Pour Une Eternite 2024"
+    - "Dawnrunner (One Shot) (HiComics - HiGraphics) [Digital-2880] (TCH)"
+      -> "Dawnrunner"
+    - "Les vents furieux / Mercedes Lackey ; traduit..."
+      -> "Les vents furieux"
+    """
+    if not title:
+        return title
+    out = title
+    # 1. BnF suffix " / Auteur ; ..."
+    out = _BNF_TITLE_SUFFIX_RE.sub("", out)
+    # 2. Pollution scene + editeurs
+    for pat in _DIGITAL_RIP_PATTERNS + _PUBLISHER_PAREN_PATTERNS:
+        out = pat.sub("", out)
+    # 3. Tokens trailing scene (.FRENCH .NoTAG -COZY etc.)
+    out = _SCENE_TRAILING_TOKENS_RE.sub("", out)
+    # 4. Compacter espaces multiples + trim ponctuation lateral
+    out = re.sub(r"\s+", " ", out).strip()
+    out = out.rstrip(" ,.;:-_")
+    return out or title  # fallback si tout strippe
+
+
 # ============================================================
 # Dataclass de retour
 # ============================================================
