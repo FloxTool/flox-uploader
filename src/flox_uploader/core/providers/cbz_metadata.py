@@ -191,7 +191,10 @@ def _parse_comicinfo_xml(xml_data: bytes, meta: BookMetadata) -> None:
 
     summary = _text("Summary")
     if summary:
-        meta.description = summary
+        # Sprint D.22 : nettoyage HTML eventuel (ComicInfo.xml peut contenir
+        # du HTML dans le Summary).
+        from ._html import strip_html
+        meta.description = strip_html(summary)
 
     page_count = _text("PageCount")
     if page_count:

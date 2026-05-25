@@ -12,7 +12,7 @@ Verifie :
 6. Format non supporte : warning, pas de crash
 7. image_host.upload_to_imgbb : success + error paths (mock HTTP)
 8. BookMetadata.preview_urls roundtrip serialize
-9. BBCode template : ligne [img=150] des previews
+9. BBCode template : ligne [img=250] des previews (D.22 N-UX1 : etait [img=150])
 10. Page detail : galerie thumbnails
 """
 from __future__ import annotations
@@ -389,11 +389,12 @@ def test_book_metadata_preview_urls_serialize():
 
 
 # ============================================================
-# BBCode template : ligne [img=150] previews
+# BBCode template : ligne [img=250] previews (D.22 update)
 # ============================================================
 
 def test_bbcode_renders_preview_row(monkeypatch):
-    """Si preview_urls present, BBCode contient [img=150] sur 1 ligne."""
+    """Si preview_urls present, BBCode contient [img=250] sur 1 ligne.
+    Sprint D.22 (note Louis N-UX1) : taille augmentee de 150 a 250."""
     monkeypatch.setenv("TRACKER_ANNOUNCE", "https://test.tracker/announce/passkey")
     from flox_uploader.core.bbcode_book import render_book_bbcode
     from flox_uploader.core.providers.book_metadata import BookMetadata
@@ -411,11 +412,11 @@ def test_bbcode_renders_preview_row(monkeypatch):
     )
     bbcode = render_book_bbcode(meta, "Rel", tracker)
     for url in meta.preview_urls:
-        assert f"[img=150]{url}[/img]" in bbcode
+        assert f"[img=250]{url}[/img]" in bbcode
 
 
 def test_bbcode_no_preview_row_without_urls(monkeypatch):
-    """Sans preview_urls, pas de [img=150] dans le BBCode."""
+    """Sans preview_urls, pas de [img=250] dans le BBCode (taille D.22)."""
     monkeypatch.setenv("TRACKER_ANNOUNCE", "https://test.tracker/announce/passkey")
     from flox_uploader.core.bbcode_book import render_book_bbcode
     from flox_uploader.core.providers.book_metadata import BookMetadata
@@ -424,7 +425,7 @@ def test_bbcode_no_preview_row_without_urls(monkeypatch):
     tracker = get_tracker("gemini", "https://test.tracker/announce/passkey")
     meta = BookMetadata(title="T", authors=["A"], file_format="cbz")
     bbcode = render_book_bbcode(meta, "Rel", tracker)
-    assert "[img=150]" not in bbcode
+    assert "[img=250]" not in bbcode
 
 
 # ============================================================
