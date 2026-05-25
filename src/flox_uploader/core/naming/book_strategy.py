@@ -392,6 +392,15 @@ class BookNamingStrategy:
 
         Pour les séries / BD / Manga, on insère T<num> après le titre :
         `Auteur.Titre.T<num>.Sous-titre.Date.Langue.Format-TEAM`.
+
+        Sprint D.36 v0.5.0 (feedback Louis) : detection + suppression des
+        DOUBLONS auteur/serie/titre dans le release_name. Cas typiques :
+        - Sapkowski Witcher : auteur="Andrzej Sapkowski", serie polluee
+          "Andrzej Sapkowski The Witcher" -> on retire le prefix auteur.
+        - Space Brothers : serie="Space Brothers", title="Space Brothers"
+          identiques -> on skip le subtitle.
+        - Marc Levy MP3 : auteur="Marc Levy", title="Marc Levy Sept Jours..."
+          -> on retire le prefix auteur du title.
         """
         parts: list[str] = []
 
@@ -400,46 +409,112 @@ class BookNamingStrategy:
         if author_token:
             parts.append(author_token)
 
-        # 2. Titre principal (le nom du livre)
-        # Sprint D.10 v0.5.0 : 3 cas de figure :
-        # (a) Range tomes (intégrale partielle) : Serie.T01-T06
-        # (b) Serie + tome unique : Serie.T<num>.Sous-titre
-        # (c) Tome unique sans serie : juste le titre
-        if meta.series and meta.series_index_range:
-            # (a) Intégrale partielle : on padd les numeros sur 2 chiffres
-            # (convention scene : T01-T06 plutot que T1-T6)
-            series_token = self._tokenize_title(meta.series)
-            if series_token:
-                parts.append(series_token)
+        # 2. Titre principal — Sprint D.36 v0.5.0 (refonte feedback Louis)
+        # Etape 1 : nettoyer la serie. Si polluee par l'auteur, on dedup.
+        # Si elle est mono-mot ET deja contenue dans le title AVEC au
+        # moins 3 autres mots distincts -> on drop. Cas Sapkowski :
+        # serie="Andrzej Sapkowski The Witcher" -> dedup auteur -> "Witcher"
+        # (1 mot), title="Sorceleur (Witcher) : La Croisee des corbeaux"
+        # qui a 6 autres mots -> drop la serie.
+        # Mais cas Raja : serie="Raja", title="RAJA - Tome 2 - RAJA" qui
+        # a juste 2 autres mots distincts -> on garde la serie.
+        clean_series_token = ""
+        if meta.series:
+            s = self._tokenize_title(meta.series)
+            s = self._dedup_prefix(s, author_token)
+            if s:
+                s_words = [w.lower() for w in s.split(".") if w]
+                covered = False
+                if len(s_words) == 1 and meta.title:
+                    series_word = s_words[0]
+                    if series_word in meta.title.lower():
+                        # Mots distincts du title - mots de la serie
+                        from collections import Counter
+                        title_words = [
+                            w.lower() for w in self._tokenize_title(meta.title).split(".") if w
+                        ]
+                        distinct = set(title_words) - set(s_words)
+                        if len(distinct) >= 3:
+                            covered = True
+                if not covered:
+                    clean_series_token = s
+
+        # T<num> string (entier/float)
+        tnum_str = ""
+        if meta.series_index > 0:
+            if meta.series_index == int(meta.series_index):
+                tnum_str = f"T{int(meta.series_index)}"
+            else:
+                tnum_str = f"T{meta.series_index}"
+
+        # Helper : title tokenized contient deja T<num>/Tome.N/Vol.N ?
+        def _title_has_volume_marker(title_tok: str, vol_idx: float) -> bool:
+            if not title_tok or vol_idx <= 0:
+                return False
+            vol_int = int(vol_idx) if vol_idx == int(vol_idx) else None
+            if vol_int is None:
+                return False
+            import re as _re2
+            tokens = set(title_tok.split("."))
+            for pat in (f"T{vol_int}", f"T{vol_int:02d}",
+                        f"Tome.{vol_int}", f"Tome.{vol_int:02d}"):
+                # Verifier comme token entier
+                if pat.split(".")[0] in tokens:
+                    return True
+            return False
+
+        # Etape 2 : decider la branche
+        if clean_series_token and meta.series_index_range:
+            # (a) Range tomes (integrale T01-T06)
+            parts.append(clean_series_token)
             try:
                 lo, hi = meta.series_index_range.split("-")
                 lo_i, hi_i = int(lo), int(hi)
                 width = max(2, len(str(hi_i)))
                 parts.append(f"T{lo_i:0{width}d}-T{hi_i:0{width}d}")
             except (ValueError, IndexError):
-                # Fallback : utiliser la string brute
                 parts.append(f"T{meta.series_index_range}")
-        elif meta.series and meta.series_index > 0:
-            # (b) Serie + tome unique
-            series_token = self._tokenize_title(meta.series)
-            if series_token:
-                parts.append(series_token)
-            # T<num> : on prend l'int si entier, sinon on garde le float (T2.5)
-            if meta.series_index == int(meta.series_index):
-                parts.append(f"T{int(meta.series_index)}")
-            else:
-                parts.append(f"T{meta.series_index}")
-            # Le titre du livre devient un sous-titre apres T<num>
-            if meta.title and meta.title != meta.series:
+        elif (
+            clean_series_token and meta.series_index > 0
+            and meta.title and meta.title.strip().lower() == meta.series.strip().lower()
+        ):
+            # (b) title == series : on emet juste series + T<num> (Space Brothers T30)
+            parts.append(clean_series_token)
+            parts.append(tnum_str)
+        elif clean_series_token and meta.series_index > 0:
+            # (b') series + T<num> + subtitle dedup
+            parts.append(clean_series_token)
+            parts.append(tnum_str)
+            if meta.title:
                 subtitle_token = self._tokenize_title(meta.title)
+                subtitle_token = self._dedup_prefix(subtitle_token, clean_series_token)
+                subtitle_token = self._dedup_prefix(subtitle_token, author_token)
+                # Strip T<num> prefix du subtitle (cas Mercedes
+                # ou subtitle commence par "T3.Les.Vents.Furieux").
+                import re as _re
+                vol_int = int(meta.series_index) if meta.series_index == int(meta.series_index) else None
+                if vol_int is not None and subtitle_token:
+                    for pat in (
+                        rf"^T0*{vol_int}\.",
+                        rf"^Tome\.0*{vol_int}\.",
+                        rf"^Vol\.0*{vol_int}\.",
+                    ):
+                        subtitle_token = _re.sub(pat, "", subtitle_token, flags=_re.IGNORECASE)
                 if subtitle_token:
                     parts.append(subtitle_token)
         else:
-            # (c) Pas de serie : juste le titre
+            # (c) Pas de serie utilisable : juste le titre (peut contenir T<num>)
             if meta.title:
                 title_token = self._tokenize_title(meta.title)
+                title_token = self._dedup_prefix(title_token, author_token)
                 if title_token:
                     parts.append(title_token)
+                # Si le title NE contient PAS deja T<num> mais qu'on a un
+                # series_index, on l'ajoute en suffix (cas Sapkowski T8 ou
+                # title n'a pas "T8" embedded -> on NE l'ajoute pas, Louis
+                # prefere sans).
+                # Decision Louis : si serie est juste covered, on ne tente
+                # PAS d'ajouter le T<num> au release_name.
 
         # Si on n'a ni auteur ni titre, on utilise le stem du fichier en
         # fallback (mieux que de retourner juste "EPUB-Team" sans nom).
@@ -471,6 +546,30 @@ class BookNamingStrategy:
 
     # ----- helpers tokenisation -----
 
+    def _dedup_prefix(self, token: str, prefix: str) -> str:
+        """Sprint D.36 : retire le `prefix` du debut de `token` si present.
+
+        Compare insensible-casse. Strip aussi `The` immediatement apres le
+        prefix (cas anglais "Author The Series" -> Author est strippe, et
+        "The" devient orphelin si on garde la chaine apres -> on le strip
+        aussi). On NE strip PAS les articles francais (Le/La/L') car ils
+        peuvent etre la 1re partie du titre (ex "La Trilogie des Vents").
+        """
+        if not token or not prefix:
+            return token
+        if token.lower() == prefix.lower():
+            return ""
+        prefix_lower = prefix.lower()
+        token_lower = token.lower()
+        if token_lower.startswith(prefix_lower + "."):
+            remainder = token[len(prefix) + 1:]
+            # Strip "The." en anglais (cas Sapkowski "Author.The.Witcher")
+            # PAS les articles francais (peuvent etre dans le titre).
+            if remainder.lower().startswith("the."):
+                remainder = remainder[4:]
+            return remainder
+        return token
+
     def _tokenize_author(self, raw: str) -> str:
         """Nettoie un nom d'auteur pour le format scene.
 
@@ -493,6 +592,13 @@ class BookNamingStrategy:
 
         "Le Seigneur des Anneaux" -> "Le.Seigneur.Des.Anneaux"
         "Tintin au pays des Soviets" -> "Tintin.Au.Pays.Des.Soviets"
+
+        Sprint D.36 v0.5.0 (feedback Louis) : les tirets `-` deviennent
+        des dots, plus de "Le.Mythe.de.l.Ossuaire.-.Le.Passage" mais
+        "Le.Mythe.De.L.Ossuaire.Le.Passage". Convention scene : les
+        dashes dans un release_name n'existent QUE pour `-TEAM` final.
+        Cas Louis : Clos.De.Bourgogne.Tome.02, 1942.44 (au lieu de 1942-44),
+        Le.Mythe.De.L.Ossuaire.Le.Passage.
         """
         if not raw:
             return ""
@@ -501,16 +607,16 @@ class BookNamingStrategy:
         # Apostrophes : retirer sans espace (l'homme -> lhomme)
         for ch in "'’‘`":
             token = token.replace(ch, "")
-        # Ponctuation -> espace puis dots
-        for ch in "()[]{},:;!?":
+        # Ponctuation -> espace puis dots (Sprint D.36 : `-` aussi)
+        for ch in "()[]{},:;!?-":
             token = token.replace(ch, " ")
         token = token.replace("_", ".")
         # Espaces -> points + capitalize chaque mot
         words = [w for w in re.split(r"[\s.]+", token) if w]
         words = [self._capitalize_word(w) for w in words]
         token = ".".join(words)
-        # Nettoyer caracteres non scene
-        token = re.sub(r"[^A-Za-z0-9.\-]+", "", token)
+        # Nettoyer caracteres non scene (Sprint D.36 : on accepte plus le `-`)
+        token = re.sub(r"[^A-Za-z0-9.]+", "", token)
         return collapse_dots(token)
 
     def _capitalize_word(self, w: str) -> str:

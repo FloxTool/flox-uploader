@@ -54,35 +54,109 @@ Bref : sois un collaborateur qui pense, pas un exécutant qui transcrit.
 ## Notes
 
 # Bug : ça plante / résultat faux / régression
-- les lien ISBN sur la page detail section Livre. mene sur ce genre de lien : "https://www.bnf.fr/fr/recherche/general?query=9782305108117" ca ne fait pas de sens, soit il existe vraiment un lien pour les ISBN soit on ne met pas d'hyper lien.
+- il manque les extraction d'image des format Epub ! il nous les faut !
+- sur la page detail du package : "HS.LARGO.WINCH.INTEGRALE.FRENCH.BD.PDF.Ebook-notag.CBZ-NoTAG" dans la section "Contenu du torrent" je n'arrive pas a deplier les dossier qui se trouve dans le dossier. il y a des bug d'affichage le bouton sembler reagire mais rien ne se deplis. j'ai reussi a un moment mais impossible de le refermer.
 
-
-# Release  : tout probleme lié au nom ou a la correspondance d'un release
-- "\\FOOLNAS\arr-data\torrents\completed\Elle.s.appelait.Tomoji.FR.NoTag.cbz" sur la page de presentation on a le cover dans la page Livre (super) mais on a aucune autre info, comment est-ce possible ? le lien google-book tous ramene ici : https://www.google.com/search?tbm=bks&q=Elle.s.appelait.Tomoji.FR.NoTag%20 mais on devrait pas plutôt etre ici : https://www.google.ca/books/edition/_/AQVqBgAAQBAJ?hl=fr&sa=X&ved=2ahUKEwinyMzyn9OUAxWjDHkGHR_BK2gQ7_IDegQIEBAC et ainsi avoir toute les informations ? (resume auteur etc...).
-- "Dominique.Auzias.Jean-Paul.Labourdette.et.autres.POITIERS.2026.Avec.Photos.2025.FRENCH.EPUB-NoTAG" les infos etait claire et on aurait du trouver : https://www.google.ca/books/edition/Guide_Poitiers_2026_Petit_Fut%C3%A9_Escapade/Nw2eEQAAQBAJ?hl=fr a la place on a un lien googleBooks mais incomplet "https://www.google.com/search?tbm=bks&q=POITIERS%202026%20%28avec%20photos%29%20Dominique%20Auzias%2C%20Jean-Paul%20Labourdette%20et%20autres" on aurait ainsi le vrai nom : "Guide Poitiers 2026 Petit Futé: Escapades dans la Vienne".
-- le package "Dominique.Auzias.Jean-Paul.Labourdette.POITOU.2024.Petit.Fute.2024.FRENCH.EPUB-NoTAG" a unle ISBN suivant 9782305108117 mais sur google book ici : https://www.google.ca/books/edition/POITOU_2024_Petit_Fut%C3%A9/U9cBEQAAQBAJ?hl=fr j'ai les isbn suivant : ISBN : 9782305108124, 2305108125 pourquoi ?
-- le fichier "Koma.Warita.Riku.Tsuchida.Miraculous.Ladybug.Et.Chat.Noir.T2.2023.FR.PDF-NoTag.pdf" aurait du facilemet nous trouver cette correspondance : https://www.google.ca/books/edition/Miraculous_T02/9LXaEAAAQBAJ?hl=fr&gbpv=0 ISBN : 9782384961726, 2384961721
+# Release  : tout probleme lié au nom ou a la correspondance d'un release - si corredpondance pas trouvé tu dois mettre en place un moyen de le trouver.
+- le fichier : "Andrzej.Sapkowski.The.Witcher.T03.Le.Sang.des.Elfes.2026.FRENCH.MP3.VBR-COZY" a donner "Andrzej.Sapkowski.The.Witcher.T3.Le.Sang.Des.Elfes.2026.FRENCH.VBR-COZY.2026.MP3-NoTAG" mais je pense que "Cozy" est la team. et la correspondance etait facil a trouver on aurait du tomber sur ca : https://www.google.ca/books/edition/Sorceleur_Witcher_T3_Le_Sang_des_elfes_t/4eeGAQAAQBAJ?hl=fr&gbpv=0. peux tu implementer la logique pour ne pas le rater ?
+- le fichier "Andrzej.Sapkowski.The.Witcher.T08.La.Croisee.des.Corbeaux.2025.FRENCH.MP3.VBR-COZY" a donner "Andrzej.Sapkowski.The.Witcher.T8.La.Croisee.Des.Corbeaux.2025.FRENCH.VBR-COZY.2025.MP3-NoTAG" mais pareil "cozy est la team" et la correspondance est : "https://www.google.ca/books/edition/Sorceleur_Witcher_La_Crois%C3%A9e_des_corbea/TuRpEQAAQBAJ?hl=fr&gbpv=0"
+- le release : "Decoupe en tranches (10354)" "Zep.Decoupe.En.Tranches.10354.PDF-NoTAG" aurait du trouver facilement ceci : "https://www.google.ca/books/edition/D%C3%A9coup%C3%A9_en_tranches/OxVCBAAAQBAJ?hl=fr&gbpv=0" 
+- le dossier : LARGO.WINCH.INTEGRALE.FRENCH.BD.PDF.CBZ.Ebook-NoTag donne "HS.LARGO.WINCH.INTEGRALE.FRENCH.BD.PDF.Ebook-notag.CBZ-NoTAG" mais ne trouve pas de correspondance, pourtant je le trouve sans probleme sur "https://www.google.ca/books/edition/Largo_Winch_int%C3%A9grale/cvrKBAAAQBAJ?hl=fr&gbpv=0". deplus on a a l'interieur deux formats pdf et cbz dans 2 dossier distinct il faudrait garder cette hierarchi quand on prensente le contenu du torrent dans la presentation bbcode.
+- "Le.Massacre.De.Crac.H.Pierre.Bertin.2025.FRENCH.[EPUB]-NOTAG" donne "Pierre.Bertin.Le.Massacre.De.Crac.H.Pierre.Bertin.2025.FRENCH.-NOTAG.2025.FRENCH.EPUB-NoTAG" "2025 french notag" ne fait evidement pas partis du nom ! on a bien un isbn 
+9782355507786 : la correspondance etait simple a trouver pourtant ! : "https://www.google.ca/books/edition/Le_massacre_de_Crac_h/eJGgEQAAQBAJ?hl=fr&gbpv=0". autre probleme avec ce release le resumé contien des caractere etrange "< div>
+< p>Quand le c..." et a la fin "... sans l’autre.</ p >< /div>" qui vont se retrouver egalement dans la presentaiton bbcode. il faut que le texte soit un format clean.
+- le fichier "Lucy.Score.Knockemout.1.Ces.Choses.Qu.On.N.Oublie.Pas.2023.FRENCH.MP3.128kbps-NOTAG" correspondance : "https://www.google.ca/books/edition/Ces_choses_qu_on_n_oublie_pas_Tome_1/kzG0EAAAQBAJ?hl=fr"
+- le release "Spartacus.Blood.And.Sand.01.2011.ENGLISH.PDF-NoTAG" n'a pas la bonne correspondance, on tombe sur "https://catalogue.bnf.fr/ark:/12148/cb451300150" mais ca ne correspond pas  ca auraitr du etre "https://www.chasse-aux-livres.fr/prix/B003BQWORW/spartacus-blood-and-sand-1-32-pages-full-color-spartacus-blood-and-sand-volume-1?query=Spartacus%20-%20Blood%20and%20Sand%2001" mais je ne trouve rien de mieux.
 - le fichier : "Lemire.Sorrentino.Le.mythe.de.l.Ossuaire.Tome.1.Le.passage.2023.FRENCH.PDF-NoTag.pdf" aurait du trouver cette correspondance : https://www.google.ca/books/edition/Le_Mythe_de_l_Ossuaire_Le_Passage/Qiy9EAAAQBAJ?hl=fr&gbpv=0 et ainsi avoir toute les informationé
 - le fichier "Là où gisait le corps (One Shot) (Delcourt) [Digital-2984] (TCH).cbz" aurait du trouver cette correspondance : "https://www.google.ca/books/edition/L%C3%A0_o%C3%B9_gisait_le_corps/b1u20AEACAAJ?hl=fr" 
+- le fichier "Koma.Warita.Riku.Tsuchida.Miraculous.Ladybug.Et.Chat.Noir.T2.2023.FR.PDF-NoTag.pdf" aurait du facilemet nous trouver cette correspondance : https://www.google.ca/books/edition/Miraculous_T02/9LXaEAAAQBAJ?hl=fr&gbpv=0 ISBN : 9782384961726, 2384961721
+- "Dominique.Auzias.Jean-Paul.Labourdette.et.autres.POITIERS.2026.Avec.Photos.2025.FRENCH.EPUB-NoTAG" les infos etait claire et on aurait du trouver : https://www.google.ca/books/edition/Guide_Poitiers_2026_Petit_Fut%C3%A9_Escapade/Nw2eEQAAQBAJ?hl=fr 
+- - "\\FOOLNAS\arr-data\torrents\completed\Elle.s.appelait.Tomoji.FR.NoTag.cbz" on devrait avoir trouver les info ici : https://www.google.ca/books/edition/_/AQVqBgAAQBAJ?hl=fr&sa=X&ved=2ahUKEwinyMzyn9OUAxWjDHkGHR_BK2gQ7_IDegQIEBAC 
+
 
 # logique system : tout probleme lié a la logique script.
-- "Dominique.Auzias.Jean-Paul.Labourdette.et.autres.POITIERS.2026.Avec.Photos.2025.FRENCH.EPUB-NoTAG" sur ce release j'ai le warning :"Format fichier manquant — format Gemini incomplet" mais le format meme si il n,est pas dans le nom se trouve dans le fichier (le format du fichier) a savoir epub, peut etre etre moins punitif sur le warning du style "format absent dans le nom du fichier, recuperer sur le fichier lui meme" et juste un -1
-- le package "Dominique.Auzias.Jean-Paul.Labourdette.POITOU.2024.Petit.Fute.2024.FRENCH.EPUB-NoTAG" a trouver les bonne infos c'est super mais le lien googlebook nous amene ici "https://www.google.com/search?tbm=bks&q=POITOU%202024%20Petit%20Fut%C3%A9%20Dominique%20Auzias%2C%20Jean-Paul%20Labourdette" il devrait peut etre plus nous enmener ici : "https://www.google.ca/books/edition/POITOU_2024_Petit_Fut%C3%A9/U9cBEQAAQBAJ?hl=fr" 
-- le package "Lemire.Sorrentino.Le.Mythe.De.L.Ossuaire.Tome.1.Le.Passage.2023.FRENCH.Pdf-notag.PDF-NoTAG" a le warning "Format fichier manquant — format Gemini incomplet" mais dans le nom du fichier on a "pdf" "Lemire.Sorrentino.Le.mythe.de.l.Ossuaire.Tome.1.Le.passage.2023.FRENCH.PDF-NoTag.pdf". on aurait donc pas du avoir se warning je pense.
+- le release : "Decoupe en tranches (10354)" dans ce release on a un fichier "cover" on peut l'utiliser en backup et l'heberger sur IMGBB.
+- le fichier : "La.Trilogie.Des.Vents.T03.Les.Vents.Furieux.Mercedes.Lackey.2011.FRENCH.[EPUB]-NOTAG" nous trouve le ISBN : 9782811204808 on aurait pu trouver aussi le lien googlebook : "https://www.google.ca/books/edition/La_Trilogie_des_Vents_T3_Les_Vents_furie/oa-GAQAAQBAJ?hl=fr&gbpv=0" etrangement le isbn ne correspond pas. mais avec le premier isbn trouvé on pourrait se rapatrier sur des lien comme "https://www.chasse-aux-livres.fr/prix/2811204806/la-trilogie-des-vents-tome-3-les-vents-furieux" ou "https://www.leslibraires.ca/livres/trilogie-des-vents-la-t-3-mercedes-lackey-9782811204808.html?srsltid=AfmBOorgDe4yMK7CEfEzUNVx9y07aoRR38EVRGOa-e00oV5x_d6etyFM" et recuperer les infos utiles. plus on a d'option plus on recupere d'info. on continu tant qu'on a pas toute les infos. j'ai mis 2 site de livrary mais je te laisse trouver quel sont les meilleure site qu'on peut rajouter.
 
 #  UX/UI : truc moche, pas évident, manque, friction
-- les deux banner "Format de release Gemini incomplet
-Le format obligatoire Gemini est Auteur.Titre.Date.Langue.Format-TEAM. Il manque : Format.
-Le release_name est généré à partir de ces champs. Tu peux les compléter manuellement dans la section Re-préparer le package ci-dessous, puis relancer.
-Compléter manuellement" et "Présentation incomplète
-Champs manquants pour la fiche tracker : ISBN. La fiche uploadée sera plus pauvre que si tu complètes manuellement.
-Éditer la présentation" sont super ! mais elle devrait se trouver en dessous de la section "Detail du score"
+-  peux on les mettre la taille des screenshots sur la rpesentation bbcode en [img=250].
 
 
 # Feature : envie de quelque chose qui n'existe pas
-- si on trouve les bon date de livre penses tu qu'on puise integrer le cover dans la presentation bbcode (comme l'affiche de film pour les film)
+
 
 # Question : pas sûr du comportement attendu
-- sur la page Upload de gemini quand on choisis livre on a deux ligne qu'on peut remplir pour uploader un cover et une banner (voir screenshot) soit en uploadant l'image soit le lien URL - dis moi si tu penses qu'on peut implementer ces fonctions exactemetn comme tel et si on a pour sur la correspondance API pour l'envoyer au bon endroit depuis notre app ? soit honnete et fait les recherche necessaire :"G3MINI TR4CK3R - TORRENT API.pdf"
-- ou a tu recuperer le cover pour les release suivant : "Guide Poitiers 2026 Petit Futé- Escapades dans la Vienne.epub" et "Elle.s.appelait.Tomoji.FR.NoTag.cbz" peut-on les utiliser ailleur ? presentation BBcode ? COver de l'upload (voir note plus haut) ?
-- penses tu qu'on est capable d,extraire des images, screenshot, des livre peut importe leur format de les heberger et de les integrer dans la presentation bbcode ? si oui comment ca serait possible ?
+
+
+# Bonus : charte API  IMGBB 
+
+Version 1 de l’API
+L'API v1 de Imgbb vous permet de téléverser des images.
+
+f411e93b2b56db305e76f3d3a4704f37
+
+
+Méthode de requête
+Les appels à l'API v1 peuvent être effectués avec les méthodes de requête POST ou GET, mais comme les requêtes GET sont limitées par la longueur maximale d'URL autorisée, vous devriez privilégier la méthode POST.
+
+Téléversement d’image
+https://api.imgbb.com/1/upload
+
+Paramètres
+key (obligatoire)
+La clé API.
+image (obligatoire)
+Un fichier binaire, des données base64 ou une URL d'image (jusqu'à 32 MB).
+name (optionnel)
+Le nom du fichier ; il est détecté automatiquement si vous téléversez un fichier en utilisant POST et multipart/form-data.
+expiration (optionnel)
+Activez ceci si vous souhaitez que les téléversements soient automatiquement supprimés après un certain délai (en secondes, 60-15552000).
+Exemple d’appel
+curl --location --request POST "https://api.imgbb.com/1/upload?expiration=600&key=YOUR_CLIENT_API_KEY" --form "image=R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+
+Remarque : utilisez toujours POST lors du téléversement de fichiers locaux. L'encodage d'URL peut altérer la source base64 en raison des caractères encodés ou simplement à cause de la limite de longueur d'URL lors de l'utilisation de GET.
+
+Réponse de l’API
+Les réponses de l'API v1 affichent toutes les informations des images téléversées au format JSON.
+
+Dans la réponse JSON, les en-têtes incluront des codes d'état pour vous permettre de déterminer facilement si la requête était OK. Elle inclura également la propriété status.
+
+Exemple de réponse (JSON)
+{
+	"data": {
+		"id": "2ndCYJK",
+		"title": "c1f64245afb2",
+		"url_viewer": "https://ibb.co/2ndCYJK",
+		"url": "https://i.ibb.co/w04Prt6/c1f64245afb2.gif",
+		"display_url": "https://i.ibb.co/98W13PY/c1f64245afb2.gif",
+		"width":"1",
+		"height":"1",
+		"size": "42",
+		"time": "1552042565",
+		"expiration":"0",
+		"image": {
+			"filename": "c1f64245afb2.gif",
+			"name": "c1f64245afb2",
+			"mime": "image/gif",
+			"extension": "gif",
+			"url": "https://i.ibb.co/w04Prt6/c1f64245afb2.gif",
+		},
+		"thumb": {
+			"filename": "c1f64245afb2.gif",
+			"name": "c1f64245afb2",
+			"mime": "image/gif",
+			"extension": "gif",
+			"url": "https://i.ibb.co/2ndCYJK/c1f64245afb2.gif",
+		},
+		"medium": {
+			"filename": "c1f64245afb2.gif",
+			"name": "c1f64245afb2",
+			"mime": "image/gif",
+			"extension": "gif",
+			"url": "https://i.ibb.co/98W13PY/c1f64245afb2.gif",
+		},
+		"delete_url": "https://ibb.co/2ndCYJK/670a7e48ddcb85ac340c717a41047e5c"
+	},
+	"success": true,
+	"status": 200
+}
