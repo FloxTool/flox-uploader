@@ -422,17 +422,26 @@
                 </td>
                 {# RELEASE NAME — une seule ligne propre, plus de warnings inline.
                    Sprint C.2 : badge categorie a gauche du release_name (couleur
-                   + icone Lucide selon CATEGORY_UI_METADATA). Tooltip = hint cat. #}
+                   + icone Lucide selon CATEGORY_UI_METADATA). Tooltip = hint cat.
+                   Sprint D.32 v0.5.0 (UX Louis) : layout en 2 zones flex distinctes
+                   pour HANGING INDENT : le badge reste fixe a gauche (flex-shrink-0),
+                   le release_name occupe une zone droite (min-w-0 + flex-1) ou il
+                   wrap dans SA PROPRE BOITE. Le wrapping s'aligne ainsi avec le
+                   debut du release_name, pas sous le badge. #}
                 <td class="px-4 py-3">
-                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        {{ category_badge(p.category_id, size='sm') }}
-                        <a href="/packages/{{ p.package_name }}" class="font-mono text-primary-700 dark:text-primary-400 hover:underline text-xs break-all">{{ p.release_name }}</a>
-                        {% if p.uploaded_torrent_url %}
-                            <a href="{{ p.uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-1">
-                                {{ icon('external-link', size='sm') }}
-                                Sur le tracker
-                            </a>
-                        {% endif %}
+                    <div class="flex items-start gap-x-2">
+                        <div class="flex-shrink-0 pt-0.5">
+                            {{ category_badge(p.category_id, size='sm') }}
+                        </div>
+                        <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <a href="/packages/{{ p.package_name }}" class="font-mono text-primary-700 dark:text-primary-400 hover:underline text-xs break-all">{{ p.release_name }}</a>
+                            {% if p.uploaded_torrent_url %}
+                                <a href="{{ p.uploaded_torrent_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-700 dark:text-primary-400 hover:underline inline-flex items-center gap-1">
+                                    {{ icon('external-link', size='sm') }}
+                                    Sur le tracker
+                                </a>
+                            {% endif %}
+                        </div>
                     </div>
                 </td>
 

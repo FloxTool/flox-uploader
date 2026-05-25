@@ -290,16 +290,20 @@
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
                 {# NOTES round 7 : map kind -> (lucide icon name, tailwind color class).
-                   Permet de visualiser d'un coup d'oeil le type de chaque fichier. #}
+                   Permet de visualiser d'un coup d'oeil le type de chaque fichier.
+                   Sprint D.32 v0.5.0 : 'book' (epub/pdf/cbz/cbr/mobi/...) avec
+                   book-open vert (emerald = code couleur Livre / BD / Manga). #}
                 {% set kind_styles = {
-                    'dir':      ('folder',       'text-warning-500'),
-                    'video':    ('file-video',   'text-primary-500 dark:text-primary-400'),
-                    'image':    ('film',         'text-success-500'),
-                    'subtitle': ('scroll-text',  'text-primary-400 dark:text-primary-300'),
-                    'nfo':      ('file-text',    'text-slate-500 dark:text-slate-400'),
-                    'archive':  ('package',      'text-warning-600 dark:text-warning-400'),
-                    'torrent':  ('upload',       'text-primary-600 dark:text-primary-400'),
-                    'other':    ('file-text',    'text-slate-400 dark:text-slate-500'),
+                    'dir':       ('folder',       'text-warning-500'),
+                    'video':     ('file-video',   'text-primary-500 dark:text-primary-400'),
+                    'book':      ('book-open',    'text-emerald-500 dark:text-emerald-400'),
+                    'audiobook': ('headphones',   'text-emerald-500 dark:text-emerald-400'),
+                    'image':     ('film',         'text-success-500'),
+                    'subtitle':  ('scroll-text',  'text-primary-400 dark:text-primary-300'),
+                    'nfo':       ('file-text',    'text-slate-500 dark:text-slate-400'),
+                    'archive':   ('package',      'text-warning-600 dark:text-warning-400'),
+                    'torrent':   ('upload',       'text-primary-600 dark:text-primary-400'),
+                    'other':     ('file-text',    'text-slate-400 dark:text-slate-500'),
                 } %}
                 {% for entry in entries %}
                 {% set ks = kind_styles.get(entry.kind, kind_styles['other']) %}
@@ -693,10 +697,25 @@
         // Sprint C.1bis : on suggere parmi les top-cats (Video / Livre / Jeu /
         // Logiciel / Formation) plutot que parmi les 12 sous-cats. Tout ce qui
         // est video (ou inconnu) tombe dans Video (id=0 = auto-detect).
-        // Retourne {suggestedId, isMixed, categoryCounts (top-level)}.
+        //
+        // Sprint D.32 v0.5.0 (bug Louis) : les paths sans extension sont des
+        // DOSSIERS. Avant on les classait top=0 (Video) ce qui declenchait
+        // un faux 'Selection mixte' quand 2 fichiers livres + 1 dossier
+        // livre etaient selectionnes. Maintenant on les marque 'pending'
+        // et le caller fait un peek-category pour les classer correctement.
+        //
+        // Retourne {suggestedId, isMixed, categoryCounts (top-level),
+        //           pendingDirCount} ou pendingDirCount = nb de dossiers
+        //           sans extension (a resoudre via peek-category).
         const counts = {};
+        let pendingDirCount = 0;
         for (const p of paths) {
             const ext = _extensionOf(p);
+            if (!ext) {
+                // Pas d'extension = probable dossier. On differe la decision.
+                pendingDirCount += 1;
+                continue;
+            }
             const catId = extMap[ext] || 0;
             // Mapping vers les top-cats
             let topCat;
@@ -708,15 +727,19 @@
             counts[topCat] = (counts[topCat] || 0) + 1;
         }
         const uniqueCats = Object.keys(counts);
+        if (uniqueCats.length === 0 && pendingDirCount === 0) {
+            return { suggestedId: 0, isMixed: false, categoryCounts: counts, pendingDirCount: 0 };
+        }
         if (uniqueCats.length === 0) {
-            return { suggestedId: 0, isMixed: false, categoryCounts: counts };
+            // Que des dossiers : suggestion=0 jusqu'au peek-category
+            return { suggestedId: 0, isMixed: false, categoryCounts: counts, pendingDirCount };
         }
         if (uniqueCats.length === 1) {
-            return { suggestedId: parseInt(uniqueCats[0]), isMixed: false, categoryCounts: counts };
+            return { suggestedId: parseInt(uniqueCats[0]), isMixed: false, categoryCounts: counts, pendingDirCount };
         }
         // Plusieurs top-cats detectees -> on prend la plus frequente.
         const sorted = uniqueCats.sort((a, b) => counts[b] - counts[a]);
-        return { suggestedId: parseInt(sorted[0]), isMixed: true, categoryCounts: counts };
+        return { suggestedId: parseInt(sorted[0]), isMixed: true, categoryCounts: counts, pendingDirCount };
     }
 
     // Mapping couleur Tailwind -> classes (selected vs unselected). Partage entre
@@ -924,39 +947,92 @@
         // soit un ID precis non-video (12/3/17/18).
         let suggestion = _suggestCategoryForPaths(paths, data.extension_to_category);
 
-        // Sprint D.7 v0.5.0 — Si la suggestion client-side est Video par defaut
-        // (= aucun signal extension exploitable, typiquement le cas d'un
-        // DOSSIER sans extension), on demande au serveur de scanner le
-        // contenu. /api/inbox/peek-category fait le scan recursif via
-        // early_category_guess() (ignore satellites cover.jpg/.nfo, etc.).
-        if (suggestion.suggestedId === 0 && paths.length > 0) {
+        // Sprint D.32 v0.5.0 (bug Louis) : si la selection contient au moins
+        // 1 DOSSIER (pas d'extension), on doit appeler peek-category pour
+        // determiner la cat de ces dossiers AVANT de declarer la selection
+        // 'mixte'. Sinon : 2 livres + 1 dossier-livre = top_cats={12,0} = mixte
+        // alors que c'est uniformement 'Livre'.
+        //
+        // Sprint D.7 v0.5.0 — pour les selections suggestedId=0 (= aucun signal
+        // exploitable, typiquement DOSSIER seul), on scanne aussi.
+        const needsPeekForDirs = suggestion.pendingDirCount > 0;
+        const needsPeekForGenericVideo = suggestion.suggestedId === 0 && paths.length > 0;
+
+        if (needsPeekForDirs || needsPeekForGenericVideo) {
+            // Pour le peek on prend les dossiers en priorite (les fichiers ont
+            // deja ete classifies par extension). Si pas de dossier, on prend
+            // tous les paths.
+            const dirPaths = paths.filter(p => !_extensionOf(p));
+            const peekPaths = dirPaths.length > 0 ? dirPaths : paths;
             try {
                 const peekResp = await fetch('/api/inbox/peek-category', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paths }),
+                    body: JSON.stringify({ paths: peekPaths }),
                 });
                 if (peekResp.ok) {
                     const peek = await peekResp.json();
                     if (peek && peek.confidence === 'high' && peek.category_id > 0) {
-                        // Override : on remplace l'auto-detect client par
-                        // celui du serveur (qui a scanne le dossier).
-                        // Si la cat detectee est non-video (book/game/soft),
-                        // on remplace direct. Sinon (cat video precise),
-                        // on garde 0 = Video generique pour la modal.
                         const NON_VIDEO = NON_VIDEO_CAT_IDS;
-                        if (NON_VIDEO.indexOf(peek.category_id) >= 0) {
+                        // Convertit le cat detecte en top-cat (id direct si non-video, 0 sinon)
+                        const peekTopCat = NON_VIDEO.indexOf(peek.category_id) >= 0
+                            ? peek.category_id : 0;
+
+                        if (needsPeekForDirs) {
+                            // Cas Louis : on a deja des extensions analysees ET
+                            // des dossiers en pending. On ajoute le peek a counts.
+                            const newCounts = { ...suggestion.categoryCounts };
+                            newCounts[peekTopCat] = (newCounts[peekTopCat] || 0) + suggestion.pendingDirCount;
+                            const uniqueCats = Object.keys(newCounts);
+                            const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);
                             suggestion = {
-                                suggestedId: peek.category_id,
-                                isMixed: false,
-                                categoryCounts: { [peek.category_id]: paths.length },
+                                suggestedId: parseInt(sorted[0]),
+                                isMixed: uniqueCats.length > 1,
+                                categoryCounts: newCounts,
+                                pendingDirCount: 0,
                             };
+                        } else {
+                            // Cas legacy : suggestion etait 0 (video generique).
+                            // On remplace direct si peek dit non-video.
+                            if (NON_VIDEO.indexOf(peek.category_id) >= 0) {
+                                suggestion = {
+                                    suggestedId: peek.category_id,
+                                    isMixed: false,
+                                    categoryCounts: { [peek.category_id]: paths.length },
+                                    pendingDirCount: 0,
+                                };
+                            }
                         }
+                    } else if (needsPeekForDirs) {
+                        // Peek dit confidence=low (= video par defaut). Les
+                        // dossiers sont alors comptes en top=0 (video).
+                        const newCounts = { ...suggestion.categoryCounts };
+                        newCounts[0] = (newCounts[0] || 0) + suggestion.pendingDirCount;
+                        const uniqueCats = Object.keys(newCounts);
+                        const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);
+                        suggestion = {
+                            suggestedId: parseInt(sorted[0]),
+                            isMixed: uniqueCats.length > 1,
+                            categoryCounts: newCounts,
+                            pendingDirCount: 0,
+                        };
                     }
                 }
             } catch (e) {
                 console.warn('peek-category fallback failed:', e);
-                // On garde la suggestion client (Video generique par defaut).
+                // Fallback : si on a des pendingDirCount, on les compte top=0
+                if (needsPeekForDirs && suggestion.pendingDirCount > 0) {
+                    const newCounts = { ...suggestion.categoryCounts };
+                    newCounts[0] = (newCounts[0] || 0) + suggestion.pendingDirCount;
+                    const uniqueCats = Object.keys(newCounts);
+                    const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);
+                    suggestion = {
+                        suggestedId: parseInt(sorted[0]) || 0,
+                        isMixed: uniqueCats.length > 1,
+                        categoryCounts: newCounts,
+                        pendingDirCount: 0,
+                    };
+                }
             }
         }
 
