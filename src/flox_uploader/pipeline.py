@@ -1010,19 +1010,30 @@ def _try_extract_and_upload_previews(
     debug: "Debug | None" = None,
 ) -> None:
     """Sprint D.19 v0.5.0 (note Louis Q3) : extrait cover + 4 previews et
-    upload sur imgbb. Modifie book_meta in-place :
-      - book_meta['cover_url'] : URL externe imgbb (override cover locale si
+    upload sur host externe (imgbb + fallback Imgur D.42). Modifie
+    book_meta in-place :
+      - book_meta['cover_url'] : URL externe (override cover locale si
         on en avait extrait une avant)
-      - book_meta['preview_urls'] : liste d'URLs imgbb des previews
+      - book_meta['preview_urls'] : liste d'URLs externes des previews
 
-    Si l'extraction echoue ou imgbb refuse, on log + on continue (le BBCode
-    sera juste plus pauvre, le pipeline ne plante pas).
+    Sprint D.42 v0.5.0 (feedback Louis) : si IMGUR_CLIENT_ID est configure,
+    on bascule sur Imgur quand imgbb rate-limit. La fonction upload_image
+    abstrait ce choix.
+
+    Si l'extraction echoue ou les 2 hosts refusent, on log + on continue
+    (le BBCode sera juste plus pauvre, le pipeline ne plante pas).
     """
     from .core.providers.image_extraction import extract_cover_and_previews
-    from .core.providers.image_host import upload_to_imgbb
+    from .core.providers.image_host import upload_image
+
+    # Sprint D.42 : lire Imgur Client-ID en complement de la cle imgbb.
+    imgur_client_id = config.get_optional_env("IMGUR_CLIENT_ID", "")
 
     previews_dir = package_dir / "_previews"
-    print(f"[INFO] Extraction cover + previews (imgbb upload active)...")
+    if imgur_client_id:
+        print(f"[INFO] Extraction cover + previews (imgbb + fallback Imgur)...")
+    else:
+        print(f"[INFO] Extraction cover + previews (imgbb seul)...")
 
     extracted = extract_cover_and_previews(
         input_path, previews_dir, preview_count=4,
@@ -1064,12 +1075,16 @@ def _try_extract_and_upload_previews(
 
     # Upload la cover LOCALE et l'utiliser pour la presentation (override web).
     if cover_local:
-        result = upload_to_imgbb(cover_local, imgbb_api_key)
+        result = upload_image(
+            cover_local,
+            imgbb_api_key=imgbb_api_key,
+            imgur_client_id=imgur_client_id,
+        )
         if result.success:
             book_meta["cover_url"] = result.url
-            print(f"[OK] Cover LOCALE uploadee (prio sur web) -> {result.url}")
+            print(f"[OK] Cover LOCALE uploadee ({result.host}) -> {result.url}")
         else:
-            print(f"[WARN] Cover upload imgbb echec : {result.error}")
+            print(f"[WARN] Cover upload echec : {result.error}")
             if result.rate_limited:
                 imgbb_rate_limited = True
                 imgbb_failures.append("cover")
@@ -1079,10 +1094,14 @@ def _try_extract_and_upload_previews(
     if preview_paths:
         uploaded_urls: list[str] = []
         for i, p in enumerate(preview_paths, start=1):
-            result = upload_to_imgbb(p, imgbb_api_key)
+            result = upload_image(
+                p,
+                imgbb_api_key=imgbb_api_key,
+                imgur_client_id=imgur_client_id,
+            )
             if result.success:
                 uploaded_urls.append(result.url)
-                print(f"[OK] Preview {i}/{len(preview_paths)} uploaded -> {result.url}")
+                print(f"[OK] Preview {i}/{len(preview_paths)} uploaded ({result.host}) -> {result.url}")
             else:
                 print(f"[WARN] Preview {i} upload echec : {result.error}")
                 if result.rate_limited:
@@ -1163,6 +1182,15 @@ def _find_folder_cover(input_path: Path, output_dir: Path) -> Path | None:
                 target = output_dir / f"folder_cover{ext_lower}"
                 import shutil
                 shutil.copyfile(child, target)
+                # Sprint D.42 : recompresse aussi le folder cover (Pillow
+                # optionnel ; no-op si pas installe).
+                try:
+                    from .core.providers.image_extraction import (
+                        _maybe_recompress_external_image,
+                    )
+                    _maybe_recompress_external_image(target)
+                except Exception:
+                    pass
                 return target
         return None
     except (OSError, PermissionError) as e:

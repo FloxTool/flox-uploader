@@ -26,6 +26,85 @@ from pathlib import Path
 # Extensions d'images considerees comme pages (CBZ/CBR/EPUB ressources)
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"}
 
+# Sprint D.42 v0.5.0 (feedback Louis) : compression agressive pour rester
+# sous le quota imgbb (500 uploads/jour, plus exigeant en taille pour
+# eviter le rate limit).
+# - PyMuPDF zoom 1.7 -> 1.2 : ~50% de pixels en moins (~75% en taille fichier).
+# - jpg_quality 80 (vs default 95) : ~30% de gain supplementaire.
+# - Resize max 1200px largeur : safety net pour les CBZ/MP3 covers extraites
+#   en pleine resolution depuis le ZIP/ID3.
+# Total : 2.5 MB -> ~250-400 KB par image (gain x6-10).
+PYMUPDF_ZOOM = 1.2
+JPEG_QUALITY = 80
+MAX_IMAGE_WIDTH_PX = 1200
+
+
+def _save_pixmap_compressed(pix, path: Path) -> None:
+    """Sprint D.42 : sauve un Pixmap PyMuPDF en JPEG avec compression agressive.
+
+    pix.save() ecrit en PNG par defaut (= 5-10x plus gros que JPEG q=80).
+    On force JPEG via le param `output=` + qualite reduite.
+
+    Note : PyMuPDF.Pixmap.save accepte `jpg_quality` (default 95). On
+    descend a 80 = pratiquement invisible visuellement, gros gain taille.
+    """
+    pix.save(str(path), output="jpeg", jpg_quality=JPEG_QUALITY)
+
+
+def _maybe_recompress_external_image(path: Path) -> None:
+    """Sprint D.42 : si Pillow est disponible, recompresse une image externe
+    (CBZ premiere page, MP3 ID3 cover, folder.jpg) pour limiter le poids
+    avant upload imgbb.
+
+    - Resize si largeur > MAX_IMAGE_WIDTH_PX (preserve ratio)
+    - JPEG quality JPEG_QUALITY
+    - PNG -> JPEG si pas de transparence (gain x3-5)
+
+    Si Pillow n'est pas installe : no-op silencieux (degrade gracieusement).
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return  # Pillow optionnel : pas de recompression
+    if not path.is_file():
+        return
+    try:
+        img = Image.open(path)
+        original_size = path.stat().st_size
+        # Convertir RGBA -> RGB si pas de transparence reelle utilisee
+        # (sinon JPEG = perte du canal alpha). On garde PNG pour les
+        # vraies images transparentes.
+        has_alpha = img.mode in ("RGBA", "LA") or (
+            img.mode == "P" and "transparency" in img.info
+        )
+        # Resize si trop large
+        if img.width > MAX_IMAGE_WIDTH_PX:
+            ratio = MAX_IMAGE_WIDTH_PX / img.width
+            new_size = (MAX_IMAGE_WIDTH_PX, int(img.height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+        # Save : JPEG si pas d'alpha, sinon WebP (gere alpha + compresse mieux)
+        ext = path.suffix.lower()
+        if has_alpha and ext == ".png":
+            # Garde PNG pour transparence (mais le PIL.optimize reduit la taille)
+            img.save(path, "PNG", optimize=True)
+        else:
+            # Convertir en RGB et sauver en JPEG (meme si l'ext etait .png)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            # On garde l'extension d'origine pour ne pas casser les refs ;
+            # PIL save() respecte le format explicite passe en 2e arg.
+            img.save(path, "JPEG", quality=JPEG_QUALITY, optimize=True)
+        new_size = path.stat().st_size
+        if new_size < original_size:
+            print(
+                f"[INFO] Image recompressee : {path.name} "
+                f"{original_size // 1024} KB -> {new_size // 1024} KB "
+                f"(-{100 * (original_size - new_size) // original_size}%)"
+            )
+    except Exception as e:
+        # Toute erreur Pillow = no-op silencieux (image gardee telle quelle)
+        print(f"[WARN] Recompression {path.name} echec : {type(e).__name__} {e}")
+
 
 def extract_cover_and_previews(
     source: Path,
@@ -188,22 +267,23 @@ def _extract_from_epub(
             # On laisse le finally fermer doc avant le fallback
             raise _EmptyEPUB()
 
-        # ~120 dpi : equilibre qualite / taille fichier
-        zoom = 1.7
-        mat = fitz.Matrix(zoom, zoom)
+        # Sprint D.42 : zoom 1.2 + JPEG quality 80 (~85 dpi, compression aggressive).
+        # Equilibre lisibilite preview / taille fichier / quota imgbb.
+        mat = fitz.Matrix(PYMUPDF_ZOOM, PYMUPDF_ZOOM)
 
         # Cover : page 0 rendue
         cover_path = output_dir / "cover.jpg"
         try:
             page = doc.load_page(0)
             pix = page.get_pixmap(matrix=mat, alpha=False)
-            pix.save(str(cover_path))
+            _save_pixmap_compressed(pix, cover_path)
             result["cover"] = cover_path
         except Exception as e:
             print(f"[WARN] EPUB cover render echec : {type(e).__name__} {e}")
             # Fallback cover via OPF manifest si render rate
             from .epub_metadata import extract_epub_cover
             if extract_epub_cover(source, cover_path):
+                _maybe_recompress_external_image(cover_path)
                 result["cover"] = cover_path
 
         # Previews : pages random dans [1, page_count-1] (skip page 1 = cover,
@@ -230,7 +310,7 @@ def _extract_from_epub(
                     page = doc.load_page(page_idx)
                     pix = page.get_pixmap(matrix=mat, alpha=False)
                     p = output_dir / f"preview_{i}.jpg"
-                    pix.save(str(p))
+                    _save_pixmap_compressed(pix, p)
                     result["previews"].append(p)
                 except Exception as e:
                     print(f"[WARN] EPUB page {page_idx} render echec : {e}")
@@ -330,6 +410,8 @@ def _extract_from_zip(
             cover_data = zf.read(image_names[0])
             cover_path = output_dir / f"cover{Path(image_names[0]).suffix.lower()}"
             cover_path.write_bytes(cover_data)
+            # Sprint D.42 : recompresse pour limiter le poids avant upload imgbb
+            _maybe_recompress_external_image(cover_path)
             result["cover"] = cover_path
 
             # Previews = N images espacees uniformement (eviter les 2-3 1res
@@ -343,6 +425,7 @@ def _extract_from_zip(
                 ext = Path(name).suffix.lower()
                 p = output_dir / f"preview_{i}{ext}"
                 p.write_bytes(data)
+                _maybe_recompress_external_image(p)
                 result["previews"].append(p)
     except (zipfile.BadZipFile, OSError, KeyError) as e:
         result["warning"] = f"CBZ lecture echec : {type(e).__name__} {e}"
@@ -413,6 +496,8 @@ def _extract_from_rar(
                 cover_data = fh.read()
             cover_path = output_dir / f"cover{Path(image_names[0]).suffix.lower()}"
             cover_path.write_bytes(cover_data)
+            # Sprint D.42 : recompresse pour quota imgbb
+            _maybe_recompress_external_image(cover_path)
             result["cover"] = cover_path
 
             # Previews
@@ -424,6 +509,7 @@ def _extract_from_rar(
                     data = fh.read()
                 p = output_dir / f"preview_{i}{Path(name).suffix.lower()}"
                 p.write_bytes(data)
+                _maybe_recompress_external_image(p)
                 result["previews"].append(p)
     except Exception as e:
         # rarfile.BadRarFile, rarfile.RarCannotExec (unrar absent), OSError
@@ -469,15 +555,16 @@ def _extract_from_pdf(
             result["warning"] = "PDF sans pages."
             return result
 
-        zoom = 1.5  # ~108 dpi : equilibre qualite / taille fichier
-        mat = fitz.Matrix(zoom, zoom)
+        # Sprint D.42 : zoom 1.2 + JPEG quality 80 (compression aggressive
+        # cf. _save_pixmap_compressed pour rationale).
+        mat = fitz.Matrix(PYMUPDF_ZOOM, PYMUPDF_ZOOM)
 
         # Cover : page 1
         cover_path = output_dir / "cover.jpg"
         try:
             page = doc.load_page(0)
             pix = page.get_pixmap(matrix=mat, alpha=False)
-            pix.save(str(cover_path))
+            _save_pixmap_compressed(pix, cover_path)
             result["cover"] = cover_path
         except Exception as e:
             result["warning"] = f"PDF cover render echec : {type(e).__name__} {e}"
@@ -498,7 +585,7 @@ def _extract_from_pdf(
                     page = doc.load_page(page_idx)
                     pix = page.get_pixmap(matrix=mat, alpha=False)
                     p = output_dir / f"preview_{i}.jpg"
-                    pix.save(str(p))
+                    _save_pixmap_compressed(pix, p)
                     result["previews"].append(p)
                 except Exception as e:
                     print(f"[WARN] PDF page {page_idx} render echec : {e}")
@@ -570,6 +657,9 @@ def _extract_from_audio(
             if cover_data:
                 cover_path = output_dir / f"cover.{cover_ext}"
                 cover_path.write_bytes(cover_data)
+                # Sprint D.42 : recompresse la cover MP3 pour quota imgbb
+                # (les ID3 covers sont souvent en pleine resolution ~1500px).
+                _maybe_recompress_external_image(cover_path)
                 result["cover"] = cover_path
                 if idx > 0:
                     # Trace le fait qu'on a du recourir au fallback

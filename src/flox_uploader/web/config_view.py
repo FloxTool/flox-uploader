@@ -95,8 +95,23 @@ SCHEMA: list[ConfigField] = [
         description=(
             "Optionnel (livres) : upload des covers + 4 previews extraites "
             "des EPUB/PDF/CBZ/CBR/MP3/M4B vers imgbb pour les inclure dans "
-            "la fiche tracker. Gratuit, illimite. "
+            "la fiche tracker. Gratuit (~500 uploads/24h en pratique). "
             "Cree ta cle sur https://api.imgbb.com/."
+        ),
+    ),
+    # Sprint D.42 v0.5.0 (feedback Louis) : Imgur Client-ID en fallback
+    ConfigField(
+        key="IMGUR_CLIENT_ID",
+        label="Imgur Client-ID (fallback)",
+        section="Metadonnees (TMDB / OMDb)",
+        kind="password",
+        placeholder="••••••••••••••••",
+        description=(
+            "Optionnel : utilise comme fallback quand imgbb rate-limit "
+            "(>500 uploads/24h). Imgur autorise ~1250 uploads/h en anonyme "
+            "via Client-ID. Cree-le sur "
+            "https://api.imgur.com/oauth2/addclient (choisis « Anonymous "
+            "usage without authorization »)."
         ),
     ),
     # --- Inbox / browse ---

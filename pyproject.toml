@@ -38,6 +38,10 @@ dependencies = [
     # Sprint D.19 : support CBR (RAR d'images) pour BD/manga. Necessite
     # unrar.exe dans le PATH au runtime ; sinon degrade gracieusement.
     "rarfile>=4.0",
+    # Sprint D.42 v0.5.0 (feedback Louis) : compression/resize des images
+    # CBZ/CBR/MP3 covers avant upload imgbb. Reduit le poids fichier ~50%
+    # et evite le rate-limit imgbb sur les bursts de previews. ~3 MB.
+    "Pillow>=10.0",
 ]
 
 [project.optional-dependencies]
