@@ -109,18 +109,38 @@
 
             {# NOTES Sprint 8 hotfix : toggle "Afficher aussi les NFO, posters, sous-titres".
                Par defaut OFF -> on liste dossiers + videos uniquement (signal-to-noise
-               maximal pour le workflow normal). Quand ON -> on affiche egalement les
-               NFO, posters, sous-titres, archives, .torrent, .iso, .bin, .exe et tout
-               le reste (utile pour les bundles non-emboites et pour explorer un dossier
-               inhabituel).
-               Persiste en localStorage tu_inbox_show_all. Recharge la page avec
-               ?show_all=1 ou retire le param. #}
-            <label class="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none"
-                   data-tu-tooltip="Par défaut : dossiers et fichiers vidéo seulement. Coche pour voir aussi les NFO, posters, sous-titres et autres fichiers (utile pour packager un bundle film + NFO + poster).">
-                <input type="checkbox" id="inbox-show-all-toggle" {% if show_all %}checked{% endif %}
-                       class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
-                <span>Afficher tout</span>
-            </label>
+               maximal pour le workflow normal). Sprint D.38 (feedback Louis) :
+               remplace l'ancien "Afficher tout" par 2 toggles "Films/Séries"
+               et "Livres" qui filtrent les extensions par grande famille.
+               Decoche pour cacher cette famille. Combinaison libre.
+               Persiste en localStorage tu_inbox_show_videos et tu_inbox_show_books.
+               URL params : ?show_videos=0 / ?show_books=0 pour decocher. #}
+            <div class="inline-flex items-center gap-3">
+                <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none"
+                       data-tu-tooltip="Affiche les fichiers vidéo (.mkv, .mp4, .avi, etc.). Décoche pour cacher.">
+                    <input type="checkbox" id="inbox-filter-videos" {% if show_videos %}checked{% endif %}
+                           class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
+                    <span class="inline-flex items-center gap-1">
+                        <span class="text-primary-500 dark:text-primary-400">{{ icon('file-video', size='sm') }}</span>
+                        Films / Séries
+                    </span>
+                </label>
+                <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none"
+                       data-tu-tooltip="Affiche les fichiers livre (.epub, .pdf, .cbz, .cbr, .mobi, etc.). Décoche pour cacher.">
+                    <input type="checkbox" id="inbox-filter-books" {% if show_books %}checked{% endif %}
+                           class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500">
+                    <span class="inline-flex items-center gap-1">
+                        <span class="text-emerald-500 dark:text-emerald-400">{{ icon('book-open', size='sm') }}</span>
+                        Livres
+                    </span>
+                </label>
+                <label class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-500 cursor-pointer select-none"
+                       data-tu-tooltip="Affiche aussi les NFO, posters, sous-titres, archives, .torrent et autres exotiques.">
+                    <input type="checkbox" id="inbox-show-all-toggle" {% if show_all %}checked{% endif %}
+                           class="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-primary-600 focus:ring-primary-500">
+                    <span>Tout (companions, archives)</span>
+                </label>
+            </div>
 
             <div class="ml-auto flex items-center gap-2.5">
                 <span id="selected-count" class="text-xs text-slate-500 dark:text-slate-400">0 sélectionné(s)</span>
@@ -407,6 +427,63 @@
             } catch (e) {}
         });
     }
+})();
+</script>
+<script>
+// Sprint D.38 v0.5.0 : filtres Films/Séries et Livres (decoche pour filtrer).
+// Persistance localStorage + propagation URL params show_videos / show_books.
+(function() {
+    function setupFilterToggle(toggleId, paramName, storageKey, defaultOn = true) {
+        const toggle = document.getElementById(toggleId);
+        if (!toggle) return;
+        // Sync localStorage <-> URL
+        try {
+            const stored = localStorage.getItem(storageKey);
+            const urlVal = new URLSearchParams(window.location.search).get(paramName);
+            // stored '0' = off, absent ou '1' = on (defaut on)
+            const wantedOff = stored === '0';
+            const urlHasOff = urlVal === '0';
+            if (wantedOff && !urlHasOff) {
+                const url = new URL(window.location);
+                url.searchParams.set(paramName, '0');
+                window.location.replace(url.toString());
+                return;
+            }
+            if (!wantedOff && urlHasOff && stored !== null) {
+                const url = new URL(window.location);
+                url.searchParams.delete(paramName);
+                window.location.replace(url.toString());
+                return;
+            }
+        } catch (e) {}
+        toggle.addEventListener('change', () => {
+            try {
+                localStorage.setItem(storageKey, toggle.checked ? '1' : '0');
+            } catch (e) {}
+            const url = new URL(window.location);
+            if (toggle.checked) {
+                url.searchParams.delete(paramName);
+            } else {
+                url.searchParams.set(paramName, '0');
+            }
+            if (typeof window.showPageLoader === 'function') window.showPageLoader();
+            window.location.href = url.toString();
+        });
+        // Propage l'etat 'off' sur tous les liens internes inbox
+        if (!toggle.checked) {
+            document.querySelectorAll('a[href^="/inbox"]').forEach(a => {
+                try {
+                    const u = new URL(a.href, window.location.origin);
+                    if (u.pathname.startsWith('/inbox')) {
+                        u.searchParams.set(paramName, '0');
+                        a.href = u.toString();
+                    }
+                } catch (e) {}
+            });
+        }
+    }
+    setupFilterToggle('inbox-filter-videos', 'show_videos', 'tu_inbox_show_videos');
+    setupFilterToggle('inbox-filter-books', 'show_books', 'tu_inbox_show_books');
 })();
 </script>
 <script>
@@ -959,70 +1036,52 @@
         const needsPeekForGenericVideo = suggestion.suggestedId === 0 && paths.length > 0;
 
         if (needsPeekForDirs || needsPeekForGenericVideo) {
-            // Pour le peek on prend les dossiers en priorite (les fichiers ont
-            // deja ete classifies par extension). Si pas de dossier, on prend
-            // tous les paths.
+            // Sprint D.38 v0.5.0 (bug Louis) : on peek les dossiers UN PAR UN
+            // pour eviter le vote majoritaire foireux. Avant : peek de N dirs
+            // -> 1 cat unique -> faux mixte si dirs heterogenes ou incertains.
             const dirPaths = paths.filter(p => !_extensionOf(p));
-            const peekPaths = dirPaths.length > 0 ? dirPaths : paths;
+            const peekTargets = dirPaths.length > 0 ? dirPaths : paths;
+            const NON_VIDEO = NON_VIDEO_CAT_IDS;
+            const newCounts = { ...suggestion.categoryCounts };
             try {
-                const peekResp = await fetch('/api/inbox/peek-category', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paths: peekPaths }),
-                });
-                if (peekResp.ok) {
-                    const peek = await peekResp.json();
+                // Lance les peeks en PARALLELE (1 fetch par dir) au lieu de batch
+                const peeks = await Promise.all(peekTargets.map(p =>
+                    fetch('/api/inbox/peek-category', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paths: [p] }),
+                    }).then(r => r.ok ? r.json() : null).catch(() => null)
+                ));
+                // Agrege chaque peek dans counts (1 vote par dir)
+                for (const peek of peeks) {
                     if (peek && peek.confidence === 'high' && peek.category_id > 0) {
-                        const NON_VIDEO = NON_VIDEO_CAT_IDS;
-                        // Convertit le cat detecte en top-cat (id direct si non-video, 0 sinon)
-                        const peekTopCat = NON_VIDEO.indexOf(peek.category_id) >= 0
+                        const topCat = NON_VIDEO.indexOf(peek.category_id) >= 0
                             ? peek.category_id : 0;
-
-                        if (needsPeekForDirs) {
-                            // Cas Louis : on a deja des extensions analysees ET
-                            // des dossiers en pending. On ajoute le peek a counts.
-                            const newCounts = { ...suggestion.categoryCounts };
-                            newCounts[peekTopCat] = (newCounts[peekTopCat] || 0) + suggestion.pendingDirCount;
-                            const uniqueCats = Object.keys(newCounts);
-                            const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);
-                            suggestion = {
-                                suggestedId: parseInt(sorted[0]),
-                                isMixed: uniqueCats.length > 1,
-                                categoryCounts: newCounts,
-                                pendingDirCount: 0,
-                            };
-                        } else {
-                            // Cas legacy : suggestion etait 0 (video generique).
-                            // On remplace direct si peek dit non-video.
-                            if (NON_VIDEO.indexOf(peek.category_id) >= 0) {
-                                suggestion = {
-                                    suggestedId: peek.category_id,
-                                    isMixed: false,
-                                    categoryCounts: { [peek.category_id]: paths.length },
-                                    pendingDirCount: 0,
-                                };
-                            }
-                        }
-                    } else if (needsPeekForDirs) {
-                        // Peek dit confidence=low (= video par defaut). Les
-                        // dossiers sont alors comptes en top=0 (video).
-                        const newCounts = { ...suggestion.categoryCounts };
-                        newCounts[0] = (newCounts[0] || 0) + suggestion.pendingDirCount;
-                        const uniqueCats = Object.keys(newCounts);
-                        const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);
-                        suggestion = {
-                            suggestedId: parseInt(sorted[0]),
-                            isMixed: uniqueCats.length > 1,
-                            categoryCounts: newCounts,
-                            pendingDirCount: 0,
-                        };
+                        newCounts[topCat] = (newCounts[topCat] || 0) + 1;
+                    } else {
+                        // Confidence low -> fallback Video generique (top=0)
+                        newCounts[0] = (newCounts[0] || 0) + 1;
                     }
+                }
+                const uniqueCats = Object.keys(newCounts);
+                if (uniqueCats.length === 0) {
+                    suggestion = {
+                        suggestedId: 0, isMixed: false,
+                        categoryCounts: newCounts, pendingDirCount: 0,
+                    };
+                } else {
+                    const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);
+                    suggestion = {
+                        suggestedId: parseInt(sorted[0]),
+                        isMixed: uniqueCats.length > 1,
+                        categoryCounts: newCounts,
+                        pendingDirCount: 0,
+                    };
                 }
             } catch (e) {
                 console.warn('peek-category fallback failed:', e);
                 // Fallback : si on a des pendingDirCount, on les compte top=0
                 if (needsPeekForDirs && suggestion.pendingDirCount > 0) {
-                    const newCounts = { ...suggestion.categoryCounts };
                     newCounts[0] = (newCounts[0] || 0) + suggestion.pendingDirCount;
                     const uniqueCats = Object.keys(newCounts);
                     const sorted = uniqueCats.sort((a, b) => newCounts[b] - newCounts[a]);

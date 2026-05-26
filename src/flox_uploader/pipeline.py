@@ -1012,15 +1012,25 @@ def _try_extract_and_upload_previews(
         cover_local = folder_cover
         print(f"[INFO] Cover backup detectee dans le dossier source : {folder_cover.name}")
 
-    # Upload cover si on en a une nouvelle (locale) ET pas deja une externe.
-    # Si meta.cover_url est deja https (BnF/Google), on n'override pas.
+    # Sprint D.38 v0.5.0 (feedback Louis) : la cover LOCALE a TOUJOURS
+    # priorite si elle est extraite du fichier. La cover web (BnF/Google)
+    # est conservee dans web_cover_url pour comparaison visuelle sur la
+    # page detail. Avant : on n'uploadait pas la cover locale si une web
+    # existait deja -> Louis voulait l'inverse.
     current_cover_url = book_meta.get("cover_url", "")
-    is_current_external = current_cover_url.startswith(("http://", "https://"))
-    if cover_local and not is_current_external:
+    is_current_web = (
+        current_cover_url.startswith(("http://", "https://"))
+        and "i.ibb.co" not in current_cover_url
+    )
+    # Sauvegarde le web_cover_url avant override par local (pour comparaison)
+    if is_current_web and not book_meta.get("web_cover_url"):
+        book_meta["web_cover_url"] = current_cover_url
+    # Upload la cover LOCALE et l'utiliser pour la presentation (override web).
+    if cover_local:
         result = upload_to_imgbb(cover_local, imgbb_api_key)
         if result.success:
             book_meta["cover_url"] = result.url
-            print(f"[OK] Cover uploaded -> {result.url}")
+            print(f"[OK] Cover LOCALE uploadee (prio sur web) -> {result.url}")
         else:
             print(f"[WARN] Cover upload imgbb echec : {result.error}")
 
