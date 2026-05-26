@@ -207,7 +207,12 @@ def test_bbcode_works_without_torrent_info(monkeypatch):
 # ============================================================
 
 def test_options_section_book_has_cover_url_input(client, tmp_path):
-    """Pour cat livre : section Options upload contient manual_cover_url."""
+    """Pour cat livre : section Options upload contient manual_cover_url.
+
+    Sprint D.43 v0.5.0 (feedback Louis) : le sous-type a ete retire de
+    l'UI (redondant avec la dropdown Type). On verifie cover_url + ajout
+    banner_url (D.40) + absence du dropdown sous-type.
+    """
     from flox_uploader import config
     pkg_root = config.packages_dir()
     _make_book_pkg(pkg_root, "Options.Book-Flox", book_meta={
@@ -219,13 +224,10 @@ def test_options_section_book_has_cover_url_input(client, tmp_path):
     assert resp.status_code == 200
     html = resp.text
     assert 'id="manual_cover_url"' in html
-    assert 'id="manual_book_subtype"' in html
-    # Dropdown sous-type avec les bonnes options
-    assert "Roman" in html
-    assert "BD" in html
-    assert "Manga" in html
-    assert "Comics" in html
-    assert "Livre audio" in html
+    # Sprint D.40 : banner URL ajoute en complement
+    assert 'id="manual_banner_url"' in html
+    # Sprint D.43 : sous-type retire de l'UI
+    assert 'id="manual_book_subtype"' not in html
 
 
 def test_options_section_video_hides_book_inputs(client, tmp_path):

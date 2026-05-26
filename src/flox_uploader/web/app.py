@@ -603,11 +603,22 @@ def _load_package_detail(name: str) -> dict[str, Any]:
     auto_type = unit3d_mapping.type_id_for(release_name)
     auto_resolution = unit3d_mapping.resolution_id_for(release_name)
 
+    manual_category = state_data.manual_category_id if state_data else 0
+    manual_type = state_data.manual_type_id if state_data else 0
+    manual_resolution = state_data.manual_resolution_id if state_data else 0
+    # Sprint D.43 v0.5.0 (feedback Louis) : on calcule eff_category AVANT
+    # auto_type pour pouvoir router le auto-fill type sur la categorie
+    # effective (manual_category gagne sur auto). Avant : si auto_category
+    # etait 1 (Films par defaut) mais manual_category=12 (Livre), le type
+    # restait sur BDRip (default video) au lieu de Livre. Maintenant on
+    # utilise eff_category pour le routing du auto-fill type.
+    eff_category = manual_category if manual_category > 0 else auto_category
+
     # Sprint D.40 v0.5.0 (feedback Louis) : auto-fill du type livre si la
-    # categorie effective est Livre. Utilise book_type_id_for() qui combine
+    # categorie EFFECTIVE est Livre. Utilise book_type_id_for() qui combine
     # format + sous-type + ISBN + langue + genres.
     auto_type_source = ""
-    if auto_category == unit3d_mapping.CATEGORY_BOOKS:
+    if eff_category == unit3d_mapping.CATEGORY_BOOKS:
         bm = (debug or {}).get("book_metadata") or {}
         is_periodical = bool((debug or {}).get("is_periodical"))
         book_subtype = (state_data.manual_book_subtype if state_data else "") or ""
@@ -622,11 +633,12 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         )
         if b_type > 0:
             auto_type = b_type
+        else:
+            # Sprint D.43 : si non-devinable, on retombe sur TYPE_BOOK_EBOOK (27)
+            # plutot que sur BDRip (default video) qui n'est meme pas une option
+            # valide pour la categorie Livre.
+            auto_type = unit3d_mapping.TYPE_BOOK_EBOOK
         auto_type_source = b_src
-    manual_category = state_data.manual_category_id if state_data else 0
-    manual_type = state_data.manual_type_id if state_data else 0
-    manual_resolution = state_data.manual_resolution_id if state_data else 0
-    eff_category = manual_category if manual_category > 0 else auto_category
     eff_type = manual_type if manual_type > 0 else auto_type
     eff_resolution = manual_resolution if manual_resolution > 0 else auto_resolution
 
