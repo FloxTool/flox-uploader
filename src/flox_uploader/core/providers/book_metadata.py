@@ -116,6 +116,14 @@ class BookMetadata:
     # indexes (Historica Cosmos), mauvais volume malgre fixes.
     no_canonical_match: bool = False
 
+    # Sprint D.38 v0.5.0 (feedback Louis) : cover WEB (BnF/Google Books)
+    # conservee separement pour permettre une comparaison visuelle dans
+    # la page detail. La cover_url ci-dessus contient toujours la VRAIE
+    # cover utilisee (locale prioritaire). Cette web_cover_url affiche
+    # une vignette secondaire pour confirmer visuellement que la
+    # correspondance trouvee est bien le bon livre.
+    web_cover_url: str = ""
+
     @property
     def isbn(self) -> str:
         """Retourne le meilleur ISBN dispo : isbn_13 prioritaire, sinon isbn_10."""
@@ -183,14 +191,29 @@ class BookMetadata:
             authoritative : si True, override title/authors/cover/etc.
         """
         # Sprint D.31 : champs override-ables en mode authoritative
+        # Sprint D.38 : cover_url retiree de la liste (la cover locale a
+        # priorite). Le web_cover est capture separement plus bas pour
+        # affichage comparaison.
         _AUTHORITATIVE_FIELDS = (
-            "title", "subtitle", "publisher", "language", "cover_url",
+            "title", "subtitle", "publisher", "language",
             "isbn_13", "isbn_10",
         )
 
-        # Strings : on remplit si vide, OU override si authoritative
+        # Sprint D.38 v0.5.0 (feedback Louis) : capture web_cover_url AVANT
+        # le merge. La cover_url locale (extraite du fichier) DOIT toujours
+        # gagner pour la presentation. On garde la web cover dans un champ
+        # separe pour la vignette de comparaison sur la page detail.
+        other_cover = getattr(other, "cover_url", "")
+        if other_cover and other_cover.startswith(("http://", "https://")):
+            # Web cover BnF/Google -> stocker dans web_cover_url si vide
+            if not self.web_cover_url:
+                self.web_cover_url = other_cover
+
+        # Strings : on remplit si vide, OU override si authoritative.
+        # cover_url retiree : on ne remplace pas une cover deja presente
+        # (qui est typiquement locale = prio).
         for str_field in ("title", "subtitle", "publisher", "language",
-                          "description", "cover_url", "isbn_13", "isbn_10",
+                          "description", "isbn_13", "isbn_10",
                           "series", "series_index_range", "file_format",
                           "google_books_id", "bnf_ark"):
             other_val = getattr(other, str_field)
@@ -201,6 +224,12 @@ class BookMetadata:
                 setattr(self, str_field, other_val)
             elif authoritative and str_field in _AUTHORITATIVE_FIELDS:
                 setattr(self, str_field, other_val)
+
+        # Sprint D.38 : cover_url avec strict prio local. On ne setter
+        # cover_url depuis other QUE si self.cover_url est completement
+        # vide (= aucune cover locale extraite). Sinon on garde local.
+        if not self.cover_url and other_cover:
+            self.cover_url = other_cover
 
         # Listes : remplit si vide, override authors si authoritative
         for list_field in ("authors", "genres", "preview_urls"):
@@ -275,6 +304,8 @@ def book_to_dict(meta: BookMetadata) -> dict:
         "sources": list(meta.sources),
         # Sprint D.37 : flag no-canonical-match (penalite score + UI badge)
         "no_canonical_match": meta.no_canonical_match,
+        # Sprint D.38 : cover web (BnF/Google) pour comparaison visuelle.
+        "web_cover_url": meta.web_cover_url,
         # Note : on ne cache PAS file_path (chemin local utilisateur) ni
         # cover_local_path (regenerable). Le cache est partage entre runs / users.
     }
@@ -315,6 +346,8 @@ def book_from_dict(d: dict) -> BookMetadata:
         sources=[str(s) for s in (d.get("sources") or []) if s],
         # Sprint D.37 : flag no-canonical (lecture cache)
         no_canonical_match=bool(d.get("no_canonical_match", False)),
+        # Sprint D.38 : cover web (BnF/Google) pour comparaison.
+        web_cover_url=str(d.get("web_cover_url", "") or ""),
     )
     # Sprint D.31 : auto-invalidation des cover_url pourries au load
     meta.sanitize_cover_url()

@@ -181,7 +181,12 @@ _KIND_BY_EXT = {
 }
 
 
-def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
+def _list_directory(
+    target: Path,
+    show_all: bool = False,
+    show_videos: bool = True,
+    show_books: bool = True,
+) -> list[FileEntry]:
     """Liste le contenu d'un dossier : sous-dossiers d'abord (alpha), puis
     fichiers d'interet (alpha).
 
@@ -240,8 +245,22 @@ def _list_directory(target: Path, show_all: bool = False) -> list[FileEntry]:
         # mature.
         kind_for_filter = _KIND_BY_EXT.get(ext, "other") if not is_dir else "dir"
         is_book = kind_for_filter in {"book", "audiobook"}
-        # Filter : dossier OU video OU livre (sauf si show_all coche).
-        if not show_all and not is_dir and not is_video and not is_book:
+        # Sprint D.38 v0.5.0 : filtres independants Films/Series et Livres.
+        # show_videos=False -> cache les fichiers video
+        # show_books=False -> cache les fichiers livre
+        # Combinaison libre : si les 2 sont False, on n'affiche que les
+        # dossiers (et 'tout' si show_all). Logique :
+        # - dossier : toujours visible
+        # - video : visible si show_videos OU show_all
+        # - book : visible si show_books OU show_all
+        # - autres (NFO, archives, ...) : visible si show_all
+        if is_dir:
+            pass  # toujours visible
+        elif is_video and not show_videos and not show_all:
+            continue
+        elif is_book and not show_books and not show_all:
+            continue
+        elif not is_video and not is_book and not show_all:
             continue
         # Size : stat() sur DirEntry est cached → 0 syscall supplementaire.
         size = 0
@@ -1396,7 +1415,13 @@ def create_app() -> FastAPI:
         return False
 
     @app.get("/inbox", response_class=HTMLResponse)
-    def page_inbox(request: Request, path: str | None = None, show_all: int = 0):
+    def page_inbox(
+        request: Request,
+        path: str | None = None,
+        show_all: int = 0,
+        show_videos: int = 1,
+        show_books: int = 1,
+    ):
         """Browser de fichiers : navigation + selection multi pour ajouter
         a la queue.
 
@@ -1417,7 +1442,12 @@ def create_app() -> FastAPI:
         """
         target = _safe_resolve_path(path) if path else _browse_root()
         try:
-            entries = _list_directory(target, show_all=bool(show_all))
+            entries = _list_directory(
+                target,
+                show_all=bool(show_all),
+                show_videos=bool(show_videos),
+                show_books=bool(show_books),
+            )
         except HTTPException as e:
             entries = []
             error = e.detail
@@ -1443,6 +1473,9 @@ def create_app() -> FastAPI:
                 "error": error,
                 "quick_roots": _list_quick_roots(),
                 "show_all": bool(show_all),
+                # Sprint D.38 v0.5.0 : filtres Films/Series et Livres
+                "show_videos": bool(show_videos),
+                "show_books": bool(show_books),
                 # NOTES Sprint 8 hotfix v6 : indique si le dossier courant est
                 # deja un favori. Le bouton "Ajouter aux favoris" dans le
                 # header devient "Retirer des favoris" si vrai.
