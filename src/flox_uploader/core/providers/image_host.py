@@ -40,6 +40,11 @@ class ImgbbUploadResult:
     delete_url: str = ""  # URL admin pour delete (gardee pour traçabilite)
     size: int = 0       # taille bytes
     error: str = ""     # message si echec
+    # Sprint D.41 v0.5.0 (feedback Louis) : flag rate-limited explicite.
+    # Permet au pipeline d'emettre un warning dedie + suggerer un re-prepare
+    # plus tard. Distinct des autres echecs (cle invalide, fichier trop gros,
+    # network down) qui n'ont aucun benefice a re-tenter.
+    rate_limited: bool = False
 
 
 def upload_to_imgbb(
@@ -130,9 +135,19 @@ def upload_to_imgbb(
             err_msg = data.get("error", {}).get("message") or data.get("message", "")
         except Exception:
             pass
+        # Sprint D.41 v0.5.0 (feedback Louis) : detection rate limit imgbb.
+        # imgbb retourne HTTP 400 avec "Rate limit reached" dans error.message
+        # (rare en usage normal mais arrive sur des bursts de previews).
+        # Aussi : HTTP 429 standard.
+        is_rate_limited = (
+            getattr(resp, "status_code", 0) == 429
+            or "rate limit" in (err_msg or "").lower()
+            or "too many requests" in (err_msg or "").lower()
+        )
         return ImgbbUploadResult(
             success=False,
             error=f"imgbb refus : {err_msg or 'unknown'}",
+            rate_limited=is_rate_limited,
         )
 
     payload = data.get("data") or {}

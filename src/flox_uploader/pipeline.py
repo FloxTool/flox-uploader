@@ -857,7 +857,7 @@ def _process_book(
     if imgbb_key:
         try:
             _try_extract_and_upload_previews(
-                input_path, package_dir, book_meta, imgbb_key,
+                input_path, package_dir, book_meta, imgbb_key, debug=debug,
             )
             debug.set("book_metadata", book_meta)
         except Exception as e:
@@ -1007,6 +1007,7 @@ def _try_extract_and_upload_previews(
     package_dir: Path,
     book_meta: dict,
     imgbb_api_key: str,
+    debug: "Debug | None" = None,
 ) -> None:
     """Sprint D.19 v0.5.0 (note Louis Q3) : extrait cover + 4 previews et
     upload sur imgbb. Modifie book_meta in-place :
@@ -1053,6 +1054,14 @@ def _try_extract_and_upload_previews(
     # Sauvegarde le web_cover_url avant override par local (pour comparaison)
     if is_current_web and not book_meta.get("web_cover_url"):
         book_meta["web_cover_url"] = current_cover_url
+
+    # Sprint D.41 v0.5.0 (feedback Louis) : on track les rate-limits imgbb
+    # pour les remonter dans la note (banner orange UI + suggestion de
+    # re-prepare plus tard). Distinct des autres echecs imgbb (cle invalide,
+    # fichier trop gros, network) qui n'ont aucun benefice a re-tenter.
+    imgbb_rate_limited = False
+    imgbb_failures: list[str] = []  # libelle de chaque image qui a echoue
+
     # Upload la cover LOCALE et l'utiliser pour la presentation (override web).
     if cover_local:
         result = upload_to_imgbb(cover_local, imgbb_api_key)
@@ -1061,6 +1070,9 @@ def _try_extract_and_upload_previews(
             print(f"[OK] Cover LOCALE uploadee (prio sur web) -> {result.url}")
         else:
             print(f"[WARN] Cover upload imgbb echec : {result.error}")
+            if result.rate_limited:
+                imgbb_rate_limited = True
+                imgbb_failures.append("cover")
 
     # Upload previews
     preview_paths = extracted.get("previews") or []
@@ -1073,8 +1085,30 @@ def _try_extract_and_upload_previews(
                 print(f"[OK] Preview {i}/{len(preview_paths)} uploaded -> {result.url}")
             else:
                 print(f"[WARN] Preview {i} upload echec : {result.error}")
+                if result.rate_limited:
+                    imgbb_rate_limited = True
+                    imgbb_failures.append(f"preview_{i}")
         if uploaded_urls:
             book_meta["preview_urls"] = uploaded_urls
+
+    # Sprint D.41 : propage le flag rate-limited dans book_meta pour qu'il
+    # soit visible dans debug.json -> Confidence + UI.
+    if imgbb_rate_limited:
+        book_meta["imgbb_rate_limited"] = True
+        book_meta["imgbb_failed_images"] = imgbb_failures
+        print(
+            f"[WARN] imgbb rate limit atteint sur {len(imgbb_failures)} image(s) "
+            f"({', '.join(imgbb_failures)}). Re-prepare plus tard pour completer "
+            f"la fiche."
+        )
+        # Emet le signal de naming pour que le score reflete la situation
+        # et que le panneau "Detail du score" affiche le warning.
+        if debug is not None:
+            try:
+                from .core import naming_signals as _ns
+                _ns.emit_signal(debug, _ns.SIG_IMGBB_RATE_LIMITED, True)
+            except Exception:
+                pass
 
 
 # Noms de fichiers cover backup reconnus (case-insensitive).
