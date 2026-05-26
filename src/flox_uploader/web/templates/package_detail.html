@@ -383,6 +383,30 @@
         </div>
     </div>
     {% endif %}
+
+    {# Sprint D.41 + D.43 v0.5.0 (feedback Louis) : banner imgbb rate-limit.
+       Place ICI (et plus dans la carte Livre) pour aligner avec les autres
+       warnings au-dessus de la section Upload. #}
+    {% if _bm.imgbb_rate_limited %}
+    {%- set _failed = _bm.imgbb_failed_images or [] -%}
+    <div class="mb-6 border border-warning-200 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20 rounded-lg p-3 flex items-start gap-2.5">
+        <span class="text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5">{{ icon('alert-triangle', size='md') }}</span>
+        <div class="flex-1 min-w-0 text-sm">
+            <div class="font-semibold text-warning-900 dark:text-warning-200">
+                imgbb a atteint sa limite de débit
+            </div>
+            <p class="text-warning-800 dark:text-warning-300 mt-0.5 text-xs">
+                {% if _failed %}
+                {{ _failed | length }} image{% if _failed | length > 1 %}s{% endif %} n'a{% if _failed | length > 1 %}'ont{% endif %} pas pu être uploadée{% if _failed | length > 1 %}s{% endif %}
+                ({{ _failed | join(", ") }}).
+                {% else %}
+                Certaines images n'ont pas pu être uploadées.
+                {% endif %}
+                La fiche est incomplète. <strong>Re-prépare le package dans environ 1 heure</strong> pour récupérer les visuels manquants — la limite imgbb se reset rapidement.
+            </p>
+        </div>
+    </div>
+    {% endif %}
 {% endif %}
 
 {# === Section Upload (visible si state autorise) === #}
@@ -1357,34 +1381,18 @@
                     </div>
                 </div>
 
-                {# Sous-type — en dessous, sur sa propre ligne pour respirer. #}
-                <div class="mt-3">
-                    <label for="manual_book_subtype" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
-                        Sous-type
-                    </label>
-                    <select id="manual_book_subtype"
-                            class="extra-field upload-option-field w-full max-w-xs px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                            data-key="manual_book_subtype">
-                        {% set _current_subtype = manual_book_subtype or '' %}
-                        <option value="" {% if not _current_subtype %}selected{% endif %}>Auto</option>
-                        <option value="roman" {% if _current_subtype == 'roman' %}selected{% endif %}>Roman</option>
-                        <option value="bd" {% if _current_subtype == 'bd' %}selected{% endif %}>BD</option>
-                        <option value="manga" {% if _current_subtype == 'manga' %}selected{% endif %}>Manga</option>
-                        <option value="comics" {% if _current_subtype == 'comics' %}selected{% endif %}>Comics</option>
-                        <option value="audiobook" {% if _current_subtype == 'audiobook' %}selected{% endif %}>Livre audio</option>
-                        <option value="essai" {% if _current_subtype == 'essai' %}selected{% endif %}>Essai / Documentaire</option>
-                        <option value="manuel" {% if _current_subtype == 'manuel' %}selected{% endif %}>Manuel scolaire / Pratique</option>
-                    </select>
-                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Détaille la nature du livre dans la fiche BBCode. <span class="italic">Auto</span> = inféré depuis le format et l'ISBN.
-                    </p>
-                </div>
+                {# Sprint D.43 v0.5.0 (feedback Louis) : Sous-Type retire.
+                   Le type est deja choisi dans la dropdown Type (Livre / BD /
+                   Comics / Mangas / Magazine / Presse / Audio) plus haut.
+                   Pas besoin de redondance. La pref est sauvee si l'user en
+                   avait deja un (compat backward) mais l'UI ne propose plus
+                   le re-changement. #}
 
                 <p id="book-options-status" class="text-xs text-slate-500 dark:text-slate-400 mt-2"></p>
 
                 {# Sprint D.18 v0.5.0 : bouton 'Regenerer presentation' pour
-                   appliquer Cover URL / Banner URL / sous-type au BBCode
-                   sans relancer toute la prepare. #}
+                   appliquer Cover URL / Banner URL au BBCode sans relancer
+                   toute la prepare. #}
                 <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/60">
                     <div class="flex items-center gap-3 flex-wrap">
                         <button type="button" id="btn-regenerate-book-presentation"
@@ -1393,7 +1401,7 @@
                             Régénérer la fiche BBCode
                         </button>
                         <span class="text-[10px] text-slate-500 dark:text-slate-400">
-                            Réapplique Cover / Banner / Sous-type à la fiche sans tout re-préparer.
+                            Réapplique Cover / Banner à la fiche sans tout re-préparer.
                         </span>
                     </div>
                     <p id="regenerate-presentation-status" class="text-xs mt-1"></p>

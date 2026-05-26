@@ -25,36 +25,10 @@
 {%- set isbn = bm.isbn_13 or bm.isbn_10 -%}
 {%- set lang_label = {"fr": "Français", "en": "Anglais", "es": "Espagnol", "de": "Allemand", "it": "Italien", "pt": "Portugais", "ja": "Japonais", "zh": "Chinois", "ru": "Russe", "ar": "Arabe", "ko": "Coréen", "nl": "Néerlandais"}.get(bm.language, (bm.language | upper) if bm.language else "") -%}
 
-{# Sprint D.41 v0.5.0 (feedback Louis) : banner d'avertissement quand imgbb
-   a rate-limit pendant la prepare. La fiche est incomplete (cover/previews
-   manquants) -> on suggere une re-prepare apres ~1h (cooldown imgbb).
-   Banner visible meme quand la carte Livre est collapsed pour que l'user
-   le voit immediatement. #}
-{% if bm.imgbb_rate_limited %}
-<div class="mb-4 p-3 rounded-md bg-warning-50 dark:bg-warning-900/30 border border-warning-300 dark:border-warning-700">
-    <div class="flex items-start gap-2">
-        <span class="flex-shrink-0 text-warning-700 dark:text-warning-300 mt-0.5">
-            {{ icon('alert-triangle', size='md') }}
-        </span>
-        <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-warning-900 dark:text-warning-200">
-                imgbb a atteint sa limite de débit
-            </p>
-            <p class="text-xs text-warning-800 dark:text-warning-300 mt-1">
-                {% set _failed = bm.imgbb_failed_images or [] %}
-                {% if _failed %}
-                {{ _failed | length }} image{% if _failed | length > 1 %}s{% endif %} n'a{% if _failed | length > 1 %}'ont{% endif %} pas pu être uploadée{% if _failed | length > 1 %}s{% endif %}
-                ({{ _failed | join(", ") }}).
-                {% else %}
-                Certaines images n'ont pas pu être uploadées.
-                {% endif %}
-                La fiche est incomplète. <strong>Re-prépare le package dans environ 1 heure</strong>
-                pour récupérer les visuels manquants — la limite imgbb se reset rapidement.
-            </p>
-        </div>
-    </div>
-</div>
-{% endif %}
+{# Sprint D.41 + D.43 v0.5.0 (feedback Louis) : le banner imgbb rate-limit
+   est maintenant rendu dans package_detail.html au meme niveau que les
+   autres warnings (Format Gemini incomplet, Presentation incomplete) —
+   APRES Detail du score, AVANT Upload vers le tracker. #}
 
 <div id="toc-media" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
@@ -81,25 +55,45 @@
                    ici mais inaccessible au tracker). #}
                 {% if bm.cover_url %}
                 {%- set _is_external_cover = bm.cover_url.startswith("http") -%}
+                {# Sprint D.43 v0.5.0 (feedback Louis) : label/tooltip
+                   conditionnel selon l'origine REELLE de la cover affichee :
+                   - imgbb/imgur URL : cover locale uploadee sur host externe
+                   - autre URL externe (Google Books / BnF / OpenLibrary) :
+                     cover WEB fallback (imgbb a rate-limit ou pas de cover
+                     locale extraite)
+                   - path local : cover locale NON-uploadee (= tracker pas
+                     accessible) #}
+                {%- set _is_imgbb = "i.ibb.co" in bm.cover_url or "ibb.co" in bm.cover_url -%}
+                {%- set _is_imgur = "i.imgur.com" in bm.cover_url or "imgur.com" in bm.cover_url -%}
+                {%- set _is_hosted = _is_imgbb or _is_imgur -%}
+                {%- set _is_web_fallback = _is_external_cover and not _is_hosted -%}
                 {# Sprint D.38 v0.5.0 (feedback Louis) : cover LOCALE en grand
                    (= celle utilisee dans la fiche BBCode). Si on a aussi une
                    web_cover_url BnF/Google differente, on l'affiche en petite
-                   vignette superposee en bas-droite pour COMPARAISON visuelle.
-                   Si les 2 montrent le meme livre = match canonique OK.
-                   Si elles ne correspondent pas = correspondance pourrie. #}
+                   vignette superposee en bas-droite pour COMPARAISON visuelle. #}
                 <div class="flex-shrink-0 relative group">
                     <img src="{{ bm.cover_url }}" alt="Couverture {{ bm.title or 'livre' }}"
                          class="w-44 rounded shadow-sm border border-slate-200 dark:border-slate-700"
                          loading="lazy"
                          onerror="this.style.display='none'">
-                    {% if _is_external_cover %}
+                    {% if _is_hosted %}
+                    {# Cover locale uploadee sur imgbb / imgur — cas nominal apres prepare reussie #}
                     <span class="absolute top-1 left-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-success-100/95 dark:bg-success-900/90 text-success-700 dark:text-success-300 ring-1 ring-success-300 dark:ring-success-700"
-                          data-tu-tooltip="Cover utilisee pour la fiche tracker. Locale extraite du fichier source (uploadee imgbb pour usage externe).">
+                          data-tu-tooltip="Cover extraite du fichier source et uploadée sur {{ 'Imgur' if _is_imgur else 'imgbb' }}. Utilisée par la fiche tracker.">
                         {{ icon('book-open', size='sm') }} fichier
                     </span>
+                    {% elif _is_web_fallback %}
+                    {# Cover WEB (Google Books / BnF) — fallback parce que pas
+                       de cover locale OU imgbb a rate-limit #}
+                    <span class="absolute top-1 left-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-primary-100/95 dark:bg-primary-900/90 text-primary-700 dark:text-primary-300 ring-1 ring-primary-300 dark:ring-primary-700"
+                          data-tu-tooltip="Cover trouvée via {% if bm.google_books_id %}Google Books{% elif bm.bnf_ark %}BnF{% else %}fournisseur web{% endif %} (fallback : pas de cover locale uploadée). Utilisée par la fiche tracker.">
+                        {{ icon('globe', size='sm') }} web
+                    </span>
                     {% else %}
+                    {# Path local (imgbb rate-limit + pas de fallback web) :
+                       le tracker ne peut PAS atteindre cette image #}
                     <span class="absolute top-1 left-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-warning-100/95 dark:bg-warning-900/90 text-warning-800 dark:text-warning-200 ring-1 ring-warning-300 dark:ring-warning-700"
-                          data-tu-tooltip="Cover extraite localement du fichier — NON accessible par le tracker. Saisis une URL externe dans Options upload (ou utilise un host comme imgbb) pour qu'elle apparaisse dans la fiche.">
+                          data-tu-tooltip="Cover extraite localement du fichier — NON accessible par le tracker. Saisis une URL externe dans Options upload ou re-prépare quand imgbb sera dispo.">
                         {{ icon('alert-triangle', size='sm') }} locale
                     </span>
                     {% endif %}
