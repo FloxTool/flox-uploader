@@ -421,6 +421,32 @@ class BookNamingStrategy:
                 except Exception:
                     pass
 
+        # Sprint D.44 v0.5.0 (feedback Louis Space Brothers T33) : si le
+        # sanitize a clear le title (year-only / chapter-only / number-only),
+        # on FALLBACK sur scene_parsed.title puis sur meta.series.
+        # Cas Louis : Space Brothers T33 ou le title canonique Google Books
+        # etait litteralement "2021" -> on prend "Space Brothers" du scene.
+        if not meta.title:
+            fallback_title = ""
+            if scene_parsed.title and scene_parsed.title.strip():
+                fallback_title = scene_parsed.title.strip()
+            elif meta.series:
+                fallback_title = meta.series.strip()
+            if fallback_title:
+                meta.title = fallback_title
+                try:
+                    debug.set("title_fallback", {
+                        "reason": "title canonique suspect (year/number/chapter only) ou vide",
+                        "fallback_source": (
+                            "scene_parsed" if (scene_parsed.title and
+                                               scene_parsed.title.strip())
+                            else "meta.series"
+                        ),
+                        "fallback_value": fallback_title,
+                    })
+                except Exception:
+                    pass
+
         # === 3. Persister les metadonnees dans debug pour la page detail ===
         try:
             debug.set("book_metadata", book_to_dict(meta))
