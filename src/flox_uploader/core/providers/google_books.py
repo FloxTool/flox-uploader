@@ -603,3 +603,138 @@ def _parse_first_item(data) -> BookMetadata | None:
     if not meta.title and not meta.authors and not meta.isbn_13:
         return None
     return meta
+
+
+# ============================================================
+# Sprint D.40 v0.5.0 : URL Google Books → volumeId + lookup direct
+# ============================================================
+
+# Patterns d'URL Google Books supportes :
+# - https://www.google.com/books/edition/<slug>/<volumeId>?hl=fr
+# - https://www.google.ca/books/edition/Sorceleur_T3/4eeGAQAAQBAJ
+# - https://books.google.com/books?id=<volumeId>
+# - https://books.google.fr/books?id=4eeGAQAAQBAJ&hl=fr
+# - https://play.google.com/store/books/details?id=<volumeId>
+_GOOGLE_BOOKS_URL_PATTERNS = [
+    # Format moderne /books/edition/<slug>/<volumeId>
+    re.compile(
+        r"google\.[a-z.]+/books/edition/[^/]+/([A-Za-z0-9_-]{10,16})",
+        re.IGNORECASE,
+    ),
+    # Format legacy ?id=<volumeId>
+    re.compile(
+        r"(?:books|play)\.google\.[a-z.]+/(?:books|store/books/details)"
+        r"[^?]*\?[^#]*\bid=([A-Za-z0-9_-]{10,16})",
+        re.IGNORECASE,
+    ),
+]
+
+
+def extract_volume_id_from_url(url: str) -> str:
+    """Extrait le volumeId Google Books depuis une URL collee par l'user.
+
+    Sprint D.40 v0.5.0 (feedback Louis) : l'user copie l'URL Google Books
+    de la bonne fiche depuis son navigateur et la colle dans le champ
+    "URL Google Books forcee". On en extrait l'ID interne (10-16 chars
+    alphanum + underscores/tirets) pour bypasser la recherche par titre.
+
+    Args:
+        url : URL Google Books (modern /books/edition/... ou legacy ?id=...).
+
+    Returns:
+        Le volumeId string si extrait, sinon "".
+
+    Exemples :
+        >>> extract_volume_id_from_url(
+        ...     "https://www.google.ca/books/edition/Sorceleur/4eeGAQAAQBAJ?hl=fr"
+        ... )
+        '4eeGAQAAQBAJ'
+        >>> extract_volume_id_from_url(
+        ...     "https://books.google.com/books?id=YPvVEQAAQBAJ&hl=fr"
+        ... )
+        'YPvVEQAAQBAJ'
+        >>> extract_volume_id_from_url("invalid")
+        ''
+    """
+    if not url:
+        return ""
+    s = url.strip()
+    if not s:
+        return ""
+    for pattern in _GOOGLE_BOOKS_URL_PATTERNS:
+        m = pattern.search(s)
+        if m:
+            return m.group(1).strip()
+    # Tolerance : si l'user colle juste l'ID brut (10-16 chars alphanum)
+    # sans URL autour, on accepte.
+    if re.fullmatch(r"[A-Za-z0-9_-]{10,16}", s):
+        return s
+    return ""
+
+
+def fetch_volume_by_id(
+    volume_id: str,
+    cache_file: Path | None = None,
+    api_key: str = "",
+    http_get=None,
+) -> BookMetadata | None:
+    """Lookup Google Books direct par volumeId.
+
+    Sprint D.40 v0.5.0 : utilise l'endpoint Volume detail
+    (GET /books/v1/volumes/<volumeId>) qui retourne UN SEUL item sans
+    recherche. Plus precis et plus rapide que /volumes?q=...
+
+    Args:
+        volume_id : ID Google Books (ex: '4eeGAQAAQBAJ').
+        cache_file : path du cache JSON (reutilise le cache global).
+        api_key : optionnelle.
+        http_get : injectable pour tests.
+
+    Returns:
+        BookMetadata complet ou None si l'ID est invalide / inaccessible.
+    """
+    if not volume_id:
+        return None
+    http_get = http_get or _default_http_get
+
+    # Cache key : 'gbid:<volume_id>'
+    cache = load_cache(cache_file) if cache_file else {}
+    cache_k = f"gbid:{volume_id}"
+    if cache_k in cache:
+        cached = cache[cache_k]
+        if is_miss(cached):
+            return None
+        try:
+            return book_from_dict(cached)
+        except Exception:
+            pass
+
+    url = f"{GOOGLE_BOOKS_URL}/{volume_id}"
+    params = {}
+    if api_key:
+        params["key"] = api_key
+
+    try:
+        resp = http_get(url, params=params, timeout=15)
+        if resp.status_code != 200:
+            if cache_file:
+                cache[cache_k] = make_miss()
+                save_cache(cache_file, cache)
+            return None
+        data = resp.json()
+    except Exception:
+        return None
+
+    # Reconstruit la shape /volumes (items=[...]) pour reutiliser le parser
+    item_shape = {"items": [data]}
+    meta = _parse_first_item(item_shape)
+    if not meta:
+        if cache_file:
+            cache[cache_k] = make_miss()
+            save_cache(cache_file, cache)
+        return None
+
+    if cache_file:
+        cache[cache_k] = book_to_dict(meta)
+        save_cache(cache_file, cache)
+    return meta

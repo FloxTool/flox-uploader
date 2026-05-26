@@ -17,6 +17,8 @@ Important — categories qui demandent quoi (cf. doc) :
 """
 from __future__ import annotations
 
+import re
+
 from ...core.media_type import MediaType
 
 
@@ -550,6 +552,105 @@ RESOLUTION_480P = RESOLUTION_TABLE["480p"]
 RESOLUTION_OTHER = RESOLUTION_TABLE["altro"]
 
 
+def book_type_id_for(
+    file_format: str = "",
+    book_subtype: str = "",
+    is_periodical: bool = False,
+    publication_name: str = "",
+    genres: list[str] | None = None,
+    language: str = "",
+    isbn_13: str = "",
+) -> tuple[int, str]:
+    """Sprint D.40 v0.5.0 (feedback Louis) : devine le bon type_id livre.
+
+    Retourne (type_id, source_label). type_id=0 si non-devinable.
+
+    Heuristique (ordre de priorite) :
+    1. is_periodical=True + filename de quotidien -> Presse (32)
+       sinon -> Magazine (31)
+    2. format audio (mp3/m4b) -> Audio (33)
+    3. format cbr/cbz :
+       - book_subtype force par l'user -> respecte
+       - genres contiennent "manga" / "manhwa" / "manhua" -> Mangas (30)
+       - language='ja' (japanese) -> Mangas (30)
+       - ISBN 978-4 (Japon) -> Mangas (30)
+       - language='en' -> Comics (29) (heuristique : BD US/UK = comics)
+       - ISBN 978-1 (US/UK) -> Comics (29)
+       - sinon -> BD (28) (defaut FR)
+    4. format ebook (epub/pdf/mobi/azw3/djvu) -> Livre (27)
+    5. Inconnu -> (0, "non devinable")
+
+    Le caller utilise type_id=0 pour emettre un signal "type non devinable"
+    (penalite score).
+    """
+    fmt = (file_format or "").strip().lower().lstrip(".")
+    subtype = (book_subtype or "").strip().lower()
+    lang = (language or "").strip().lower()
+    genres_norm = [g.strip().lower() for g in (genres or []) if g]
+    isbn_norm = re.sub(r"[^0-9X]", "", (isbn_13 or "").upper())
+
+    # 1. Periodique : Magazine ou Presse
+    if is_periodical:
+        # Heuristique : noms de quotidiens connus -> Presse
+        pname = (publication_name or "").lower()
+        presse_markers = (
+            "ouest-france", "ouest france", "le monde", "le figaro",
+            "liberation", "le parisien", "la croix", "l'humanite",
+            "la depeche", "sud ouest", "la voix du nord", "le progres",
+            "20 minutes", "metro", "l'equipe", "lequipe",
+            "le temps", "le quotidien",
+        )
+        if any(m in pname for m in presse_markers):
+            return TYPE_BOOK_PRESSE, "Presse (quotidien detecte dans le nom)"
+        return TYPE_BOOK_MAGAZINE, "Magazine (periodique detecte)"
+
+    # 2. Audio
+    if fmt in ("mp3", "m4b") or subtype == "audiobook":
+        return TYPE_BOOK_AUDIO, "Audio (format audio detecte)"
+
+    # 3. CBR / CBZ : BD / Comics / Manga
+    if fmt in ("cbr", "cbz"):
+        # Sous-type force par l'user
+        if subtype == "manga":
+            return TYPE_BOOK_MANGAS, "Mangas (sous-type force)"
+        if subtype == "comics":
+            return TYPE_BOOK_COMICS, "Comics (sous-type force)"
+        if subtype == "bd":
+            return TYPE_BOOK_BD, "BD (sous-type force)"
+        # Heuristique manga
+        manga_markers = {"manga", "manhwa", "manhua", "seinen", "shonen", "shojo"}
+        if any(m in g for g in genres_norm for m in manga_markers):
+            return TYPE_BOOK_MANGAS, "Mangas (genre detecte)"
+        if lang == "ja":
+            return TYPE_BOOK_MANGAS, "Mangas (langue japonaise)"
+        if isbn_norm.startswith("9784"):
+            return TYPE_BOOK_MANGAS, "Mangas (ISBN 978-4 = Japon)"
+        # Heuristique comics
+        comics_markers = {"comics", "comic book", "superhero", "graphic novel"}
+        if any(m in g for g in genres_norm for m in comics_markers):
+            return TYPE_BOOK_COMICS, "Comics (genre detecte)"
+        if lang == "en":
+            return TYPE_BOOK_COMICS, "Comics (langue anglaise)"
+        if isbn_norm.startswith("9781"):
+            return TYPE_BOOK_COMICS, "Comics (ISBN 978-1 = US/UK)"
+        # Defaut FR : BD
+        return TYPE_BOOK_BD, "BD (defaut FR pour CBR/CBZ)"
+
+    # 4. Ebook generique
+    if fmt in ("epub", "pdf", "mobi", "azw3", "azw", "djvu", "txt", "fb2"):
+        # Si sous-type force "bd"/"comics"/"manga" sur un PDF (rare mais possible)
+        if subtype == "manga":
+            return TYPE_BOOK_MANGAS, "Mangas (sous-type force)"
+        if subtype == "comics":
+            return TYPE_BOOK_COMICS, "Comics (sous-type force)"
+        if subtype == "bd":
+            return TYPE_BOOK_BD, "BD (sous-type force)"
+        return TYPE_BOOK_EBOOK, "Livre (format ebook)"
+
+    # 5. Inconnu
+    return 0, "non devinable (format absent ou inconnu)"
+
+
 def resolution_id_for(release_name: str) -> int:
     """Devine la resolution_id depuis le release_name."""
     upper = release_name.upper()
@@ -625,15 +726,18 @@ GAME_TYPE_OPTIONS: list[tuple[int, str]] = [
 ]
 
 BOOK_TYPE_OPTIONS: list[tuple[int, str]] = [
-    (TYPE_BOOK_EBOOK, "Livre (EPUB/PDF/MOBI/AZW3/DJVU)"),
+    # Sprint D.40 v0.5.0 (feedback Louis) : on EXPOSE uniquement les 7
+    # types officiels Gemini cible (IDs 27-33). Les sous-types M4B (25)
+    # et MP3 (26) sont absorbes dans Audio (33) generique pour simplifier
+    # le choix UI. Si l'user en veut un specifique, override possible cote
+    # API mais UI = 7 entrees claires.
+    (TYPE_BOOK_EBOOK, "Livre"),
     (TYPE_BOOK_BD, "BD"),
     (TYPE_BOOK_COMICS, "Comics"),
     (TYPE_BOOK_MANGAS, "Mangas"),
-    (TYPE_BOOK_AUDIO, "Livre audio (generique)"),
-    (TYPE_BOOK_M4B, "Livre audio M4B"),
-    (TYPE_BOOK_MP3, "Livre audio MP3"),
     (TYPE_BOOK_MAGAZINE, "Magazine"),
     (TYPE_BOOK_PRESSE, "Presse"),
+    (TYPE_BOOK_AUDIO, "Audio"),
 ]
 
 SOFTWARE_TYPE_OPTIONS: list[tuple[int, str]] = [

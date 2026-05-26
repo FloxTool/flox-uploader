@@ -602,6 +602,27 @@ def _load_package_detail(name: str) -> dict[str, Any]:
     )
     auto_type = unit3d_mapping.type_id_for(release_name)
     auto_resolution = unit3d_mapping.resolution_id_for(release_name)
+
+    # Sprint D.40 v0.5.0 (feedback Louis) : auto-fill du type livre si la
+    # categorie effective est Livre. Utilise book_type_id_for() qui combine
+    # format + sous-type + ISBN + langue + genres.
+    auto_type_source = ""
+    if auto_category == unit3d_mapping.CATEGORY_BOOKS:
+        bm = (debug or {}).get("book_metadata") or {}
+        is_periodical = bool((debug or {}).get("is_periodical"))
+        book_subtype = (state_data.manual_book_subtype if state_data else "") or ""
+        b_type, b_src = unit3d_mapping.book_type_id_for(
+            file_format=bm.get("file_format", ""),
+            book_subtype=book_subtype,
+            is_periodical=is_periodical,
+            publication_name=target.name,
+            genres=bm.get("genres", []),
+            language=bm.get("language", ""),
+            isbn_13=bm.get("isbn_13", ""),
+        )
+        if b_type > 0:
+            auto_type = b_type
+        auto_type_source = b_src
     manual_category = state_data.manual_category_id if state_data else 0
     manual_type = state_data.manual_type_id if state_data else 0
     manual_resolution = state_data.manual_resolution_id if state_data else 0
@@ -647,6 +668,10 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "manual_book_subtype": (
             state_data.manual_book_subtype if state_data else ""
         ),
+        # Sprint D.40 v0.5.0 - Banner URL livre (complement de cover).
+        "manual_banner_url": (
+            state_data.manual_banner_url if state_data else ""
+        ),
         # Auto-derived (depuis tmdb_context et media_info) — pour pre-remplir
         # les nouveaux champs avec les bonnes valeurs par defaut.
         "auto_imdb_id": (tmdb_ctx or {}).get("imdb_id", "") or "",
@@ -668,6 +693,9 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "gemini_type_label": unit3d_mapping.type_label(eff_type),
         "gemini_type_auto": auto_type,
         "gemini_type_overridden": manual_type > 0,
+        # Sprint D.40 : source du auto-fill (affiche sous la dropdown Type
+        # pour les livres). Vide pour les categories non-livre.
+        "gemini_type_auto_source": auto_type_source,
         "gemini_resolution_id": eff_resolution,
         "gemini_resolution_label": unit3d_mapping.resolution_label(eff_resolution),
         "gemini_resolution_auto": auto_resolution,
@@ -2462,6 +2490,7 @@ def create_app() -> FastAPI:
                 manual_author=source_job.manual_author,
                 manual_book_title=source_job.manual_book_title,
                 manual_book_year=source_job.manual_book_year,
+                manual_google_books_url=source_job.manual_google_books_url,
             )
             submit_prepare_job(new_job.id)
             relaunched.append({"name": pkg_dir.name, "job_id": new_job.id})
@@ -2533,6 +2562,8 @@ def create_app() -> FastAPI:
             manual_book_year = int(payload.get("manual_book_year") or 0)
         except (TypeError, ValueError):
             manual_book_year = 0
+        # Sprint D.40 v0.5.0 : URL Google Books forcee.
+        manual_google_books_url = (payload.get("manual_google_books_url") or "").strip()
         # Supprime l'ancien package + l'ancien job pour laisser place au nouveau.
         jobs_db.delete_job(source_job.id)
         try:
@@ -2550,6 +2581,7 @@ def create_app() -> FastAPI:
             manual_author=manual_author,
             manual_book_title=manual_book_title,
             manual_book_year=manual_book_year,
+            manual_google_books_url=manual_google_books_url,
         )
         submit_prepare_job(new_job.id)
         return {
@@ -3242,6 +3274,15 @@ def create_app() -> FastAPI:
                     f"{', '.join(sorted(allowed_subtypes - {''}))}.",
                 )
             updates["manual_book_subtype"] = subtype
+        # Sprint D.40 v0.5.0 (feedback Louis) - Banner URL livre.
+        if "manual_banner_url" in payload:
+            banner = str(payload["manual_banner_url"] or "").strip()
+            if banner and not banner.startswith(("http://", "https://")):
+                raise HTTPException(
+                    400,
+                    "manual_banner_url doit etre une URL http(s) ou vide.",
+                )
+            updates["manual_banner_url"] = banner
         if not updates:
             return {"ok": True, "message": "Rien a mettre a jour."}
         try:

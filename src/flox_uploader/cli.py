@@ -125,6 +125,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         manual_book_year=(
             int(getattr(args, "manual_book_year", 0) or 0) or None
         ),
+        manual_google_books_url=(
+            getattr(args, "manual_google_books_url", None) or None
+        ),
     )
 
     # Si --upload demande, on enchaine la boucle upload
@@ -435,6 +438,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_prepare.add_argument(
         "--manual-book-year", dest="manual_book_year", type=int, default=0,
         help="(Cat Livres) Annee de publication forcee (1900-2099).",
+    )
+    # Sprint D.40 v0.5.0 : URL Google Books forcee.
+    p_prepare.add_argument(
+        "--manual-google-books-url", dest="manual_google_books_url", default="",
+        help=(
+            "(Cat Livres) URL Google Books de la fiche canonique a forcer. "
+            "Ex: https://books.google.com/books/edition/.../<volumeId>. On en "
+            "extrait le volumeId et on bypasse la recherche par titre/auteur."
+        ),
     )
     _add_upload_options(p_prepare, default_dry_run=True)
     p_prepare.set_defaults(func=cmd_prepare)

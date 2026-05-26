@@ -456,6 +456,9 @@ def _run_prepare_job(job_id: int) -> None:
         cmd.extend(["--manual-book-title", job.manual_book_title])
     if job.manual_book_year:
         cmd.extend(["--manual-book-year", str(job.manual_book_year)])
+    # Sprint D.40 v0.5.0 : URL Google Books forcee.
+    if job.manual_google_books_url:
+        cmd.extend(["--manual-google-books-url", job.manual_google_books_url])
 
     # Env override : APPEND_FR_TITLE_TO_RELEASE_NAME passe au subprocess
     subprocess_env = dict(os.environ)
