@@ -93,6 +93,10 @@ def lookup_book_metadata(
                     http_get=http_get,
                     trace=trace,
                     extra_titles=extra_titles,
+                    # Sprint D.44 v0.5.0 : passe le tome pour que BnF
+                    # rejette les matches au volume mismatch (cas Louis
+                    # Space Brothers T33 -> evite le match T28).
+                    target_volume=base.series_index,
                 )
             elif provider == "google_books":
                 enriched = lookup_google_books(

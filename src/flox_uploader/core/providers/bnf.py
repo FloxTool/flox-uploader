@@ -61,6 +61,7 @@ def lookup_bnf(
     http_get=None,
     trace: list | None = None,
     extra_titles: list[str] | None = None,
+    target_volume: float = 0.0,
 ) -> BookMetadata | None:
     """Cherche un livre dans le catalogue BnF.
 
@@ -106,7 +107,10 @@ def lookup_bnf(
                 _set("cached_miss")
                 # Sprint D.17 v0.5.0 : fallback titre si ISBN MISS en cache.
                 if title:
-                    return _query_bnf_by_title(title, author, http=http, trace_entry=entry)
+                    return _query_bnf_by_title(
+                        title, author, http=http, trace_entry=entry,
+                        target_volume=target_volume,
+                    )
                 return None
             _set("cached_hit", matched_id=cached.get("bnf_ark", ""))
             return book_from_dict(cached)
@@ -120,13 +124,18 @@ def lookup_bnf(
             return meta
         # Sprint D.17 : ISBN ne match pas a la BnF -> fallback titre.
         if title:
-            return _query_bnf_by_title(title, author, http=http, trace_entry=entry)
+            return _query_bnf_by_title(
+                title, author, http=http, trace_entry=entry,
+                target_volume=target_volume,
+            )
         return None
 
     # === Strategie 2 : titre + auteur (pas de cache pour ce type de query) ===
     if title:
         result = _query_bnf_by_title(
-            title, author, http=http, trace_entry=entry, extra_titles=extra_titles,
+            title, author, http=http, trace_entry=entry,
+            extra_titles=extra_titles,
+            target_volume=target_volume,
         )
         if result:
             return result
@@ -167,6 +176,7 @@ def _query_bnf_by_title(
     title: str, author: str, http,
     trace_entry: dict | None = None,
     extra_titles: list[str] | None = None,
+    target_volume: float = 0.0,
 ) -> BookMetadata | None:
     """Recherche BnF par titre + auteur optionnel.
 
@@ -176,8 +186,16 @@ def _query_bnf_by_title(
 
     Sprint D.33 v0.5.0 : `extra_titles` (scene parsed title etc.) sont
     aussi essayes comme variantes additionnelles pour augmenter les chances.
+
+    Sprint D.44 v0.5.0 (feedback Louis Space Brothers T33) : si
+    `target_volume > 0`, on rejette les matches dont le title contient un
+    tome DIFFERENT du target_volume. Cas Louis : BnF retourne 'Space
+    brothers. 28' alors qu'on cherchait T33 -> reject + essai variante
+    suivante. Si toutes les variantes echouent sur volume mismatch, on
+    retourne None (mieux que claim un mauvais tome).
     """
     import time
+    import re as _re
     from ._query_normalize import build_query_variants, normalize_title_for_query
     variants = build_query_variants(title, author)
     if extra_titles:
@@ -190,6 +208,12 @@ def _query_bnf_by_title(
             variants.extend(build_query_variants(extra, author))
     if not variants:
         return None
+
+    # Sprint D.44 : si target_volume > 0, on memorise les matches au volume
+    # mismatch pour debug + decision finale (retourner None plutot que
+    # garder le 1er mismatch).
+    target_vol_int = int(target_volume) if target_volume > 0 else 0
+    rejected_volumes: list[str] = []
 
     for variant in variants:
         # Pour BnF on garde toujours les quotes CQL (la syntaxe adj le requiert)
@@ -217,6 +241,30 @@ def _query_bnf_by_title(
         })
         result = _parse_first_record(resp.text)
         if result is not None:
+            # Sprint D.44 : volume strict check
+            if target_vol_int > 0 and result.title:
+                # Cherche un volume EXPLICITE dans le title (T<n>, Tome <n>, . <n>)
+                # Cas Louis BnF : 'Space brothers. 28' -> volume=28
+                vol_match = _re.search(
+                    r"(?:^|\s|\.|tome\s+|t\s*|vol\.?\s*)(\d{1,3})(?:\s|$)",
+                    result.title.lower(),
+                )
+                if vol_match:
+                    found_vol = int(vol_match.group(1))
+                    # Skip si annee (1900-2099) ou si match notre target
+                    if (1900 <= found_vol <= 2099) or found_vol == target_vol_int:
+                        pass  # OK
+                    else:
+                        # Volume mismatch : reject + essai variante suivante
+                        q_entry["matched"] = True
+                        q_entry["volume_mismatch"] = (
+                            f"BnF a retourne T{found_vol} mais on cherchait "
+                            f"T{target_vol_int}"
+                        )
+                        rejected_volumes.append(f"T{found_vol}")
+                        if trace_entry is not None:
+                            trace_entry["queries"].append(q_entry)
+                        continue  # essaie variante suivante
             q_entry["matched"] = True
             if trace_entry is not None:
                 trace_entry["queries"].append(q_entry)
@@ -228,6 +276,13 @@ def _query_bnf_by_title(
         q_entry["matched"] = False
         if trace_entry is not None:
             trace_entry["queries"].append(q_entry)
+
+    # Sprint D.44 : toutes les variantes ont echoue sur volume mismatch.
+    # On retourne None pour eviter un mauvais match.
+    if rejected_volumes and trace_entry is not None:
+        trace_entry["outcome"] = "no_match_volume_mismatch"
+        trace_entry["rejected_volumes"] = rejected_volumes
+        trace_entry["target_volume"] = target_vol_int
     return None
 
 

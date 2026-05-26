@@ -161,9 +161,17 @@ def _query_by_isbn(
     isbn: str, api_key: str, http,
     trace_entry: dict | None = None,
 ) -> BookMetadata | None:
-    """Recherche Google Books par ISBN."""
+    """Recherche Google Books par ISBN.
+
+    Sprint D.44 v0.5.0 (feedback Louis Space Brothers T33) : on demande
+    maintenant maxResults=5 (au lieu de 1) pour avoir plusieurs candidates
+    a ranker via _parse_best_item, qui penalise les title suspects (year-
+    only, number-only). Cas Louis : ISBN Pika T33 a 2 fiches Google :
+    'ZXe9ygEACAAJ' (title='2021', suspect) et 'elEXEAAAQBAJ' (title='Space
+    Brothers T33', meaningful). On veut la 2eme.
+    """
     import time
-    params = {"q": f"isbn:{isbn}", "maxResults": "1"}
+    params = {"q": f"isbn:{isbn}", "maxResults": "5"}
     if api_key:
         params["key"] = api_key
     t0 = time.monotonic()
@@ -192,7 +200,8 @@ def _query_by_isbn(
     q_entry["items_returned"] = len(data.get("items", []) or [])
     if trace_entry is not None:
         trace_entry["queries"].append(q_entry)
-    return _parse_first_item(data)
+    # Sprint D.44 : ranking via _parse_best_item (penalise titles suspects).
+    return _parse_best_item(data)
 
 
 def _query_by_title_author(
@@ -456,6 +465,38 @@ def _title_volume_match_score(title: str, target_vol: float) -> int:
     return 100  # no info
 
 
+def _title_suspect_penalty(title: str) -> int:
+    """Sprint D.44 v0.5.0 (feedback Louis Space Brothers T33) : retourne
+    une penalite si le title de la fiche Google Books est suspect :
+    juste une annee ('2021'), un chapitre ('C1180'), un nombre seul.
+
+    Penalite forte (200) pour qu'elle domine year + volume scores
+    (qui font max ~100 + max ~50 = 150).
+
+    Cas Louis : pour ISBN 9782811644796 (Pika Space Brothers T33),
+    Google a 2 fiches :
+    - ZXe9ygEACAAJ : title="2021" (suspect, fiche tronquee)
+    - elEXEAAAQBAJ : title="Space Brothers T33" (meaningful)
+    On veut preferer celle qui est meaningful.
+    """
+    if not title:
+        return 200
+    t = title.strip()
+    # Year-only ('2021', '2024')
+    if re.match(r"^(?:19|20)\d{2}$", t):
+        return 200
+    # Chapter-only ('C1180')
+    if re.match(r"^C\s*\d{2,4}$", t, re.IGNORECASE):
+        return 200
+    # Number-only
+    if re.match(r"^\d{1,5}$", t):
+        return 200
+    # Very short (< 3 chars)
+    if len(t) < 3:
+        return 100
+    return 0
+
+
 def _parse_best_item(data, target_year: int = 0,
                      target_volume: float = 0.0) -> BookMetadata | None:
     """Parse une reponse Google Books et choisit le meilleur item.
@@ -463,21 +504,24 @@ def _parse_best_item(data, target_year: int = 0,
     Sprint D.31 : si target_year > 0, ranking par proximite d'annee.
     Sprint D.37 : si target_volume > 0, BOOST les candidats dont le titre
     contient le bon volume (penalise ceux avec un autre volume).
-    Sinon comportement legacy (1er item).
+    Sprint D.44 : penalise les candidates au title suspect (year/number-only).
     """
     if not isinstance(data, dict):
         return None
     items = data.get("items") or []
     if not items:
         return None
-    if not target_year and not target_volume:
-        return _parse_first_item({"items": items[:1]})
+
+    # Sprint D.44 : meme avec target_year=0 et target_volume=0, on prefere
+    # filtrer les candidates au title suspect (cas Space Brothers).
+    # Donc on score TOUJOURS si on a >= 2 items.
     if len(items) == 1:
         return _parse_first_item({"items": items[:1]})
 
-    # Ranking compose : volume_score + year_distance
-    # Sprint D.37 : volume_score domine (multiplie x10) car un mauvais
-    # volume est inutile meme si l'annee est proche.
+    # Ranking compose : title_suspect_penalty (D.44) + volume_score + year_distance
+    # Sprint D.37 : volume_score domine (multiplie x10).
+    # Sprint D.44 : title_suspect_penalty domine encore plus (un title "2021"
+    # est inutile meme si volume + year sont parfaits).
     scored: list[tuple[int, int, dict]] = []
     for item in items:
         info = item.get("volumeInfo") or {}
@@ -490,8 +534,9 @@ def _parse_best_item(data, target_year: int = 0,
         )
         title = str(info.get("title") or "")
         vol_score = _title_volume_match_score(title, target_volume)
-        # Total : volume * 10 + year_distance pour que volume domine
-        total = vol_score * 10 + year_distance
+        title_suspect = _title_suspect_penalty(title)
+        # Total : title_suspect + volume * 10 + year_distance
+        total = title_suspect + vol_score * 10 + year_distance
         scored.append((total, vol_score, item))
 
     scored.sort(key=lambda x: x[0])

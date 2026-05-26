@@ -137,6 +137,12 @@ def sanitize_book_title(title: str) -> str:
     - Suffix BnF " / Auteur ; traduit..."
     - Tokens scene trailing : .FRENCH, .NoTAG, .128kbps, -COZY, -NoTAG, etc.
 
+    Sprint D.44 v0.5.0 (feedback Louis) : si apres tous les strips le title
+    se reduit a juste une annee ('2021'), un chapitre brut ('C1180') ou un
+    nombre seul, on retourne "" (le caller utilisera scene_parsed.title
+    ou meta.series en fallback). Cas Louis Space Brothers T33 ou le title
+    canonique Google Books est litteralement "2021".
+
     Conserve :
     - La casse originale
     - Les accents
@@ -149,6 +155,7 @@ def sanitize_book_title(title: str) -> str:
       -> "Dawnrunner"
     - "Les vents furieux / Mercedes Lackey ; traduit..."
       -> "Les vents furieux"
+    - Sprint D.44 : "2021.FR" -> "" (pas "2021" qui serait propage en title)
     """
     if not title:
         return title
@@ -163,6 +170,15 @@ def sanitize_book_title(title: str) -> str:
     # 4. Compacter espaces multiples + trim ponctuation lateral
     out = re.sub(r"\s+", " ", out).strip()
     out = out.rstrip(" ,.;:-_")
+    # Sprint D.44 v0.5.0 (feedback Louis Space Brothers T33) : si le residu
+    # n'est qu'une annee, un chapitre ou un nombre seul -> on clear pour
+    # que le caller puisse utiliser un fallback (scene_title, series).
+    stripped = out.strip()
+    is_year_only = bool(re.match(r"^(?:19|20)\d{2}$", stripped))
+    is_chapter_only = bool(re.match(r"^C\s*\d{2,4}$", stripped, re.IGNORECASE))
+    is_number_only = bool(re.match(r"^\d{1,5}$", stripped))
+    if is_year_only or is_chapter_only or is_number_only:
+        return ""  # caller doit fallback sur scene_title/series
     return out or title  # fallback si tout strippe
 
 
