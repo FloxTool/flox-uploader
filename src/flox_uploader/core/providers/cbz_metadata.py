@@ -302,7 +302,15 @@ def _parse_cbz_filename(stem: str) -> dict:
             parts = [p.strip() for p in clean.split(" - ", 1)]
             if len(parts) == 2:
                 # "Auteur - Titre" ou "Serie - Titre"
-                if not result["author"]:
+                # Sprint D.39 v0.5.0 (feedback Louis #17 LARGO.WINCH.INTEGRALE) :
+                # si la partie gauche est "HS" / "Hors-Serie" / "H.S.", c'est
+                # un marqueur scene Hors-Serie, PAS un nom d'auteur. On le
+                # garde dans le title et on traite comme "non-author" pattern.
+                left_upper = parts[0].upper().replace(".", "").replace(" ", "")
+                if left_upper in {"HS", "HORSSERIE", "HORSSÉRIE"}:
+                    # Toute la chaine devient le titre
+                    result["title"] = clean
+                elif not result["author"]:
                     result["author"] = parts[0]
                     result["title"] = parts[1]
                 else:

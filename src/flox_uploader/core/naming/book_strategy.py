@@ -38,7 +38,8 @@ from ..providers.epub_metadata import extract_epub_metadata
 from ..providers.pdf_metadata import extract_pdf_metadata
 from ..providers.cbz_metadata import extract_cbz_metadata, extract_cbr_metadata
 from ..providers.dir_parser import (
-    find_primary_ebook, merge_book_dir_hints, parse_book_dir_name,
+    detect_volume_range_from_files, find_primary_ebook,
+    merge_book_dir_hints, parse_book_dir_name,
 )
 
 if TYPE_CHECKING:
@@ -221,6 +222,26 @@ class BookNamingStrategy:
                 debug.set("dir_merge_conflicts", conflicts)
                 dir_warnings.extend(conflicts)
 
+        # Sprint D.39 v0.5.0 (feedback Louis #20 #24) : si on est sur un
+        # DOSSIER ET que le range n'est pas explicite dans le nom du
+        # dossier, on scanne les fichiers pour detecter T01-T0N implicite.
+        # Cas Louis :
+        #   - Tokyo Alien Bros. (01-03)/T01,T02,T03.cbz -> range "01-03"
+        #     (deja detecte par parse_book_dir_name via "(01-03)" mais on
+        #     confirme via les fichiers).
+        #   - Star Wars Rebellion/ avec T01..T06.cbz -> range "01-06"
+        #     (PAS detecte par parse_book_dir_name car nom dossier brut
+        #     sans range explicite).
+        if video_path.is_dir() and not meta.series_index_range:
+            detected_range = detect_volume_range_from_files(video_path)
+            if detected_range:
+                meta.series_index_range = detected_range
+                try:
+                    debug.set("series_index_range_inferred_from_files",
+                              detected_range)
+                except Exception:
+                    pass
+
         # === 1bis. Parsing scene name (Sprint D.20) ===
         # On parse le nom du fichier source via le parser scene livre.
         # Le parser identifie authors / title / year / format / team /
@@ -343,6 +364,39 @@ class BookNamingStrategy:
                               "Aucun provider (BnF / Google Books / OpenLibrary) "
                               "n'a renvoye d'ID externe ni d'ISBN. Le release_name "
                               "est construit depuis la metadata locale uniquement.")
+                except Exception:
+                    pass
+
+        # Sprint D.39 v0.5.0 (feedback Louis) : detection FANSCAN chapitre
+        # individuel (pattern "C\d{3,4}" dans le filename SANS tome/Volume).
+        # Cas Louis One Piece #12/#13 : `Eiichiro.Oda.2026.One.Piece.C1180.FRENCH.cbz`
+        # Google Books n'indexe pas les chapitres individuels avant edition
+        # volume. On force no_canonical_match (avec metadata locale uniquement)
+        # pour eviter de retomber sur la fiche d'un AUTRE chapitre random.
+        # Le match Google Books obtenu est forcement faux dans ces cas.
+        import re as _re_fs
+        if not is_periodical:
+            stem_lower = video_path.stem.lower() if video_path.is_file() else video_path.name.lower()
+            is_fanscan = bool(
+                _re_fs.search(r"\bc\d{3,4}\b", stem_lower)
+                and not _re_fs.search(r"\b(?:t|tome|vol)\.?\s*\d{1,3}\b", stem_lower)
+            )
+            if is_fanscan:
+                # On force no_canonical_match meme si on a un Google Books ID :
+                # ces matches sur "C1180" sont aleatoires (autre chapitre).
+                meta.no_canonical_match = True
+                # Et on RETIRE les IDs externes obtenus (faux match)
+                meta.google_books_id = ""
+                meta.bnf_ark = ""
+                try:
+                    debug.set("no_canonical_match", True)
+                    debug.set("no_canonical_reason",
+                              "Fanscan chapitre individuel (pattern C\\d{3,4}) "
+                              "detecte : Google Books / BnF n'indexent pas les "
+                              "chapitres pre-publication. Le match obtenu serait "
+                              "aleatoire (autre chapitre). On garde la metadata "
+                              "locale uniquement.")
+                    debug.set("is_fanscan", True)
                 except Exception:
                     pass
 
@@ -518,6 +572,21 @@ class BookNamingStrategy:
                         rf"^Vol\.0*{vol_int}\.",
                     ):
                         subtitle_token = _re.sub(pat, "", subtitle_token, flags=_re.IGNORECASE)
+                # Sprint D.39 v0.5.0 (feedback Louis) : si le subtitle SE
+                # TERMINE par la serie (cas Raja "RAJA - Tome 2 - RAJA"
+                # title BnF qui repete la serie en suffix), on strippe le
+                # suffix. Cas typique editeurs qui font des fiches title
+                # symetriques. NB : on accepte aussi le suffix avec dot.
+                if subtitle_token and clean_series_token:
+                    serie_low = clean_series_token.lower()
+                    sub_low = subtitle_token.lower()
+                    if sub_low.endswith("." + serie_low):
+                        subtitle_token = subtitle_token[: -(len(clean_series_token) + 1)]
+                    elif sub_low == serie_low:
+                        subtitle_token = ""
+                # Sprint D.39 v0.5.0 (feedback Louis) : aussi si subtitle ==
+                # series (cas Space Brothers T33 ou title BnF = "Space Brothers"
+                # et series = "Space Brothers" -> doublon "Space.Brothers.T33.Space.Brothers")
                 if subtitle_token:
                     parts.append(subtitle_token)
         else:
@@ -545,7 +614,20 @@ class BookNamingStrategy:
                 parts.append(stem_token)
 
         # 3. Annee de publication
-        if meta.publication_year > 0:
+        # Sprint D.39 v0.5.0 (feedback Louis) : strip le doublon year si le
+        # title termine deja par cette annee. Cas Louis :
+        #   - "POITOU.2024" + year=2024 -> "POITOU.2024.2024" (doublon)
+        #   - "Marc.Levy.Sept.Jours.Pour.Une.Eternite.2024" + year=2024
+        #     -> "...Eternite.2024.2024" (doublon)
+        # Solution : si le dernier token du title == publication_year, on
+        # ne re-ajoute pas le year.
+        year_already_in_title = False
+        if meta.publication_year > 0 and parts:
+            year_str = str(meta.publication_year)
+            last_token = parts[-1].split(".")[-1] if parts[-1] else ""
+            if last_token == year_str:
+                year_already_in_title = True
+        if meta.publication_year > 0 and not year_already_in_title:
             parts.append(str(meta.publication_year))
 
         # 4. Langue (FRENCH / ENGLISH / JAPANESE...)
@@ -594,10 +676,42 @@ class BookNamingStrategy:
         "J.R.R. Tolkien" -> "J.R.R.Tolkien"
         "Hergé" -> "Herge"
         "Stephen King" -> "Stephen.King"
+
+        Sprint D.39 v0.5.0 (feedback Louis) : gere le format BnF
+        "Lastname, Firstname" en INVERSANT vers "Firstname Lastname"
+        avant tokenisation. Cas Louis :
+          - "White, T. H." (BnF) -> "T.H.White"
+          - "Tolkien, J.R.R." -> "J.R.R.Tolkien"
+        Aussi : strip les fragments scene "HS" (Hors-Serie) qui se
+        retrouvent en pseudo-auteur quand le filename interne commence
+        par "HS - ...".
         """
         if not raw:
             return ""
-        token = ascii_fold(raw.strip())
+        s = raw.strip()
+        # Sprint D.39 : strip "HS" / "H.S." / "Hors-Serie" comme pseudo-auteur
+        # (cas Louis #17 LARGO.WINCH.INTEGRALE ou le fichier interne est
+        # "HS - La methode Largo Winch.cbz" et "HS" devient l'auteur).
+        normalized = s.upper().replace(".", "").replace(" ", "").replace("-", "").replace("_", "")
+        if normalized in {"HS", "HORSSERIE", "HORSSÉRIE"}:
+            return ""
+        # Sprint D.39 : format BnF "Lastname, Firstname" -> inverser
+        # Heuristique : un seul comma + partie droite contient au moins 1 lettre
+        # + partie gauche pas trop longue (single lastname/composed-name).
+        if "," in s:
+            parts = [p.strip() for p in s.split(",", 1)]
+            if len(parts) == 2 and parts[0] and parts[1]:
+                lastname = parts[0]
+                firstname = parts[1]
+                # Verifier que c'est plausiblement un nom inverse :
+                # - lastname : 1-4 mots, contient au moins une lettre
+                # - firstname : initiales (T. H.) ou prenom court
+                lastname_words = lastname.split()
+                if (1 <= len(lastname_words) <= 4
+                        and any(c.isalpha() for c in lastname)
+                        and any(c.isalpha() for c in firstname)):
+                    s = f"{firstname} {lastname}"
+        token = ascii_fold(s)
         # Espaces -> points
         token = ".".join(p for p in token.split() if p)
         # Nettoyer caracteres non scene-safe (garde lettres, chiffres, points, tirets)

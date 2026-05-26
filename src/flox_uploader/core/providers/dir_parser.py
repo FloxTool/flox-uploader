@@ -525,3 +525,64 @@ def find_primary_ebook(folder: Path) -> Path | None:
         if ext in _EBOOK_EXTENSIONS:
             return p
     return None
+
+
+# Sprint D.39 v0.5.0 (feedback Louis #20 #24) : detection range tomes
+# implicite en scannant les fichiers du dossier pour T01-T0N.
+# Pattern dans le nom des fichiers : T01, T02, T03... ou Tome.01...
+_FILE_TOME_RE = re.compile(
+    r"\b(?:T|TOME|VOL)\.?\s*0*(\d{1,3})\b",
+    re.IGNORECASE,
+)
+
+
+def detect_volume_range_from_files(folder: Path) -> str:
+    """Scanne les fichiers du dossier pour detecter un range de tomes.
+
+    Sprint D.39 v0.5.0 (feedback Louis) : cas Tokyo Alien Bros T01-T03
+    + Star Wars Rebellion T01-T06 ou le dossier contient plusieurs ebooks
+    chacun avec un T<num> dans son nom. On collecte tous les T<num>
+    presents, on filtre les doublons, et si on a >= 2 tomes consecutifs
+    on retourne la range "lo-hi".
+
+    Retourne "" si :
+    - moins de 2 fichiers ebook
+    - moins de 2 tomes detectes
+    - les tomes ne sont pas consecutifs (gaps ignores : on prend min-max)
+
+    Cas Louis :
+    - `Tokyo Alien Bros (01-03)/` avec 3 CBZ T01/T02/T03 -> "01-03"
+    - `Star Wars Rebellion/` avec 6 CBZ T01..T06 -> "01-06"
+    """
+    if not folder.is_dir():
+        return ""
+    try:
+        all_files = sorted([p for p in folder.rglob("*") if p.is_file()])
+    except (OSError, PermissionError):
+        return ""
+
+    tomes: set[int] = set()
+    for p in all_files:
+        if p.name.startswith("."):
+            continue
+        ext = p.suffix.lower()
+        if ext not in _EBOOK_EXTENSIONS:
+            continue
+        # Extraire tous les T<num> dans le nom (on prend le 1er)
+        matches = _FILE_TOME_RE.findall(p.stem)
+        for m in matches:
+            try:
+                val = int(m)
+                if 1 <= val <= 999:
+                    tomes.add(val)
+                    break  # 1 tome par fichier
+            except ValueError:
+                continue
+
+    if len(tomes) < 2:
+        return ""
+    lo = min(tomes)
+    hi = max(tomes)
+    if lo == hi:
+        return ""
+    return f"{lo}-{hi}"

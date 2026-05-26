@@ -224,6 +224,18 @@ class BookMetadata:
                 setattr(self, str_field, other_val)
             elif authoritative and str_field in _AUTHORITATIVE_FIELDS:
                 setattr(self, str_field, other_val)
+            # Sprint D.39 v0.5.0 (feedback Louis) : description courte
+            # BnF (souvent juste code-barres "EAN 9782...") -> remplacer
+            # par la description Google Books si plus longue. Cas Louis :
+            # 8 packages avec description = 44 chars (code-barres BnF).
+            # Heuristique : si self.description < 100 chars ET other a
+            # une description >= 100 chars, on override.
+            elif (
+                str_field == "description"
+                and len(self_val) < 100
+                and len(other_val) >= 100
+            ):
+                setattr(self, str_field, other_val)
 
         # Sprint D.38 : cover_url avec strict prio local. On ne setter
         # cover_url depuis other QUE si self.cover_url est completement
