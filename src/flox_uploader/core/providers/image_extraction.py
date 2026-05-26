@@ -66,8 +66,15 @@ def extract_cover_and_previews(
     # Sprint D.37 v0.5.0 : si source est un DOSSIER (audiobook MP3
     # multi-chapitres typiquement), on trouve le 1er fichier audio
     # dedans et on extrait depuis ce fichier-la.
+    #
+    # Sprint D.39 v0.5.0 (feedback Louis #26 Marc Levy) : si le 1er MP3
+    # n'a pas d'APIC, on essaie les SUIVANTS. Tous les chapitres ne
+    # taggent pas systematiquement la cover (Piste 01.mp3 sans APIC,
+    # Piste 02.mp3 avec APIC -> on prend Piste 02). On stocke la liste
+    # complete dans result["_audio_fallback_files"] pour que
+    # _extract_from_audio puisse iterer.
     if source.is_dir():
-        # Chercher 1er fichier audio (MP3/M4B) dans le dossier
+        # Chercher TOUS les fichiers audio (MP3/M4B) dans le dossier
         audio_files = sorted([
             p for p in source.rglob("*")
             if p.is_file() and p.suffix.lower() in (".mp3", ".m4b")
@@ -76,6 +83,8 @@ def extract_cover_and_previews(
             source = audio_files[0]
             ext = source.suffix.lower().lstrip(".")
             result["format"] = ext
+            # Sprint D.39 : memoriser tous les autres MP3 pour fallback
+            result["_audio_fallback_files"] = audio_files
         else:
             # Pas d'audio, fallback : chercher 1er ebook
             ebook_files = sorted([
@@ -507,7 +516,12 @@ def _extract_from_audio(
     output_dir: Path,
     result: dict,
 ) -> dict:
-    """Cover audiobook depuis ID3 (MP3) ou MP4 atom (M4B)."""
+    """Cover audiobook depuis ID3 (MP3) ou MP4 atom (M4B).
+
+    Sprint D.39 v0.5.0 (feedback Louis #26 Marc Levy) : si la 1re piste
+    n'a pas de cover embedded, on essaie les SUIVANTES (toutes les pistes
+    du dossier listees dans result["_audio_fallback_files"]).
+    """
     try:
         from mutagen import File as MutagenFile
         from mutagen.id3 import ID3
@@ -515,44 +529,64 @@ def _extract_from_audio(
         result["warning"] = "mutagen non installe. Cover audiobook non extraite."
         return result
 
-    try:
-        # MutagenFile detecte automatiquement le format
-        audio = MutagenFile(str(source))
-        if audio is None:
-            result["warning"] = "Audio non lisible par mutagen."
-            return result
+    # Sprint D.39 : essayer tous les fichiers audio (1er + fallbacks)
+    candidates = [source]
+    fallbacks = result.pop("_audio_fallback_files", [])
+    for fb in fallbacks:
+        if fb != source and fb not in candidates:
+            candidates.append(fb)
 
-        cover_data = None
-        cover_ext = "jpg"
-
-        # MP3 : APIC frames dans ID3
+    last_warning = ""
+    for idx, cand in enumerate(candidates):
         try:
-            id3 = ID3(str(source))
-            apic_frames = [v for k, v in id3.items() if k.startswith("APIC")]
-            if apic_frames:
-                apic = apic_frames[0]
-                cover_data = apic.data
-                # mime peut etre 'image/jpeg' ou 'image/png'
-                if "png" in (apic.mime or "").lower():
-                    cover_ext = "png"
-        except Exception:
-            pass  # pas un ID3, ou pas d'APIC. Suite : essayons MP4.
+            audio = MutagenFile(str(cand))
+            if audio is None:
+                last_warning = f"Audio non lisible par mutagen : {cand.name}"
+                continue
 
-        # M4B : MP4 'covr' atom
-        if cover_data is None:
-            covr = audio.tags.get("covr") if audio.tags else None
-            if covr:
-                cover_data = bytes(covr[0])
-                # MP4 cover format : MP4Cover.FORMAT_JPEG = 13, _PNG = 14
-                if hasattr(covr[0], "imageformat") and covr[0].imageformat == 14:
-                    cover_ext = "png"
+            cover_data = None
+            cover_ext = "jpg"
 
-        if cover_data:
-            cover_path = output_dir / f"cover.{cover_ext}"
-            cover_path.write_bytes(cover_data)
-            result["cover"] = cover_path
-        else:
-            result["warning"] = "Pas de cover embedded dans les tags audio."
-    except Exception as e:
-        result["warning"] = f"Audio cover extraction echec : {type(e).__name__} {e}"
+            # MP3 : APIC frames dans ID3
+            try:
+                id3 = ID3(str(cand))
+                apic_frames = [v for k, v in id3.items() if k.startswith("APIC")]
+                if apic_frames:
+                    apic = apic_frames[0]
+                    cover_data = apic.data
+                    if "png" in (apic.mime or "").lower():
+                        cover_ext = "png"
+            except Exception:
+                pass  # pas un ID3, ou pas d'APIC. Suite : essayons MP4.
+
+            # M4B : MP4 'covr' atom
+            if cover_data is None:
+                covr = audio.tags.get("covr") if audio.tags else None
+                if covr:
+                    cover_data = bytes(covr[0])
+                    if hasattr(covr[0], "imageformat") and covr[0].imageformat == 14:
+                        cover_ext = "png"
+
+            if cover_data:
+                cover_path = output_dir / f"cover.{cover_ext}"
+                cover_path.write_bytes(cover_data)
+                result["cover"] = cover_path
+                if idx > 0:
+                    # Trace le fait qu'on a du recourir au fallback
+                    result["warning"] = (
+                        f"Cover extraite du fichier audio #{idx + 1} "
+                        f"({cand.name}). Les pistes precedentes n'avaient "
+                        f"pas de cover embedded."
+                    )
+                return result
+            else:
+                last_warning = (
+                    f"Pas de cover embedded dans {cand.name}."
+                )
+        except Exception as e:
+            last_warning = f"Audio cover extraction echec ({cand.name}) : {type(e).__name__} {e}"
+            continue
+
+    # Aucun candidat n'a donne de cover
+    result["warning"] = last_warning or "Pas de cover embedded dans les tags audio."
     return result
