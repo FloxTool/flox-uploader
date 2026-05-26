@@ -81,6 +81,7 @@ def process_one(
     manual_author: str | None = None,
     manual_book_title: str | None = None,
     manual_book_year: int | None = None,
+    manual_google_books_url: str | None = None,
 ) -> Path:
     config.load_env()
     announce_url = config.get_required_env("TRACKER_ANNOUNCE")
@@ -104,6 +105,7 @@ def process_one(
     if category_id_early == CATEGORY_BOOKS:
         # Sprint D.4 : pipeline Livre dedie (pas de MediaInfo ni TMDB).
         # Sprint D.9 + D.11 : forward des overrides livre (ISBN/auteur/titre/annee).
+        # Sprint D.40 : forward de manual_google_books_url.
         return _process_book(
             input_path, tracker,
             category_id_early=category_id_early,
@@ -112,6 +114,7 @@ def process_one(
             manual_author=manual_author or "",
             manual_book_title=manual_book_title or "",
             manual_book_year=int(manual_book_year or 0),
+            manual_google_books_url=manual_google_books_url or "",
         )
     if (category_id_early not in MEDIAINFO_REQUIRED_CATEGORIES
             and category_id_early not in SUPPORTED_NON_VIDEO_CATEGORIES):
@@ -647,6 +650,7 @@ def _process_book(
     manual_author: str = "",
     manual_book_title: str = "",
     manual_book_year: int = 0,
+    manual_google_books_url: str = "",
 ) -> Path:
     """Traite un upload livre (cat 12). Pipeline simplifie sans MediaInfo / TMDB.
 
@@ -687,9 +691,19 @@ def _process_book(
     # Si manual_isbn fourni, le lookup BnF/Google va l'utiliser direct
     # (au lieu de chercher par titre). Si manual_author/title fournis,
     # ils ecrasent l'extraction locale du fichier.
+    # Sprint D.40 v0.5.0 : si manual_google_books_url fourni, on extrait
+    # le volumeId et on fetch directement la fiche Google Books (bypasse
+    # toute la recherche par titre/auteur).
     _strategy_kwargs = {}
+    # Sprint D.40 : pre-extract du volumeId Google Books URL
+    forced_gb_volume_id = ""
+    if manual_google_books_url:
+        from .core.providers.google_books import extract_volume_id_from_url
+        forced_gb_volume_id = extract_volume_id_from_url(manual_google_books_url)
+        debug.set("manual_google_books_url", manual_google_books_url)
+        debug.set("manual_google_books_volume_id", forced_gb_volume_id)
     if (manual_isbn or manual_author or manual_book_title
-            or manual_book_year):
+            or manual_book_year or forced_gb_volume_id):
         from .core.providers.book_lookup import lookup_book_metadata
 
         def _book_lookup_with_overrides(meta):
@@ -737,6 +751,20 @@ def _process_book(
                 meta.publication_year = manual_book_year
             # Cache + Google API key depuis la config
             google_key = config.get_optional_env("GOOGLE_BOOKS_API_KEY", "")
+            # Sprint D.40 : si on a un volumeId Google Books force, on fetch
+            # la fiche directement et on merge prioritairement (authoritative).
+            if forced_gb_volume_id:
+                from .core.providers.google_books import fetch_volume_by_id
+                gb_cache_file = config.data_dir() / ".google_books_cache.json"
+                gb_meta = fetch_volume_by_id(
+                    forced_gb_volume_id,
+                    cache_file=gb_cache_file,
+                    api_key=google_key,
+                )
+                if gb_meta is not None:
+                    # Override authoritatif : Google Books force ecrase
+                    # title/authors/publisher/year/cover_url etc.
+                    meta.merge_from(gb_meta, "google_books_forced", authoritative=True)
             return lookup_book_metadata(
                 meta,
                 cache_dir=config.data_dir(),

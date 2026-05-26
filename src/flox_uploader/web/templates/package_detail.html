@@ -903,7 +903,7 @@
             <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 inline-flex items-start gap-1.5">
                 <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
                 <span>
-                    Changer la catégorie ici regénère le release_name avec la bonne classification (override sticky). Pour un simple changement du payload tracker sans re-prepare, utilise la dropdown plus bas dans <em>Options pour l'upload</em>.
+                    Re-classer le package, ce qui régénère un nouveau release_name aligné sur la catégorie.
                 </span>
             </p>
         </div>
@@ -956,68 +956,93 @@
 
         {# Sprint D.9 v0.5.0 : sections specifiques au profil livre. Visibles
            dynamiquement par JS quand l'user passe la cat sur Livre.
-           Sprint D.11 v0.5.0 : placeholders 'exemple: ...' + champ Annee. #}
+           Sprint D.40 v0.5.0 (feedback Louis) : refonte complete des textes.
+           Format release_name livre cite UNE SEULE FOIS en intro, plus de
+           repetition dans chaque sous-champ. Aide visuelle vers les sources
+           externes (BnF/Google Books) pour trouver les bons IDs. #}
         <div data-profile-section="book" {% if _profile != 'book' %}class="hidden"{% endif %}>
             {%- set _bm = book_metadata or {} -%}
-            <!-- ISBN manuel -->
-            <div class="mb-4">
-                <label for="manual_isbn" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN forcé</label>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <input type="text" id="manual_isbn" value="{{ _bm.isbn_13 or _bm.isbn_10 or '' }}" placeholder="exemple : 9782266154116"
-                           class="w-56 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <span class="text-xs text-slate-500 dark:text-slate-400">
-                        Permet le lookup direct BnF / Google Books / OpenLibrary (saute la recherche par titre).
-                    </span>
-                </div>
-            </div>
-
-            {# Sprint D.21 fix Bug-2 : on pre-remplit avec scene_parsed (propre)
-               en priorite, sinon book_metadata (peut etre pollue par anciens
-               runs). Si l'user a deja saisi un override manuel, ça reste
-               dans le state.manual_* qui prend la priorite (cf. _bm valeurs). #}
             {%- set _sp = scene_parsed or {} -%}
             {%- set _prefill_author = (_bm.authors[0] if _bm.authors else "") or (_sp.authors[0] if _sp.get("authors") else "") -%}
             {%- set _prefill_title = _bm.title or _sp.get("title") or "" -%}
 
-            <!-- Auteur manuel -->
-            <div class="mb-4">
-                <label for="manual_author" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Auteur principal forcé</label>
-                <input type="text" id="manual_author"
-                       value="{{ _prefill_author }}"
-                       placeholder="exemple : J.R.R. Tolkien"
-                       class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Utilisé en tête du release_name (<code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Auteur.Titre.Date.FRENCH.EPUB-TEAM</code>).
+            {# Intro globale : format cible + comment ca s'articule. #}
+            <div class="mb-4 p-3 rounded-md bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700">
+                <p class="text-xs text-slate-600 dark:text-slate-400 inline-flex items-start gap-1.5">
+                    <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
+                    <span>
+                        Format cible : <code class="bg-white dark:bg-slate-800 px-1 rounded font-mono">Auteur.Titre.Année.FRENCH.EPUB-TEAM</code>.
+                        Les champs ci-dessous écrasent l'extraction locale (EPUB/PDF/CBZ) avant le lookup BnF/Google Books.
+                    </span>
                 </p>
             </div>
 
-            <!-- Titre manuel -->
-            <div class="mb-4">
-                <label for="manual_book_title" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titre forcé</label>
-                <input type="text" id="manual_book_title"
-                       value="{{ _prefill_title }}"
-                       placeholder="exemple : Le Seigneur des Anneaux"
-                       class="w-full max-w-md px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            {# Identifiants externes : ISBN + URL Google Books — les plus
+               efficaces car ils bypassent la recherche par titre. #}
+            <div class="mb-5">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                    Identifiants (bypass recherche par titre)
+                </h4>
+                <div class="space-y-3">
+                    <!-- ISBN forcé -->
+                    <div>
+                        <label for="manual_isbn" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ISBN</label>
+                        <input type="text" id="manual_isbn" value="{{ _bm.isbn_13 or _bm.isbn_10 or '' }}" placeholder="9782266154116"
+                               class="w-56 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Code à 10 ou 13 chiffres. Le trouver sur
+                            <a href="https://catalogue.bnf.fr" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">catalogue.bnf.fr</a>,
+                            <a href="https://isbnsearch.org" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">isbnsearch.org</a>
+                            ou au dos du livre.
+                        </p>
+                    </div>
+
+                    <!-- URL Google Books forcée (Sprint D.40) -->
+                    <div>
+                        <label for="manual_google_books_url" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">URL Google Books</label>
+                        <input type="url" id="manual_google_books_url"
+                               value="{{ manual_google_books_url or '' }}"
+                               placeholder="https://books.google.com/books/edition/.../4eeGAQAAQBAJ"
+                               class="w-full max-w-xl px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Cherche la bonne édition sur
+                            <a href="https://books.google.com" target="_blank" rel="noopener noreferrer" class="text-primary-700 dark:text-primary-400 hover:underline">books.google.com</a>
+                            et colle l'URL de la fiche ici. On en extrait l'ID interne (volumeId) et on l'utilise comme référence canonique.
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            <!-- Année manuelle (Sprint D.11) -->
-            <div class="mb-4">
-                <label for="manual_book_year" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Année de publication forcée</label>
-                <input type="number" id="manual_book_year"
-                       value="{{ _bm.publication_year if (_bm.publication_year or 0) > 0 else '' }}"
-                       min="1900" max="2099" placeholder="exemple : 1999"
-                       class="w-32 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Année dans le release_name (format Gemini <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Auteur.Titre.<strong>Date</strong>.FRENCH.EPUB-TEAM</code>).
-                </p>
+            {# Champs descriptifs : auteur + titre + année. Utilises pour
+               construire le release_name si pas d'ID externe. #}
+            <div class="mb-3">
+                <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                    Champs du release_name
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label for="manual_author" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Auteur</label>
+                        <input type="text" id="manual_author"
+                               value="{{ _prefill_author }}"
+                               placeholder="J.R.R. Tolkien"
+                               class="w-full px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label for="manual_book_title" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titre</label>
+                        <input type="text" id="manual_book_title"
+                               value="{{ _prefill_title }}"
+                               placeholder="Le Seigneur des Anneaux"
+                               class="w-full px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label for="manual_book_year" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Année de publication</label>
+                        <input type="number" id="manual_book_year"
+                               value="{{ _bm.publication_year if (_bm.publication_year or 0) > 0 else '' }}"
+                               min="1900" max="2099" placeholder="1999"
+                               class="w-32 px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-mono bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
             </div>
-
-            <p class="text-xs text-slate-500 dark:text-slate-400 inline-flex items-start gap-1.5 mt-2">
-                <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
-                <span>
-                    Ces champs surchargent l'extraction locale (EPUB/PDF/CBZ) et alimentent le release_name. ISBN active aussi le lookup BnF/Google Books.
-                </span>
-            </p>
         </div>
 
         <!-- Edition manuelle du release_name (verrouillee par defaut) -->
@@ -1101,7 +1126,10 @@
                 <span>Override (modifier manuellement)</span>
             </label>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {# Sprint D.40 v0.5.0 (feedback Louis) : la Resolution est cachee
+               pour le profil livre (n'a pas de sens). Cote livre on a juste
+               Categorie + Type (limite aux 7 IDs livres 27-33). #}
+            <div class="grid grid-cols-1 {% if _profile == 'book' %}md:grid-cols-2{% else %}md:grid-cols-3{% endif %} gap-3">
                 {# Catégorie #}
                 <div>
                     <label for="gemini-category" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Catégorie</label>
@@ -1123,8 +1151,9 @@
                         ↳ {{ gemini_category_auto_source }}
                     </p>
                     {% endif %}
-                    {# Lot N.2 : hint Émission TV — auto-detect ne couvre pas cat 15 #}
-                    <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                    {# Lot N.2 : hint Émission TV — auto-detect ne couvre pas cat 15.
+                       Cache pour le profil livre (sans rapport). #}
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1" data-profile-section="video" {% if _profile == 'book' %}style="display:none"{% endif %}>
                         Talk-show, télé-réalité ou jeu télé ?
                         Coche l'override et choisis « Émission TV ».
                     </p>
@@ -1144,10 +1173,24 @@
                         </option>
                         {% endfor %}
                     </select>
+                    {# Sprint D.40 v0.5.0 : source du auto-fill Type pour les livres.
+                       Affiche "↳ BD (defaut FR pour CBR/CBZ)" ou similaire. Aide
+                       l'user a comprendre pourquoi un type particulier est choisi. #}
+                    {% if _profile == 'book' and not gemini_type_overridden and gemini_type_auto_source %}
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1 italic">
+                        ↳ {{ gemini_type_auto_source }}
+                    </p>
+                    {% endif %}
+                    {% if _profile == 'book' and gemini_type_auto == 0 %}
+                    <p class="text-[10px] text-warning-600 dark:text-warning-400 mt-1 inline-flex items-start gap-1">
+                        <span class="mt-0.5 flex-shrink-0">{{ icon('alert-triangle', size='sm') }}</span>
+                        <span>Type non devinable depuis les métadonnées. Choisis-le manuellement (pénalise le score).</span>
+                    </p>
+                    {% endif %}
                 </div>
 
-                {# Résolution #}
-                <div>
+                {# Résolution — masquee pour le profil livre. #}
+                <div data-profile-section="video" {% if _profile == 'book' %}style="display:none"{% endif %}>
                     <label for="gemini-resolution" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Résolution</label>
                     <select id="gemini-resolution" class="gemini-field upload-option-field w-full px-2 py-1 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:bg-slate-100 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed"
                             data-key="manual_resolution_id" data-auto="{{ gemini_resolution_auto }}">
@@ -1274,61 +1317,85 @@
 
             {# Sprint D.12 v0.5.0 — N8 officiel : Options upload specifiques
                aux livres. Affichees seulement pour cat 12 (toggle dynamique
-               cote JS via data-profile-section). #}
+               cote JS via data-profile-section).
+               Sprint D.40 v0.5.0 (feedback Louis) : refonte complete.
+               - Cover URL + Banner URL cote a cote sous Resolution (masquee).
+               - Textes uniformes : labels courts, aide en dessous, pas
+                 d'allusions techniques type "978-1=Comics anglo".
+               - Bouton "Regenerer presentation" et son aide ramasses dans
+                 une seule ligne fine. #}
             {%- set _bm = book_metadata or {} -%}
             <div data-profile-section="book" {% if _profile != 'book' %}class="hidden"{% endif %}>
+                {# Cover URL + Banner URL — les 2 images de la fiche BBCode. #}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label for="manual_cover_url" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
-                            Cover URL forcée
-                            {% if _bm.cover_url %}<span class="text-slate-400 italic">(auto : {{ _bm.cover_url[:50] }}{% if _bm.cover_url|length > 50 %}…{% endif %})</span>{% endif %}
+                            Cover URL
                         </label>
                         <input type="url" id="manual_cover_url"
                                class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600"
                                data-key="manual_cover_url"
                                value="{{ manual_cover_url or '' }}"
-                               placeholder="exemple : https://exemple.com/cover.jpg">
-                        <p class="text-[10px] text-slate-400 mt-0.5">
-                            URL d'une couverture personnalisée si BnF / Google Books / OpenLibrary n'en a pas fourni. Override l'auto-extraction.
+                               placeholder="https://exemple.com/cover.jpg">
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Couverture affichée dans la fiche. Override l'extraction automatique.
+                            {% if _bm.cover_url %}<br><span class="italic">Auto : {{ _bm.cover_url[:60] }}{% if _bm.cover_url|length > 60 %}…{% endif %}</span>{% endif %}
                         </p>
                     </div>
                     <div>
-                        <label for="manual_book_subtype" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
-                            Sous-type (informationnel)
+                        <label for="manual_banner_url" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                            Banner URL
                         </label>
-                        <select id="manual_book_subtype"
-                                class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                                data-key="manual_book_subtype">
-                            {% set _current_subtype = manual_book_subtype or '' %}
-                            <option value="" {% if not _current_subtype %}selected{% endif %}>Auto (depuis ISBN 978-X)</option>
-                            <option value="roman" {% if _current_subtype == 'roman' %}selected{% endif %}>Roman</option>
-                            <option value="bd" {% if _current_subtype == 'bd' %}selected{% endif %}>BD</option>
-                            <option value="manga" {% if _current_subtype == 'manga' %}selected{% endif %}>Manga</option>
-                            <option value="comics" {% if _current_subtype == 'comics' %}selected{% endif %}>Comics</option>
-                            <option value="audiobook" {% if _current_subtype == 'audiobook' %}selected{% endif %}>Livre audio</option>
-                            <option value="essai" {% if _current_subtype == 'essai' %}selected{% endif %}>Essai / Documentaire</option>
-                            <option value="manuel" {% if _current_subtype == 'manuel' %}selected{% endif %}>Manuel scolaire / Pratique</option>
-                        </select>
-                        <p class="text-[10px] text-slate-400 mt-0.5">
-                            Inclus dans la fiche BBCode. L'auto-detect lit le préfixe ISBN (978-1=Comics anglo, 978-2=BD/Roman FR, 978-4=Manga JP).
+                        <input type="url" id="manual_banner_url"
+                               class="extra-field upload-option-field w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600"
+                               data-key="manual_banner_url"
+                               value="{{ manual_banner_url or '' }}"
+                               placeholder="https://exemple.com/banner.jpg">
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Bannière optionnelle en en-tête de fiche (paysage, ~1500×500 px).
                         </p>
                     </div>
                 </div>
+
+                {# Sous-type — en dessous, sur sa propre ligne pour respirer. #}
+                <div class="mt-3">
+                    <label for="manual_book_subtype" class="block text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        Sous-type
+                    </label>
+                    <select id="manual_book_subtype"
+                            class="extra-field upload-option-field w-full max-w-xs px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                            data-key="manual_book_subtype">
+                        {% set _current_subtype = manual_book_subtype or '' %}
+                        <option value="" {% if not _current_subtype %}selected{% endif %}>Auto</option>
+                        <option value="roman" {% if _current_subtype == 'roman' %}selected{% endif %}>Roman</option>
+                        <option value="bd" {% if _current_subtype == 'bd' %}selected{% endif %}>BD</option>
+                        <option value="manga" {% if _current_subtype == 'manga' %}selected{% endif %}>Manga</option>
+                        <option value="comics" {% if _current_subtype == 'comics' %}selected{% endif %}>Comics</option>
+                        <option value="audiobook" {% if _current_subtype == 'audiobook' %}selected{% endif %}>Livre audio</option>
+                        <option value="essai" {% if _current_subtype == 'essai' %}selected{% endif %}>Essai / Documentaire</option>
+                        <option value="manuel" {% if _current_subtype == 'manuel' %}selected{% endif %}>Manuel scolaire / Pratique</option>
+                    </select>
+                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Détaille la nature du livre dans la fiche BBCode. <span class="italic">Auto</span> = inféré depuis le format et l'ISBN.
+                    </p>
+                </div>
+
                 <p id="book-options-status" class="text-xs text-slate-500 dark:text-slate-400 mt-2"></p>
 
                 {# Sprint D.18 v0.5.0 : bouton 'Regenerer presentation' pour
-                   appliquer le nouveau manual_cover_url au BBCode sans
-                   relancer toute la prepare. #}
+                   appliquer Cover URL / Banner URL / sous-type au BBCode
+                   sans relancer toute la prepare. #}
                 <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/60">
-                    <button type="button" id="btn-regenerate-book-presentation"
-                            class="interactive inline-flex items-center gap-1.5 px-3 h-8 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700">
-                        {{ icon('refresh-cw', size='sm') }}
-                        Régénérer la présentation BBCode
-                    </button>
-                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1.5 inline-flex items-start gap-1.5">
-                        <span class="mt-0.5 flex-shrink-0">{{ icon('info', size='sm') }}</span>
-                        <span>Applique le Cover URL et le sous-type ci-dessus à la fiche BBCode sans relancer toute la prepare. Utile si tu viens de saisir une URL de cover externe.</span>
-                    </p>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <button type="button" id="btn-regenerate-book-presentation"
+                                class="interactive inline-flex items-center gap-1.5 px-3 h-8 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700">
+                            {{ icon('refresh-cw', size='sm') }}
+                            Régénérer la fiche BBCode
+                        </button>
+                        <span class="text-[10px] text-slate-500 dark:text-slate-400">
+                            Réapplique Cover / Banner / Sous-type à la fiche sans tout re-préparer.
+                        </span>
+                    </div>
                     <p id="regenerate-presentation-status" class="text-xs mt-1"></p>
                 </div>
             </div>
@@ -2035,14 +2102,18 @@
             // seulement si non-vides ; backend les utilise pour surcharger
             // l'extraction locale dans BookNamingStrategy.
             // Sprint D.11 v0.5.0 : champ annee (manual_book_year).
+            // Sprint D.40 v0.5.0 : URL Google Books forcee (extraction
+            // volumeId cote backend).
             const isbnInput = document.getElementById('manual_isbn');
             const authorInput = document.getElementById('manual_author');
             const bookTitleInput = document.getElementById('manual_book_title');
             const bookYearInput = document.getElementById('manual_book_year');
+            const gbUrlInput = document.getElementById('manual_google_books_url');
             const manual_isbn = (isbnInput && isbnInput.value || '').trim();
             const manual_author = (authorInput && authorInput.value || '').trim();
             const manual_book_title = (bookTitleInput && bookTitleInput.value || '').trim();
             const manual_book_year = (bookYearInput && bookYearInput.value || '').trim();
+            const manual_google_books_url = (gbUrlInput && gbUrlInput.value || '').trim();
 
             btnRe.disabled = true;
             const reLabel = btnRe.querySelector('span');
@@ -2056,7 +2127,7 @@
                         force_fr, append_fr_title, manual_tmdb_id,
                         manual_release_name, category_id_hint,
                         manual_isbn, manual_author, manual_book_title,
-                        manual_book_year,
+                        manual_book_year, manual_google_books_url,
                     })
                 });
                 if (!resp.ok) {

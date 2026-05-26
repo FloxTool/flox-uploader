@@ -151,6 +151,9 @@ class PackageStateData:
     #   prefixe ISBN ou non specifie.
     manual_cover_url: str = ""
     manual_book_subtype: str = ""
+    # Sprint D.40 v0.5.0 (feedback Louis) : URL banniere/headline pour la
+    # fiche BBCode (en complement de la cover). Vide = pas de banner.
+    manual_banner_url: str = ""
 
     # Renseignes en cas d'echec
     last_error: str = ""

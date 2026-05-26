@@ -57,6 +57,11 @@ class PendingJob:
     # Sprint D.11 v0.5.0 : annee de publication forcee (utilisee dans
     # release_name livre 'Auteur.Titre.YEAR.Langue.Format-TEAM').
     manual_book_year: int = 0
+    # Sprint D.40 v0.5.0 : URL Google Books fournie par l'user (typiquement
+    # collee depuis https://books.google.com/books/edition/.../<volumeId>).
+    # On en extrait le volumeId pour bypasser la recherche par titre et
+    # alimenter le lookup direct Google Books.
+    manual_google_books_url: str = ""
 
 
 # ============================================================
@@ -155,6 +160,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
         if "manual_book_year" not in cols:
             _add_column_idempotent(conn, "pending_jobs", "manual_book_year",
                                    "INTEGER NOT NULL DEFAULT 0")
+        # Sprint D.40 v0.5.0 : URL Google Books forcee.
+        if "manual_google_books_url" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "manual_google_books_url",
+                                   "TEXT NOT NULL DEFAULT ''")
         # Migration one-shot via PRAGMA user_version pour s'executer
         # une seule fois. Sinon (round 4 bug) on ecraserait les valeurs
         # priority_order=0 valides posees par move_job('top').
@@ -218,6 +227,11 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_book_year = int(row["manual_book_year"] or 0)
     except (IndexError, KeyError, ValueError, TypeError):
         manual_book_year = 0
+    # Sprint D.40 : URL Google Books forcee (bases pre-D.40 = "").
+    try:
+        manual_google_books_url = row["manual_google_books_url"] or ""
+    except (IndexError, KeyError):
+        manual_google_books_url = ""
     return PendingJob(
         id=row["id"],
         file_path=row["file_path"],
@@ -239,6 +253,7 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_author=manual_author,
         manual_book_title=manual_book_title,
         manual_book_year=manual_book_year,
+        manual_google_books_url=manual_google_books_url,
     )
 
 
@@ -261,6 +276,7 @@ def add_job(
     manual_author: str = "",
     manual_book_title: str = "",
     manual_book_year: int = 0,
+    manual_google_books_url: str = "",
 ) -> PendingJob:
     """Cree un nouveau job en status 'pending'.
 
@@ -278,13 +294,15 @@ def add_job(
             "(file_path, status, force_fr, append_fr_title, tmdb_id_override, "
             "manual_release_name, category_id_hint, "
             "manual_isbn, manual_author, manual_book_title, manual_book_year, "
+            "manual_google_books_url, "
             "created_at, updated_at) "
-            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (file_path, force_fr, 1 if append_fr_title else 0,
              int(tmdb_id_override or 0), manual_release_name,
              int(category_id_hint or 0),
              manual_isbn or "", manual_author or "", manual_book_title or "",
              int(manual_book_year or 0),
+             manual_google_books_url or "",
              now, now),
         )
         job_id = cur.lastrowid

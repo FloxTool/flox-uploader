@@ -154,7 +154,12 @@ def test_repreparer_has_year_field(client, tmp_path):
 
 
 def test_repreparer_has_example_placeholders(client, tmp_path):
-    """Sprint D.11 : placeholders 'exemple : ...' sur les inputs livre."""
+    """Sprint D.11 + D.40 : placeholders sur les inputs livre.
+
+    Sprint D.40 (feedback Louis) : on a allege les placeholders en retirant
+    le prefixe 'exemple : ' pour des inputs plus propres. On teste donc
+    juste la presence des exemples canoniques.
+    """
     from flox_uploader import config
     pkg_root = config.packages_dir()
     _make_book_pkg(pkg_root, "Test.Placeholders-Flox", book_meta={
@@ -164,11 +169,11 @@ def test_repreparer_has_example_placeholders(client, tmp_path):
     resp = client.get("/packages/Test.Placeholders-Flox")
     assert resp.status_code == 200
     html = resp.text
-    # ISBN, Auteur, Titre, Annee : placeholders avec 'exemple : '
-    assert "exemple : 9782266154116" in html
-    assert "exemple : J.R.R. Tolkien" in html
-    assert "exemple : Le Seigneur des Anneaux" in html
-    assert "exemple : 1999" in html
+    # Exemples canoniques presents dans placeholders ou aide.
+    assert "9782266154116" in html
+    assert "J.R.R. Tolkien" in html
+    assert "Le Seigneur des Anneaux" in html
+    assert "1999" in html
 
 
 # ============================================================
