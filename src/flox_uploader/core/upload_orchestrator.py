@@ -482,6 +482,38 @@ def build_upload_payload(
     if keywords_eff:
         extra["keywords"] = keywords_eff
 
+    # Sprint D.41 v0.5.0 (feedback Louis) : envoyer cover_url + banner_url
+    # au tracker Gemini. Champs supportes par l'API officielle Unit3D/G3MINI.
+    # On les envoie SEULEMENT si on a des URLs http(s) externes valides :
+    # - Pour cover_url : on prend manual_cover_url > book_metadata.cover_url
+    #   (deja uploade sur imgbb par le pipeline). On NE envoie PAS un path
+    #   local (le tracker ne peut pas l'atteindre).
+    # - Pour banner_url : seulement manual_banner_url (saisi par l'user).
+    cover_url_eff = ""
+    banner_url_eff = ""
+    if state_data:
+        # 1. Override user dans Options upload
+        if state_data.manual_cover_url and state_data.manual_cover_url.startswith(("http://", "https://")):
+            cover_url_eff = state_data.manual_cover_url
+        if state_data.manual_banner_url and state_data.manual_banner_url.startswith(("http://", "https://")):
+            banner_url_eff = state_data.manual_banner_url
+    # 2. Fallback cover_url depuis book_metadata (livre seulement)
+    if not cover_url_eff and category_id == unit3d_mapping.CATEGORY_BOOKS:
+        # Lire le debug.json pour recuperer book_metadata.cover_url (qui
+        # est l'URL imgbb uploadee par _try_extract_and_upload_previews).
+        try:
+            debug_data = _read_debug_metadata(bundle.package_dir)
+            bm = debug_data.get("book_metadata") or {}
+            bm_cover = bm.get("cover_url", "") or ""
+            if bm_cover.startswith(("http://", "https://")):
+                cover_url_eff = bm_cover
+        except Exception:
+            pass
+    if cover_url_eff:
+        extra["cover_url"] = cover_url_eff
+    if banner_url_eff:
+        extra["banner_url"] = banner_url_eff
+
     return UploadPayload(
         name=bundle.release_name,
         description=bundle.description,

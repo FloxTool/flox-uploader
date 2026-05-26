@@ -25,6 +25,37 @@
 {%- set isbn = bm.isbn_13 or bm.isbn_10 -%}
 {%- set lang_label = {"fr": "Français", "en": "Anglais", "es": "Espagnol", "de": "Allemand", "it": "Italien", "pt": "Portugais", "ja": "Japonais", "zh": "Chinois", "ru": "Russe", "ar": "Arabe", "ko": "Coréen", "nl": "Néerlandais"}.get(bm.language, (bm.language | upper) if bm.language else "") -%}
 
+{# Sprint D.41 v0.5.0 (feedback Louis) : banner d'avertissement quand imgbb
+   a rate-limit pendant la prepare. La fiche est incomplete (cover/previews
+   manquants) -> on suggere une re-prepare apres ~1h (cooldown imgbb).
+   Banner visible meme quand la carte Livre est collapsed pour que l'user
+   le voit immediatement. #}
+{% if bm.imgbb_rate_limited %}
+<div class="mb-4 p-3 rounded-md bg-warning-50 dark:bg-warning-900/30 border border-warning-300 dark:border-warning-700">
+    <div class="flex items-start gap-2">
+        <span class="flex-shrink-0 text-warning-700 dark:text-warning-300 mt-0.5">
+            {{ icon('alert-triangle', size='md') }}
+        </span>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-warning-900 dark:text-warning-200">
+                imgbb a atteint sa limite de débit
+            </p>
+            <p class="text-xs text-warning-800 dark:text-warning-300 mt-1">
+                {% set _failed = bm.imgbb_failed_images or [] %}
+                {% if _failed %}
+                {{ _failed | length }} image{% if _failed | length > 1 %}s{% endif %} n'a{% if _failed | length > 1 %}'ont{% endif %} pas pu être uploadée{% if _failed | length > 1 %}s{% endif %}
+                ({{ _failed | join(", ") }}).
+                {% else %}
+                Certaines images n'ont pas pu être uploadées.
+                {% endif %}
+                La fiche est incomplète. <strong>Re-prépare le package dans environ 1 heure</strong>
+                pour récupérer les visuels manquants — la limite imgbb se reset rapidement.
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div id="toc-media" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
     <!-- ====== CARTE LIVRE (l'oeuvre) ====== -->

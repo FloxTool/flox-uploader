@@ -135,6 +135,16 @@ Valeur : True."""
 
 # --- Compliance ---
 
+# --- Imgbb / host externe ---
+
+SIG_IMGBB_RATE_LIMITED = "imgbb_rate_limited"
+"""Sprint D.41 v0.5.0 (feedback Louis) : imgbb a refuse une ou plusieurs
+images (cover/previews) avec un message 'Rate limit reached' (HTTP 400/429).
+La fiche BBCode est incomplete : il manque les visuels en attendant que la
+limite imgbb se reset (~1h). Penalite moderee (-5) + suggestion de
+re-preparer plus tard affichee dans l'UI. Valeur : True."""
+
+
 SIG_COMPLIANCE_WARNS = "compliance_warns"
 """Le check de conformite (NFO vs release_name) a leve un ou plusieurs WARN
 non-bloquants. Differents des compliance ERROR (penalites dures -15 pts/issue).
@@ -191,6 +201,10 @@ SIGNAL_METADATA: dict[str, tuple[int, str]] = {
     SIG_YEAR_MISSING:            (20, "Année manquante (ni dans le nom ni dans TMDB) — override TMDB ID requis pour conformité charte Gemini"),
     # Catégorie incertaine (Lot N.4) : -1 pt, juste un nudge pour aller vérifier.
     SIG_CATEGORY_LOW_CONFIDENCE: (1, "Catégorie devinée par défaut (TMDB sans match) — vérifie si c'est un docu, anime, sport ou émission TV avant l'upload"),
+    # Sprint D.41 v0.5.0 (feedback Louis) : imgbb rate-limited. -5 pour
+    # signaler clairement que la fiche est incomplete et qu'il faut
+    # re-preparer plus tard pour recuperer les visuels manquants.
+    SIG_IMGBB_RATE_LIMITED:      (5, "imgbb a atteint sa limite de débit — la fiche manque cover/previews. Re-prépare dans 1h pour compléter les visuels."),
     # Compliance : DEPRECATED depuis NOTES round 6. La penalite est passee
     # a 0 pour eliminer le double-comptage avec confidence.py qui traite
     # deja les WARN via le pattern is_warn_minor (-4 pour PGS-only). Source
