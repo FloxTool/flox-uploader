@@ -642,6 +642,18 @@ def _load_package_detail(name: str) -> dict[str, Any]:
     eff_type = manual_type if manual_type > 0 else auto_type
     eff_resolution = manual_resolution if manual_resolution > 0 else auto_resolution
 
+    # Sprint D.46 v0.5.0 (feedback Louis) : on detecte si un log d'upload
+    # passe existe pour ce package (meme apres redemarrage serveur).
+    # Permet d'afficher la section "Log d'upload" peu importe le state
+    # (avant : visible seulement si state in failed/aborted_duplicate, mais
+    # un upload peut echouer apres etre passe en validated).
+    import hashlib as _hashlib_dx
+    _upload_log_digest = _hashlib_dx.md5(str(target).encode("utf-8")).hexdigest()[:12]
+    _upload_log_path = (
+        config.data_dir() / "jobs" / f"upload_{_upload_log_digest}.log"
+    )
+    _upload_log_exists = _upload_log_path.is_file()
+
     return {
         "package_dir": str(target),
         "package_name": target.name,
@@ -649,6 +661,8 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "release_name_technical": release_name,
         "state": state_data.state.value if state_data else "(pas d'etat)",
         "updated_at": state_data.updated_at if state_data else "",
+        # Sprint D.46 : flag affichage du bloc "Log d'upload" sur la page.
+        "upload_log_exists": _upload_log_exists,
         "uploaded_torrent_id": state_data.uploaded_torrent_id if state_data else None,
         "uploaded_torrent_url": state_data.uploaded_torrent_url if state_data else "",
         # Sprint 8 hotfix v12 : path du .torrent final (avec passkey) + le watch
@@ -2870,19 +2884,43 @@ def create_app() -> FastAPI:
 
     @app.get("/api/uploads/{name}/log")
     def api_upload_log(name: str):
-        """Sprint 8 hotfix v14 : retourne le contenu COMPLET du log d'upload
-        d'un package (pas le SSE stream, qui ne marche que pendant l'upload
-        live). Utilise par la page detail pour permettre a l'user de
-        consulter le log apres coup."""
+        """Retourne le contenu COMPLET du log d'upload d'un package.
+
+        Sprint 8 hotfix v14 : permet a l'user de consulter le log apres
+        coup (pas seulement pendant l'upload live via SSE).
+
+        Sprint D.46 v0.5.0 (feedback Louis upload echec sans log) :
+        fallback sur la recherche par md5 deterministe si le status
+        n'est pas en memoire. Le serveur perd `_upload_status` entre les
+        redemarrages mais les fichiers log persistent sur disque dans
+        `data/jobs/upload_<md5>.log` (cf. _run_upload_job). On reconstruit
+        donc le path depuis le package_dir, et on lit le fichier s'il existe.
+        Permet de consulter les logs d'echec meme apres restart serveur.
+        """
         from .jobs_runner import get_upload_status
+        from ..core import jobs_db
+        import hashlib
 
         target = _resolve_package_dir(name)
         status = get_upload_status(str(target))
-        if status is None or not status.get("log_path"):
-            raise HTTPException(404, "Aucun log d'upload pour ce package")
-        log_path = Path(status["log_path"])
-        if not log_path.exists():
-            raise HTTPException(404, f"Fichier log introuvable : {log_path}")
+
+        log_path: Path | None = None
+        if status is not None and status.get("log_path"):
+            log_path = Path(status["log_path"])
+
+        # Sprint D.46 : fallback md5 (deterministe depuis package_dir)
+        if log_path is None or not log_path.exists():
+            digest = hashlib.md5(str(target).encode("utf-8")).hexdigest()[:12]
+            candidate = jobs_db.jobs_log_dir() / f"upload_{digest}.log"
+            if candidate.is_file():
+                log_path = candidate
+
+        if log_path is None or not log_path.exists():
+            raise HTTPException(
+                404,
+                "Aucun log d'upload pour ce package (jamais uploade, ou "
+                "fichier log supprime).",
+            )
         try:
             content = log_path.read_text(encoding="utf-8", errors="replace")
         except OSError as e:
