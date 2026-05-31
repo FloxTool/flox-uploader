@@ -1579,12 +1579,19 @@
    Pour state='failed' et 'aborted_duplicate', on garde ici une version
    minimale (la section "Upload vers le tracker" n'est rendue que pour
    prepared/validated/failed/uploaded). #}
-{% if state in ('failed', 'aborted_duplicate') %}
+{# Sprint D.46 v0.5.0 (feedback Louis) : section Log d'upload visible des
+   qu'un log existe pour ce package (pas seulement si state=failed). Cas :
+   un upload a echoue apres que l'user ait clique 'Valider sans uploader',
+   le state reste 'validated' mais le log d'echec existe sur disque. #}
+{% if state in ('failed', 'aborted_duplicate') or upload_log_exists %}
 <section class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 mb-6">
     <header class="flex items-center justify-between gap-3 mb-2">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2">
             {{ icon('scroll-text', size='md') }}
             Log d'upload
+            {% if upload_log_exists and state not in ('failed', 'aborted_duplicate') %}
+            <span class="text-xs font-normal text-slate-500 dark:text-slate-400">— tentative précédente</span>
+            {% endif %}
         </h3>
         <button id="btn-load-upload-log" type="button"
                 class="inline-flex items-center gap-1.5 px-3 h-7 text-xs rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">

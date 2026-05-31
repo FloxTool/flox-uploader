@@ -229,12 +229,48 @@ def _torrent_path_for(package_dir: Path, release_name: str) -> Path:
     via la UI, le message d'erreur doit dire EXACTEMENT pourquoi et
     proposer la solution (re-preparer = bouton dans la UI), pas un
     cryptique "torrent manquant".
+
+    Sprint D.46 v0.5.0 (feedback Louis Back.To.The.Future + Harry.Potter) :
+    le pipeline raccourcit le nom du .torrent quand le path complet
+    approche la limite Windows MAX_PATH=260 (cf. pipeline._torrent_filename).
+    Donc le fichier physique peut s'appeler `MULTFF` au lieu de `MULTi.VFF`
+    sur disque. Avant : l'upload cherchait le nom EXACT et echouait. Apres :
+    fallback sur "1 seul .torrent dans le package_dir" si le nom exact rate.
     """
     p = package_dir / f"{release_name}.torrent"
     if p.is_file():
         return p
 
-    # Lecture du state pour produire un message contextuel
+    # Sprint D.46 : fallback dir scan. Si on a 1 SEUL .torrent dans le
+    # package_dir, on prend celui-la (le nom a probablement ete raccourci
+    # par _torrent_filename pour rentrer sous Windows MAX_PATH=260).
+    try:
+        torrents = sorted([
+            t for t in package_dir.iterdir()
+            if t.is_file() and t.suffix.lower() == ".torrent"
+        ])
+    except (OSError, PermissionError):
+        torrents = []
+    if len(torrents) == 1:
+        found = torrents[0]
+        if found.name != f"{release_name}.torrent":
+            print(
+                f"[INFO] .torrent trouve avec nom raccourci : '{found.name}' "
+                f"(attendu '{release_name}.torrent'). "
+                f"Le pipeline a raccourci pour rester sous Windows MAX_PATH=260. "
+                f"Le contenu interne (info.name) garde le release_name complet."
+            )
+        return found
+    if len(torrents) > 1:
+        # Plusieurs .torrent : ambigu, on bail-out avec un message clair
+        names = ", ".join(t.name for t in torrents)
+        die(
+            f"Plusieurs .torrent trouves dans {package_dir.name} : {names}. "
+            f"Aucun ne match le release_name exact ('{release_name}.torrent'). "
+            f"Garde un seul .torrent (le bon) et relance l'upload."
+        )
+
+    # Aucun .torrent : on lit le state pour produire un message contextuel
     state_data = read_state(package_dir)
     if state_data and state_data.state == PackageState.ABORTED_DUPLICATE:
         existing = (
