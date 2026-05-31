@@ -29,6 +29,14 @@ du Bureau.
 | `flox_icon.ico` | Icône Flox multi-résolution (16/32/48/64/128/256 px) |
 | `install_desktop_shortcut.bat` | Crée le raccourci sur le Bureau |
 | `uninstall_desktop_shortcut.bat` | Supprime le raccourci |
+| `regenerate_icon.py` | Régénère `flox_icon.ico` depuis le SVG officiel (à lancer si le logo change) |
+
+### Logo de référence
+
+L'icône est générée depuis **`src/flox_uploader/web/static/logo.svg`** (le « F » Flox
+indigo qu'on voit dans la sidebar de l'app). Source unique de vérité — si tu changes
+le logo dans l'app, relance `python scripts/windows/regenerate_icon.py` puis
+réinstalle le raccourci pour que la nouvelle icône s'applique.
 
 ### Personnalisation
 
