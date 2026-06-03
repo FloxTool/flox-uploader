@@ -578,6 +578,8 @@ def _load_package_detail(name: str) -> dict[str, Any]:
     source_job = jobs_db.find_job_for_package(str(target))
     source_file_path = source_job.file_path if source_job else ""
     source_force_fr = source_job.force_fr if source_job else ""
+    # Sprint D.48 v0.5.0 : source forcee saisie precedemment (pour pre-fill UI).
+    source_manual_source = source_job.manual_source if source_job else ""
     log_text = ""
     log_lines = 0
     if source_job and source_job.log_path:
@@ -773,6 +775,7 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         # Source
         "source_file_path": source_file_path,
         "source_force_fr": source_force_fr,
+        "source_manual_source": source_manual_source,
         # Contenu
         "release_name_txt": release_name_txt,
         # presentation_text = version active (user-edit si presente, sinon regen).
@@ -2517,6 +2520,7 @@ def create_app() -> FastAPI:
                 manual_book_title=source_job.manual_book_title,
                 manual_book_year=source_job.manual_book_year,
                 manual_google_books_url=source_job.manual_google_books_url,
+                manual_source=source_job.manual_source,
             )
             submit_prepare_job(new_job.id)
             relaunched.append({"name": pkg_dir.name, "job_id": new_job.id})
@@ -2590,6 +2594,8 @@ def create_app() -> FastAPI:
             manual_book_year = 0
         # Sprint D.40 v0.5.0 : URL Google Books forcee.
         manual_google_books_url = (payload.get("manual_google_books_url") or "").strip()
+        # Sprint D.48 v0.5.0 : source forcee (BluRay/WEB-DL/...).
+        manual_source = (payload.get("manual_source") or "").strip()
         # Supprime l'ancien package + l'ancien job pour laisser place au nouveau.
         jobs_db.delete_job(source_job.id)
         try:
@@ -2608,6 +2614,7 @@ def create_app() -> FastAPI:
             manual_book_title=manual_book_title,
             manual_book_year=manual_book_year,
             manual_google_books_url=manual_google_books_url,
+            manual_source=manual_source,
         )
         submit_prepare_job(new_job.id)
         return {
