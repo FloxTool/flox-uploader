@@ -1354,3 +1354,78 @@ def build_release_name(
     })
 
     return release_name, tmdb_context
+
+
+# ============================================================
+# Sprint D.48 v0.5.0 (feedback Louis batch upload) — source forcee
+# ============================================================
+
+def release_has_source(release_name: str, rules: dict) -> bool:
+    """Retourne True si le release_name contient deja un token SOURCE connu
+    (BluRay / WEB-DL / WEBRip / HDTV / DVDRip / BDRip / REMUX / ...).
+
+    Utilise pour le compliance check : la charte Gemini exige
+    SOURCE dans Titre.Annee.LANG.RES.SOURCE.AUDIO.VCODEC-TEAM. Si manquant
+    -> warning + suggestion d'ajouter manual_source.
+    """
+    if not release_name:
+        return False
+    sources_upper = {s.upper() for s in rules.get("source_tokens", [])}
+    # Le release_name finit par "-TEAM", on split sur "." mais le dernier
+    # token contient un "-". On normalise via re.split sur [.-].
+    tokens = re.split(r"[.\-]", release_name)
+    return any(tok.upper() in sources_upper for tok in tokens)
+
+
+def inject_source_if_missing(
+    release_name: str, manual_source: str, rules: dict,
+) -> str:
+    """Sprint D.48 v0.5.0 — injecte `manual_source` dans le release_name
+    SEULEMENT si aucun token source connu n'est present.
+
+    Position d'insertion :
+    1. Apres le token resolution (1080p / 2160p / 720p / 576p / etc.)
+    2. Sinon apres l'annee (1900-2099)
+    3. Sinon avant le dernier token (= avant `x265-TEAM`)
+
+    Cas Louis :
+        'La.Guerre.Des.Boutons.1962.VOF.1080p.AAC1.0.x264-mHDgz'
+        + manual_source='BluRay'
+        -> 'La.Guerre.Des.Boutons.1962.VOF.1080p.BluRay.AAC1.0.x264-mHDgz'
+
+    Si release_name a deja une source : no-op (on ne remplace JAMAIS une
+    source existante, c'est un override de DEFAUT, pas un override d'overide).
+
+    Si manual_source vide ou invalide : no-op.
+    """
+    if not release_name or not manual_source:
+        return release_name
+    # Verifier que manual_source est dans la liste de sources Gemini autorisees
+    sources_canonical = {s.upper(): s for s in rules.get("source_tokens", [])}
+    canonical = sources_canonical.get(manual_source.strip().upper())
+    if not canonical:
+        return release_name  # source invalide, on ne touche pas
+    # Si deja une source dans le release_name, no-op
+    if release_has_source(release_name, rules):
+        return release_name
+    # Split sur "." (preserve le suffixe "-TEAM" qui reste dans le dernier token)
+    tokens = release_name.split(".")
+    # Trouver la position du token resolution
+    res_re = re.compile(r"^\d{3,4}[pi]$", re.IGNORECASE)
+    year_re = re.compile(r"^(?:19|20)\d{2}$")
+    res_pos = -1
+    year_pos = -1
+    for i, tok in enumerate(tokens):
+        if res_pos < 0 and res_re.match(tok):
+            res_pos = i
+        if year_pos < 0 and year_re.match(tok):
+            year_pos = i
+    if res_pos >= 0:
+        insert_at = res_pos + 1
+    elif year_pos >= 0:
+        insert_at = year_pos + 1
+    else:
+        # Pas de resolution ni d'annee -> avant le dernier token (=`x265-TEAM`)
+        insert_at = max(1, len(tokens) - 1)
+    new_tokens = tokens[:insert_at] + [canonical] + tokens[insert_at:]
+    return ".".join(new_tokens)

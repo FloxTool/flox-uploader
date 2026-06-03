@@ -137,6 +137,16 @@ Valeur : True."""
 
 # --- Imgbb / host externe ---
 
+SIG_SOURCE_MISSING = "source_missing"
+"""Sprint D.48 v0.5.0 (feedback Louis batch upload) : la SOURCE
+(BluRay/WEB-DL/WEBRip/HDTV/...) est absente du release_name. La charte
+Gemini l'exige (Titre.Annee.LANG.RES.SOURCE.AUDIO.VCODEC-TEAM).
+Penalite moderee (-5) + suggestion d'utiliser le champ 'Source forcee'
+dans Re-preparer. Cas typique : releases amateurs FR sans NFO scene
+ni source dans le nom d'origine (Hibernatus, La Guerre Des Boutons,
+Polisse-NoTAG, etc.). Valeur : True."""
+
+
 SIG_IMGBB_RATE_LIMITED = "imgbb_rate_limited"
 """Sprint D.41 v0.5.0 (feedback Louis) : imgbb a refuse une ou plusieurs
 images (cover/previews) avec un message 'Rate limit reached' (HTTP 400/429).
@@ -205,6 +215,9 @@ SIGNAL_METADATA: dict[str, tuple[int, str]] = {
     # signaler clairement que la fiche est incomplete et qu'il faut
     # re-preparer plus tard pour recuperer les visuels manquants.
     SIG_IMGBB_RATE_LIMITED:      (5, "imgbb a atteint sa limite de débit — la fiche manque cover/previews. Re-prépare dans 1h pour compléter les visuels."),
+    # Sprint D.48 v0.5.0 (feedback Louis batch upload) : SOURCE manquante.
+    # Charte Gemini exige BluRay/WEB-DL/WEBRip/HDTV/... dans le release_name.
+    SIG_SOURCE_MISSING:          (5, "Source manquante dans le release_name (BluRay/WEB-DL/...) — non conforme à la charte Gemini. Force-la via 'Source forcée' dans Re-préparer."),
     # Compliance : DEPRECATED depuis NOTES round 6. La penalite est passee
     # a 0 pour eliminer le double-comptage avec confidence.py qui traite
     # deja les WARN via le pattern is_warn_minor (-4 pour PGS-only). Source

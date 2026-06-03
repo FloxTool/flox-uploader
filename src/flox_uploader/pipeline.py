@@ -82,6 +82,7 @@ def process_one(
     manual_book_title: str | None = None,
     manual_book_year: int | None = None,
     manual_google_books_url: str | None = None,
+    manual_source: str | None = None,
 ) -> Path:
     config.load_env()
     announce_url = config.get_required_env("TRACKER_ANNOUNCE")
@@ -220,6 +221,46 @@ def process_one(
         media_info=media_info,
         mediainfo_data=mediainfo_data,
     )
+
+    # Sprint D.48 v0.5.0 (feedback Louis batch upload) : si l'user a fourni
+    # manual_source via la section Re-preparer, on l'injecte dans le
+    # release_name au bon endroit (apres RES). Cas typique : releases
+    # amateurs sans NFO scene + sans source dans le nom d'origine.
+    # Charte Gemini : SOURCE obligatoire dans Titre.Annee.LANG.RES.SOURCE.
+    # AUDIO.VCODEC-TEAM. inject_source_if_missing() est un no-op si une
+    # source est deja presente (on ne remplace pas).
+    if manual_source:
+        from .core.release_name import inject_source_if_missing
+        before = release_name
+        release_name = inject_source_if_missing(
+            release_name, manual_source, tracker.rules,
+        )
+        if release_name != before:
+            print(
+                f"[INFO] Source forcee : '{manual_source}' injectee dans "
+                f"le release_name. Avant : '{before}'. Apres : '{release_name}'."
+            )
+            debug.set("manual_source_injected", {
+                "source": manual_source, "before": before, "after": release_name,
+            })
+
+    # Sprint D.48 : compliance warning si SOURCE manquante (la charte
+    # Gemini l'exige).
+    from .core.release_name import release_has_source
+    if not release_has_source(release_name, tracker.rules):
+        print(
+            f"[WARN] SOURCE manquante dans le release_name : '{release_name}'. "
+            f"La charte Gemini exige SOURCE (BluRay/WEB-DL/WEBRip/HDTV/...). "
+            f"Forcer via le champ 'Source forcee' dans Re-preparer."
+        )
+        debug.set("source_missing", True)
+        # Emet un signal naming pour penaliser le score (-5)
+        try:
+            from .core import naming_signals as _ns
+            _ns.emit_signal(debug, _ns.SIG_SOURCE_MISSING, True)
+        except Exception:
+            pass
+
     # Override manuel du release_name si l'user l'a explicitement fourni
     # depuis la page detail (champ deverrouille). Bypass total de la logique
     # du pipeline : on garde tmdb_context/mediainfo mais le nom est celui

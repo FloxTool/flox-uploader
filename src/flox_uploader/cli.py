@@ -128,6 +128,9 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         manual_google_books_url=(
             getattr(args, "manual_google_books_url", None) or None
         ),
+        manual_source=(
+            getattr(args, "manual_source", None) or None
+        ),
     )
 
     # Si --upload demande, on enchaine la boucle upload
@@ -446,6 +449,19 @@ def build_parser() -> argparse.ArgumentParser:
             "(Cat Livres) URL Google Books de la fiche canonique a forcer. "
             "Ex: https://books.google.com/books/edition/.../<volumeId>. On en "
             "extrait le volumeId et on bypasse la recherche par titre/auteur."
+        ),
+    )
+    # Sprint D.48 v0.5.0 : source forcee (BluRay/WEB-DL/...) pour les
+    # releases amateurs sans NFO scene ni source dans le nom d'origine.
+    p_prepare.add_argument(
+        "--source", "--manual-source", dest="manual_source", default="",
+        choices=["", "BluRay", "WEB", "WEB-DL", "WEBRip", "HDRip", "BDRip",
+                 "BRRip", "REMUX", "HDTV", "DVD", "DVDRip", "TVRip"],
+        help=(
+            "Source forcee a injecter dans le release_name si manquante. "
+            "Cas typique : releases amateurs FR sans source dans le nom "
+            "d'origine. La charte Gemini exige SOURCE dans "
+            "Titre.Annee.LANG.RES.SOURCE.AUDIO.VCODEC-TEAM."
         ),
     )
     _add_upload_options(p_prepare, default_dry_run=True)

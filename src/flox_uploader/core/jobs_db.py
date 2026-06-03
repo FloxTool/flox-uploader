@@ -62,6 +62,13 @@ class PendingJob:
     # On en extrait le volumeId pour bypasser la recherche par titre et
     # alimenter le lookup direct Google Books.
     manual_google_books_url: str = ""
+    # Sprint D.48 v0.5.0 (feedback Louis batch upload) : source forcee pour
+    # les releases amateurs qui n'ont ni NFO scene ni source dans le nom
+    # d'origine. Charte Gemini : SOURCE obligatoire dans le release_name
+    # (Titre.Annee.LANG.RES.SOURCE.AUDIO.VCODEC-TEAM). Valeurs : "" (auto),
+    # "BluRay", "WEB-DL", "WEBRip", "HDTV", "DVDRip", "BDRip", "REMUX", etc.
+    # Cf. rules.json:source_tokens.
+    manual_source: str = ""
 
 
 # ============================================================
@@ -164,6 +171,10 @@ def _connect() -> Iterator[sqlite3.Connection]:
         if "manual_google_books_url" not in cols:
             _add_column_idempotent(conn, "pending_jobs", "manual_google_books_url",
                                    "TEXT NOT NULL DEFAULT ''")
+        # Sprint D.48 v0.5.0 : source forcee (BluRay/WEB-DL/etc.).
+        if "manual_source" not in cols:
+            _add_column_idempotent(conn, "pending_jobs", "manual_source",
+                                   "TEXT NOT NULL DEFAULT ''")
         # Migration one-shot via PRAGMA user_version pour s'executer
         # une seule fois. Sinon (round 4 bug) on ecraserait les valeurs
         # priority_order=0 valides posees par move_job('top').
@@ -232,6 +243,11 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_google_books_url = row["manual_google_books_url"] or ""
     except (IndexError, KeyError):
         manual_google_books_url = ""
+    # Sprint D.48 : source forcee (bases pre-D.48 = "").
+    try:
+        manual_source = row["manual_source"] or ""
+    except (IndexError, KeyError):
+        manual_source = ""
     return PendingJob(
         id=row["id"],
         file_path=row["file_path"],
@@ -254,6 +270,7 @@ def _row_to_job(row: sqlite3.Row) -> PendingJob:
         manual_book_title=manual_book_title,
         manual_book_year=manual_book_year,
         manual_google_books_url=manual_google_books_url,
+        manual_source=manual_source,
     )
 
 
@@ -277,6 +294,7 @@ def add_job(
     manual_book_title: str = "",
     manual_book_year: int = 0,
     manual_google_books_url: str = "",
+    manual_source: str = "",
 ) -> PendingJob:
     """Cree un nouveau job en status 'pending'.
 
@@ -294,15 +312,16 @@ def add_job(
             "(file_path, status, force_fr, append_fr_title, tmdb_id_override, "
             "manual_release_name, category_id_hint, "
             "manual_isbn, manual_author, manual_book_title, manual_book_year, "
-            "manual_google_books_url, "
+            "manual_google_books_url, manual_source, "
             "created_at, updated_at) "
-            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (file_path, force_fr, 1 if append_fr_title else 0,
              int(tmdb_id_override or 0), manual_release_name,
              int(category_id_hint or 0),
              manual_isbn or "", manual_author or "", manual_book_title or "",
              int(manual_book_year or 0),
              manual_google_books_url or "",
+             manual_source or "",
              now, now),
         )
         job_id = cur.lastrowid

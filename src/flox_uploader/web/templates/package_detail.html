@@ -950,6 +950,28 @@
                 </div>
             </div>
 
+            <!-- Sprint D.48 v0.5.0 (feedback Louis batch upload) : source
+                 forcee. Permet d'ajouter BluRay/WEB-DL/... au release_name
+                 quand le nom source ne le contient pas et que le NFO scene
+                 est absent (cas typique : releases amateurs FR comme
+                 Hibernatus, La Guerre Des Boutons, Polisse-NoTAG). -->
+            <div class="mb-4">
+                <label for="manual_source" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Source forcée</label>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <select id="manual_source"
+                            class="px-3 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        {%- set _cur_src = source_manual_source or '' -%}
+                        <option value="" {% if not _cur_src %}selected{% endif %}>Auto (depuis NFO / nom d'origine)</option>
+                        {% for s in ['BluRay', 'WEB-DL', 'WEBRip', 'HDRip', 'BDRip', 'BRRip', 'REMUX', 'HDTV', 'DVDRip', 'TVRip'] %}
+                        <option value="{{ s }}" {% if _cur_src == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="text-xs text-slate-500 dark:text-slate-400">
+                        Injecté entre <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded">RES</code> et <code class="bg-slate-100 dark:bg-slate-800 px-1 rounded">AUDIO</code>. À utiliser si le nom d'origine n'a pas la source.
+                    </span>
+                </div>
+            </div>
+
             <!-- TMDB ID manuel : bypass la recherche par titre, lookup direct -->
             <div class="mb-4">
                 <label for="manual_tmdb_id" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TMDB ID forcé</label>
@@ -2124,11 +2146,14 @@
             const bookTitleInput = document.getElementById('manual_book_title');
             const bookYearInput = document.getElementById('manual_book_year');
             const gbUrlInput = document.getElementById('manual_google_books_url');
+            // Sprint D.48 v0.5.0 : source forcee (BluRay/WEB-DL/...).
+            const sourceInput = document.getElementById('manual_source');
             const manual_isbn = (isbnInput && isbnInput.value || '').trim();
             const manual_author = (authorInput && authorInput.value || '').trim();
             const manual_book_title = (bookTitleInput && bookTitleInput.value || '').trim();
             const manual_book_year = (bookYearInput && bookYearInput.value || '').trim();
             const manual_google_books_url = (gbUrlInput && gbUrlInput.value || '').trim();
+            const manual_source = (sourceInput && sourceInput.value || '').trim();
 
             btnRe.disabled = true;
             const reLabel = btnRe.querySelector('span');
@@ -2143,6 +2168,7 @@
                         manual_release_name, category_id_hint,
                         manual_isbn, manual_author, manual_book_title,
                         manual_book_year, manual_google_books_url,
+                        manual_source,
                     })
                 });
                 if (!resp.ok) {
