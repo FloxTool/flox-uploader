@@ -37,6 +37,16 @@
 #           collecte version + Python + OS + MediaInfo + statut setup,
 #           expose en Jinja global et endpoint /api/diagnostic. Aucun
 #           secret dans le payload.
+#   0.5.0 : Release multi-categorie (Sprints A a D.48 de PLAN-MULTICAT).
+#           Pipeline Livres complet : BnF + Google Books, covers (locale
+#           prioritaire, imgbb + fallback Imgur), previews EPUB/PDF/CBZ,
+#           release names livres, volume strict, periodiques, compliance
+#           ebook. Inclut aussi tout le contenu v0.4.0 jamais publie
+#           (Sprints 1-8 PLAN-V1 : installeur, wizard /setup, update
+#           banner, crash report). NB versions : la v0.4.0 n'a jamais ete
+#           taguee ni releasee (GitHub Actions bloque) ; le tag v0.3.17
+#           existe sans release. On saute directement 0.3.17 -> 0.5.0,
+#           premier build livre en local (hors CI).
 #   0.3.17 : Sprint 8 hotfix v17 — 4e faux positif compliance audio
 #           (Emilia Perez : E-AC3.5.1). Le findall non-overlappant matchait
 #           `3.5` (le 3 de AC3 + .5) et ratait le vrai `5.1`. Fix : capture
@@ -117,4 +127,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.3.17"
+__version__ = "0.5.0"

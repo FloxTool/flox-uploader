@@ -36,6 +36,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+# Artefacts du build local installeur (Inno Setup, cf. docs/KNOWN_ISSUES.md)
+packaging/installer/
 downloads/
 eggs/
 .eggs/

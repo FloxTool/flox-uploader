@@ -13,6 +13,53 @@ _Aucun changement non publié pour le moment._
 
 ---
 
+## [0.5.0] — 2026-07-18
+
+Release **multi-catégorie** (Sprints A → D.48 de PLAN-MULTICAT) + tout le
+contenu v0.4.0 jamais publié. Premier build **local** (hors CI, GitHub
+Actions désactivé sur le compte — installeur produit par PyInstaller +
+Inno Setup sur la machine de dev, attaché manuellement à la release).
+
+### Note de versionning (chasse aux fantômes)
+
+- La **v0.4.0** (release publique vidéo, Sprint 9 PLAN-V1) n'a jamais été
+  taguée ni publiée : bloquée par la désactivation GitHub Actions le
+  2026-05-20. Son contenu (Sprints 1-8 : installeur Windows, wizard
+  `/setup`, update banner, crash report, hotfixes 0.3.5→0.3.17) est
+  inclus ici.
+- Le tag **v0.3.17** existe sans release ni installeur (le build CI a été
+  bloqué juste avant). Dernière release publiée avant celle-ci : v0.3.16.
+- On saute donc directement **0.3.17 → 0.5.0**. La v0.5.0 « complète »
+  du plan (jeux, TV, sport, manuel guidé) glissera vers v0.6.0+
+  (Sprints E-H à venir).
+
+### Ajouté — pipeline Livres (catégorie 12)
+
+- Détection et parsing des formats ebook : EPUB, PDF, CBZ/CBR, MP3
+  (audiobooks multi-chapitres), avec extraction de métadonnées locales
+  (ID3, EPUB OPF, cover embarquée, dossiers multi-tomes).
+- Lookup canonique **BnF** (SRU) + **Google Books** avec volume strict
+  (T1 ≠ T2 ≠ coffret), périodiques détectés et exclus du lookup,
+  fanscans gérés.
+- Fiche BBCode livre : cover (locale prioritaire, upload imgbb avec
+  fallback Imgur, redimensionnement), 4 previews de pages (PyMuPDF),
+  résumé, auteur(s), éditeur, lien Google Books moderne
+  (`/books/edition/`), ISBN/ARK BnF.
+- Release names livres charte Gemini : `Auteur.Titre.Annee.LANGUE.FORMAT-TEAM`,
+  dédup titre/année/auteur, tirets → points, teams entre parenthèses
+  (`PapriKa+`), source forcée + warning compliance si source manquante.
+- `unit3d_mapping.py` complété avec les TYPE_IDs 16-37 (Livres, Jeux,
+  Logiciels…) depuis les PDFs officiels Gemini.
+- `torrent_source` corrigé `Gemini` → `G3MINI` (fix divergence infohash).
+
+### Ajouté — divers
+
+- Raccourci bureau « Flox Uploader Dev » (toggle start/stop) + nouveau
+  logo SVG indigo.
+- Persistance des logs d'upload, fix `.torrent` shortened path.
+
+---
+
 ## [0.3.17] — 2026-05-20
 
 ### Corrigé
