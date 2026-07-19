@@ -93,7 +93,15 @@ Bref : sois un collaborateur qui pense, pas un exécutant qui transcrit.
 Version 1 de l’API
 L'API v1 de Imgbb vous permet de téléverser des images.
 
-f411e93b2b56db305e76f3d3a4704f37
+> ⚠️ **Clé API retirée (R2, audit 2026-07-19).** Une clé imgbb en clair était
+> committée ici sur le repo public FloxTool. Elle a été redactée. La clé
+> effective vit uniquement dans `.env` / la page Config (`IMGBB_API_KEY`),
+> jamais dans un fichier suivi par git.
+> **Action requise côté Louis : révoquer/régénérer l'ancienne clé sur
+> imgbb.com** (elle reste dans l'historique git tant qu'on ne réécrit pas
+> l'historique — la rotation est la vraie protection).
+
+<IMGBB_API_KEY — voir .env / page Config>
 
 
 Méthode de requête

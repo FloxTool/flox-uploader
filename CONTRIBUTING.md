@@ -40,6 +40,23 @@ pytest tests/ -v
 
 622 tests doivent passer en `v0.3.0`. Toute régression bloque le merge.
 
+## Sécurité — scan de secrets (recommandé)
+
+Un garde-fou empêche de committer une clé API / passkey en clair (`scripts/check_secrets.py`).
+Active-le une fois par clone :
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Le hook `pre-commit` scanne les fichiers stagés avant chaque commit et bloque si
+une clé 32-hex isolée, une affectation `*_API_KEY=…` ou une passkey d'URL
+`announce/…` est détectée. Pour un vrai faux positif : ajoute un marqueur
+placeholder (`<…>`, `…`, `example`) ou, en dernier recours, `git commit --no-verify`.
+
+Les secrets vivent **uniquement** dans `.env` / la page Config, jamais dans un
+fichier suivi par git.
+
 ## Design
 
 Avant d'ajouter un composant ou de modifier un style, lis `CHARTE.md`. Si la

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_components.html" import empty_state %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Erreur {{ status_code }} · Flox Uploader{% endblock %}
+
+{% block content %}
+{{ empty_state(
+    title=(title or ('Erreur ' ~ status_code)),
+    description=message,
+    icon_name=icon_name,
+    action_label='Retour à la Queue',
+    action_href='/queue',
+    secondary_label='Inbox',
+    secondary_href='/inbox'
+) }}
+{% endblock %}
