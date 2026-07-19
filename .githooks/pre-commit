@@ -1,0 +1,8 @@
+#!/bin/sh
+# Garde-fou scan de secrets (R2, audit 2026-07-19).
+# Active via : git config core.hooksPath .githooks
+python scripts/check_secrets.py || {
+    echo "" >&2
+    echo "Commit annule par le scan de secrets. Pour forcer (rare) : git commit --no-verify" >&2
+    exit 1
+}

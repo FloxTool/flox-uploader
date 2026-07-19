@@ -1007,6 +1007,25 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
     )
 
+    # R2 (audit AUDIT_2026-07-19) : garde-fou anti DNS-rebinding. L'app est
+    # local-only (bind 127.0.0.1) mais n'importe quel site web visite par
+    # l'user peut faire pointer un domaine vers 127.0.0.1 (rebinding) et
+    # POSTer vers l'API locale (upload reel, DELETE package...). Le header
+    # Host de la requete reboundee porte le domaine de l'attaquant, pas
+    # localhost -> on valide le Host contre une liste locale. En mode
+    # --insecure-host (l'user a explicitement expose hors localhost), on
+    # laisse passer (il a opte pour l'exposition reseau).
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+    _insecure = os.getenv("FLOX_UPLOADER_INSECURE_HOST", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    if _insecure:
+        _allowed_hosts = ["*"]
+    else:
+        # "testserver" = Host par defaut du TestClient Starlette (tests web).
+        _allowed_hosts = ["localhost", "127.0.0.1", "::1", "[::1]", "testserver"]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
+
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -1027,6 +1046,50 @@ def create_app() -> FastAPI:
     # explicitement dans chaque route.
     from .. import __version__ as _app_version
     templates.env.globals["app_version"] = _app_version
+
+    # R2 (audit AUDIT_2026-07-19) : page d'erreur stylee pour la NAVIGATION
+    # navigateur. Avant, un GET /packages/inexistant renvoyait le JSON brut
+    # {"detail": ...} affiche cru dans le navigateur. On garde le JSON pour
+    # les appels API/XHR (le JS front en depend) et on rend une page HTML
+    # propre pour une navigation top-level (Accept: text/html hors /api/).
+    from fastapi.responses import JSONResponse as _JSONResponse
+    from starlette.exceptions import HTTPException as _StarletteHTTPException
+
+    _ERROR_ICONS = {404: "search", 403: "lock", 400: "alert-triangle"}
+    _ERROR_TITLES = {
+        404: "Page introuvable",
+        403: "Accès refusé",
+        400: "Requête invalide",
+    }
+
+    @app.exception_handler(_StarletteHTTPException)
+    async def _render_http_exception(request: Request, exc: _StarletteHTTPException):
+        detail = exc.detail
+        path = request.url.path
+        accepts_html = "text/html" in (request.headers.get("accept") or "")
+        wants_json = path.startswith("/api/") or not accepts_html
+        if wants_json:
+            # Preserve strictement la forme FastAPI par defaut : {"detail": ...}
+            # (le JS front lit body.detail, y compris quand detail est un dict).
+            headers = getattr(exc, "headers", None)
+            return _JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": detail},
+                headers=headers,
+            )
+        # Navigation navigateur : page HTML stylee.
+        message = detail if isinstance(detail, str) else "Une erreur est survenue."
+        return templates.TemplateResponse(
+            request,
+            "error.html",
+            {
+                "status_code": exc.status_code,
+                "title": _ERROR_TITLES.get(exc.status_code),
+                "message": message,
+                "icon_name": _ERROR_ICONS.get(exc.status_code, "alert-triangle"),
+            },
+            status_code=exc.status_code,
+        )
 
     # Sprint 6 PLAN-V1 : auto-update v1. On expose `update_info()` aux
     # templates (cache disque, jamais de fetch synchrone — instantane) et
