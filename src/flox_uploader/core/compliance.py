@@ -49,9 +49,16 @@ class ComplianceIssue:
 # Constantes G3MINI (charte officielle PDF)
 # ============================================================
 
-# Teams qui ne peuvent faire QUE des encodes (pas de remux/raw).
-# Si on detecte un de ces teams sur un release type "REMUX" ou "BluRay" raw -> BLOCKING.
-TEAMS_ENCODE_ONLY: tuple[str, ...] = ("EXTREME",)
+# Teams dont les ENCODES sont INTERDITS (le contenu brut reste autorise).
+# Source : gemini/ "TEAMS INTERDITES" p.1 : "Cas particulier : EXTREME - Les
+# encodes sont interdites. Le contenu BRUT (REMUX / Full Blu-ray / WEB-DL)
+# reste autorise." => on bloque un release EXTREME s'il contient un token
+# d'encode (x264/x265/AV1/BDRip/WEBRip/...), pas l'inverse.
+TEAMS_NO_ENCODE: tuple[str, ...] = ("EXTREME",)
+
+# Retro-compat : ancien nom (semantique inversee, corrige en R1). Conserve
+# comme alias pour ne pas casser un eventuel import externe.
+TEAMS_ENCODE_ONLY: tuple[str, ...] = TEAMS_NO_ENCODE
 
 # Teams interdites par defaut, par profil de categorie.
 # Source : doc PDF G3MINI TR4CK3R - TEAMS INTERDITES (Sprint A v0.5.0 §8.2).
@@ -609,29 +616,43 @@ def _check_banned_team(
     return []
 
 
-def _check_extreme_team_only_encodes(
+# Tokens qui trahissent un ENCODE (re-encodage) : librairies d'encodeur et
+# sources derivees d'un rip re-encode. REMUX / WEB-DL / HDTV / Full Blu-ray
+# (codec natif HEVC/AVC/VC-1 sans x26x) = contenu BRUT, autorise pour EXTREME.
+_ENCODE_TOKENS = (
+    r"\bX264\b", r"\bX265\b", r"\bX266\b", r"\bAV1\b",
+    r"\bBDRIP\b", r"\bBRRIP\b", r"\bWEBRIP\b", r"\bHDRIP\b",
+    r"\bTVRIP\b", r"\bDVDRIP\b",
+)
+
+
+def _check_extreme_team_no_encode(
     release_name: str,
 ) -> list[ComplianceIssue]:
-    """C9 — La team EXTREME ne peut faire que des encodes (pas de remux/raw).
+    """C9 — La team EXTREME ne peut PAS faire d'encodes (le brut reste autorise).
 
-    Charte Gemini specifique : si on detecte EXTREME en team sur un REMUX
-    ou un BluRay raw, on bloque.
+    Source : gemini/ "TEAMS INTERDITES" p.1 : "Cas particulier : EXTREME - Les
+    encodes sont interdites. Le contenu BRUT (REMUX / Full Blu-ray / WEB-DL)
+    reste autorise." On bloque donc un release EXTREME qui contient un token
+    d'encode (x264/x265/AV1/BDRip/WEBRip/...) ; on laisse passer REMUX,
+    WEB-DL, HDTV et Full Blu-ray (codec natif sans x26x).
     """
     team = _extract_team(release_name)
-    if team.upper() not in {t.upper() for t in TEAMS_ENCODE_ONLY}:
+    if team.upper() not in {t.upper() for t in TEAMS_NO_ENCODE}:
         return []
     name_upper = release_name.upper()
-    is_remux_or_raw = (
-        "REMUX" in name_upper
-        or re.search(r"\bBLURAY\b", name_upper) and not re.search(r"\b(BDRIP|X264|X265|HEVC|AVC)\b", name_upper)
-    )
-    if is_remux_or_raw:
+    is_encode = any(re.search(tok, name_upper) for tok in _ENCODE_TOKENS)
+    if is_encode:
         return [ComplianceIssue(
             Severity.BLOCKING, "team_scope",
-            f"Team '{team}' n'est autorisee que pour les encodes "
-            "(BDRip / WEBRip). Detectee sur un REMUX ou BluRay raw."
+            f"Team '{team}' : les encodes sont interdits par le tracker. "
+            "Seul le contenu brut (REMUX / Full Blu-ray / WEB-DL) est autorise."
         )]
     return []
+
+
+# Retro-compat : ancien nom (semantique corrigee en R1).
+_check_extreme_team_only_encodes = _check_extreme_team_no_encode
 
 
 def _check_crf_in_range(mi_video: dict) -> list[ComplianceIssue]:
@@ -965,7 +986,7 @@ def check_compliance(
         issues.extend(_check_multi_team_in_pack(media_info, release_name))
         issues.extend(_check_russian_audio(audio))
         issues.extend(_check_banned_team(release_name, banned_teams))
-        issues.extend(_check_extreme_team_only_encodes(release_name))
+        issues.extend(_check_extreme_team_no_encode(release_name))
         issues.extend(_check_separate_subs(torrent_target))
 
         # --- Lot M : CRF hors plage (WARN uniquement, silence si absent) ---

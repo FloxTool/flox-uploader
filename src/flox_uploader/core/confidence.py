@@ -32,6 +32,7 @@ Buckets (5 niveaux) :
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,13 @@ PENALTY_TMDB_MISSING = 35          # Lot post-NOTES round 5 : 25 -> 35 (Louis :
                                    # pas de match TMDB = fiche BBCode incomplete,
                                    # vraiment penalisant pour la qualite finale)
 PENALTY_IMDB_MISSING = 15          # round 5 : 10 -> 15
+# R1 (audit AUDIT_2026-07-19) : garde-fou coherence nom<->TMDB pour la VIDEO
+# (le profil livre l'avait deja via BookConfidenceStrategy D.43, pas la video).
+# Cas reel corpus : "Blade.Runner.2049" matche le film de 1982 (id 78) et
+# s'affichait 98 "quasi parfait". Le titre matchait (identique) mais l'annee
+# divergait de 67 ans. -> on penalise l'ecart d'annee ET la divergence de titre.
+PENALTY_TMDB_YEAR_MISMATCH = 15    # annee du nom != annee TMDB (> 1 an d'ecart)
+PENALTY_TMDB_TITLE_MISMATCH = 15   # titre du nom tres different du titre TMDB
 PENALTY_LANG_AMBIGUOUS = 20
 PENALTY_LANG_NEEDS_CHOICE = 60     # variante FR ambigue + audio FR detecte = override requis
 PENALTY_COMPLIANCE_ISSUE = 15
@@ -236,6 +244,95 @@ def invalidate_score_cache(package_dir: Path | None = None) -> None:
 
 
 # ============================================================
+# R1 : coherence nom <-> TMDB (video)
+# ============================================================
+
+# Types de media consideres comme "video" (le garde-fou nom<->TMDB ne
+# s'applique qu'a eux ; les livres ont leur propre BookConfidenceStrategy).
+_VIDEO_MEDIA_TYPES = frozenset({"movie", "tv", "tv_series", "episode", "season"})
+
+
+def _title_similarity(a: str, b: str) -> float:
+    """Similarite [0..1] entre deux titres (minuscule, sans ponctuation/annee).
+
+    1.0 = identiques. Incomparable (l'un vide) -> 1.0 (on ne penalise pas)."""
+    from difflib import SequenceMatcher
+
+    def norm(s: str) -> str:
+        s = (s or "").lower().strip()
+        s = re.sub(r"[.,;:!?\(\)\[\]\{\}'’\"\-_]+", " ", s)
+        s = re.sub(r"\b(?:19|20)\d{2}\b", "", s)
+        return re.sub(r"\s+", " ", s).strip()
+
+    na, nb = norm(a), norm(b)
+    if not na or not nb:
+        return 1.0
+    return SequenceMatcher(None, na, nb).ratio()
+
+
+def _check_tmdb_name_coherence(
+    debug: dict, tmdb_ctx: dict,
+) -> list[tuple[str, int]]:
+    """R1 (audit AUDIT_2026-07-19) : detecte un match TMDB incoherent avec le
+    nom du fichier (mauvais film). Renvoie une liste de (label, penalite).
+
+    Deux signaux independants :
+    - ecart d'annee > 1 entre le nom et TMDB (cas Blade.Runner.2049 -> 1982) ;
+    - titre du nom tres different du titre TMDB (similarite < 0.5).
+    """
+    out: list[tuple[str, int]] = []
+    media_type = (debug.get("media_type") or "movie")
+    if media_type not in _VIDEO_MEDIA_TYPES:
+        return out
+
+    # --- Ecart d'annee ---
+    name_year = 0
+    try:
+        name_year = int(str(debug.get("year") or "").strip()[:4])
+    except (ValueError, TypeError):
+        name_year = 0
+    tmdb_year = 0
+    rd = str(tmdb_ctx.get("release_date") or tmdb_ctx.get("first_air_date") or "")
+    if len(rd) >= 4 and rd[:4].isdigit():
+        tmdb_year = int(rd[:4])
+    if name_year and tmdb_year and abs(name_year - tmdb_year) > 1:
+        out.append((
+            f"L'année du nom ({name_year}) ne correspond pas à l'année TMDB "
+            f"({tmdb_year}) — le match pointe probablement le mauvais film/série. "
+            f"Vérifie le titre ou force un TMDB ID manuel.",
+            PENALTY_TMDB_YEAR_MISMATCH,
+        ))
+
+    # --- Divergence de titre ---
+    parts = (
+        debug.get("title_parts_resolved")
+        or debug.get("title_parts_original")
+        or []
+    )
+    name_title = " ".join(p for p in parts if isinstance(p, str)).strip()
+    if name_title:
+        candidates = [
+            tmdb_ctx.get("title"),
+            tmdb_ctx.get("original_title"),
+            tmdb_ctx.get("name"),
+            tmdb_ctx.get("title_en"),
+        ]
+        sims = [
+            _title_similarity(name_title, c)
+            for c in candidates
+            if isinstance(c, str) and c.strip()
+        ]
+        if sims and max(sims) < 0.5:
+            out.append((
+                f"Le titre du nom (« {name_title} ») diffère fortement du titre "
+                f"TMDB trouvé — le match pointe probablement le mauvais film. "
+                f"Vérifie ou force un TMDB ID manuel.",
+                PENALTY_TMDB_TITLE_MISMATCH,
+            ))
+    return out
+
+
+# ============================================================
 # CALCUL
 # ============================================================
 
@@ -318,6 +415,14 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
             "ne pourront pas être affichées sur la fiche.",
             PENALTY_IMDB_MISSING,
         ))
+
+    # 3bis. R1 (audit AUDIT_2026-07-19) : coherence nom <-> TMDB. Un match
+    # existe (tmdb_id > 0) mais pointe peut-etre le mauvais film (annee/titre
+    # divergents). Cas reel : Blade.Runner.2049 matche le film de 1982.
+    if tmdb_id:
+        for label, pen in _check_tmdb_name_coherence(debug, tmdb_ctx):
+            score -= pen
+            penalties.append((label, pen))
 
     # 4. Langue ambigue
     # Source forte : flag lang_needs_choice ecrit par release_name quand le

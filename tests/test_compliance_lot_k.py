@@ -403,21 +403,60 @@ def test_c8_default_constants_present():
 
 
 # ============================================================
-# C9 — EXTREME team sur REMUX
+# C9 — EXTREME : encodes INTERDITS, contenu brut AUTORISE
 # ============================================================
+# Source : gemini/ "TEAMS INTERDITES" p.1 : "Cas particulier : EXTREME - Les
+# encodes sont interdites. Le contenu BRUT (REMUX / Full Blu-ray / WEB-DL)
+# reste autorise." Les 2 tests ci-dessous ont ete corriges en R1 (2026-07-19) :
+# ils codaient la semantique INVERSE (bug audit AUDIT_2026-07-19 finding C9),
+# ce qui avait laisse passer un encode EXTREME reel (upload #26362).
 
-def test_c9_extreme_on_encode_ok():
+def test_c9_extreme_on_encode_blocking():
+    """Un encode (x265) par EXTREME doit etre BLOQUE (charte : encodes interdits)."""
     issues = check_compliance(
         "Foo.2024.MULTi.VFF.1080p.BluRay.x265-EXTREME",
+        _mi(),
+    )
+    scope_issues = [i for i in issues if i.field == "team_scope"]
+    assert len(scope_issues) == 1
+    assert scope_issues[0].severity == Severity.BLOCKING
+
+
+def test_c9_extreme_on_remux_ok():
+    """Un REMUX (brut) par EXTREME est AUTORISE (charte : brut autorise)."""
+    issues = check_compliance(
+        "Foo.2024.MULTi.VFF.2160p.UHD.BluRay.REMUX.HEVC-EXTREME",
         _mi(),
     )
     scope_issues = [i for i in issues if i.field == "team_scope"]
     assert scope_issues == []
 
 
-def test_c9_extreme_on_remux_blocking():
+def test_c9_extreme_web_dl_ok():
+    """Un WEB-DL untouched par EXTREME est AUTORISE (charte : brut autorise)."""
     issues = check_compliance(
-        "Foo.2024.MULTi.VFF.2160p.UHD.BluRay.REMUX.HEVC-EXTREME",
+        "Foo.2024.MULTi.VFF.2160p.WEB-DL.DDP5.1.HEVC-EXTREME",
+        _mi(),
+    )
+    scope_issues = [i for i in issues if i.field == "team_scope"]
+    assert scope_issues == []
+
+
+def test_c9_extreme_web_x264_blocking_corpus_case():
+    """Cas reel corpus (Jeune.Juliette #26362) : WEB + x264 = encode -> BLOQUE."""
+    issues = check_compliance(
+        "Jeune.Juliette.2019.VOQ.1080p.WEB.AAC2.0.x264-EXTREME",
+        _mi(),
+    )
+    scope_issues = [i for i in issues if i.field == "team_scope"]
+    assert len(scope_issues) == 1
+    assert scope_issues[0].severity == Severity.BLOCKING
+
+
+def test_c9_extreme_bdrip_blocking():
+    """Un BDRip (rip re-encode) par EXTREME doit etre BLOQUE."""
+    issues = check_compliance(
+        "Foo.2024.MULTi.VFF.1080p.BDRip.x264-EXTREME",
         _mi(),
     )
     scope_issues = [i for i in issues if i.field == "team_scope"]

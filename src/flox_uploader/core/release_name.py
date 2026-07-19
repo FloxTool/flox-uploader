@@ -68,13 +68,34 @@ _AMBIGUOUS_DROP_TOKENS_UPPER: set[str] = {
 }
 
 
+_YEAR_TOKEN_RE = re.compile(r"(19|20)\d{2}")
+
+
+def _max_plausible_year() -> int:
+    """Borne haute d'une annee de sortie : annee courante + 1 (tolere les
+    sorties anticipees). Au-dela, un token 4-chiffres 19xx/20xx est un mot
+    du TITRE, pas une annee (ex. 'Blade Runner 2049', 'Death Race 2050')."""
+    from datetime import datetime
+    return datetime.now().year + 1
+
+
+def _is_year_token(tok: str) -> bool:
+    """R1 (audit AUDIT_2026-07-19) : True si `tok` est une annee de sortie
+    PLAUSIBLE (19xx/20xx, <= annee courante + 1). Empeche qu'un nombre du
+    titre situe dans le futur (2049) soit capte comme annee, ce qui envoyait
+    'Blade.Runner.2049' sur la fiche TMDB du 'Blade Runner' de 1982."""
+    if not _YEAR_TOKEN_RE.fullmatch(tok):
+        return False
+    return 1900 <= int(tok) <= _max_plausible_year()
+
+
 def _find_year_position(parts: list[str]) -> int:
     """Retourne l'index de l'annee dans `parts`, ou -1 si pas trouvee.
 
-    Annee = pattern strict 19xx ou 20xx, 4 chiffres seulement.
+    Annee = pattern strict 19xx ou 20xx PLAUSIBLE (<= annee courante + 1).
     """
     for i, p in enumerate(parts):
-        if re.fullmatch(r"(19|20)\d{2}", p):
+        if _is_year_token(p):
             return i
     return -1
 
@@ -676,7 +697,7 @@ def classify_parts(parts: list[str], rules: dict) -> dict:
         if any(p.match(part) for p in tv_tag_patterns):
             continue
 
-        if year is None and re.fullmatch(r"(19|20)\d{2}", part):
+        if year is None and _is_year_token(part):
             year = part
             continue
         if u in lang_map:
@@ -716,7 +737,7 @@ def classify_parts(parts: list[str], rules: dict) -> dict:
     # Ex: "1987 (2014)" → "1987" capté comme année, titre vide, "2014" droppé.
     if not title_parts and year and dropped:
         for i, d in enumerate(dropped):
-            if re.fullmatch(r"(19|20)\d{2}", d):
+            if _is_year_token(d):
                 title_parts = [year]
                 year = d
                 dropped = dropped[:i] + dropped[i + 1 :]

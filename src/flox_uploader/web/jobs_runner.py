@@ -571,9 +571,23 @@ def _try_dedup_check(package_dir: Path) -> None:
 
     # Si le pre-check anticipe a deja decide -> on saute (les fichiers du
     # package n'existent meme pas dans ce cas, load_package_bundle planterait).
+    #
+    # R1 (fix audit AUDIT_2026-07-19 finding C9/compliance) : on saute AUSSI les
+    # etats FAILED. Auparavant seul ABORTED_DUPLICATE etait skippe, si bien que
+    # la transition inconditionnelle vers PREPARED (plus bas) reanimait un
+    # package mis en FAILED par la compliance (ex. team bannie Slay3R) et le
+    # rendait uploadable. On ne reanime jamais un etat terminal ici.
     state_data = read_state(package_dir)
-    if state_data and state_data.state == PackageState.ABORTED_DUPLICATE:
-        print("[INFO] Dedup deja decide par le pre-check (ABORTED_DUPLICATE), skip.")
+    _DEDUP_SKIP_STATES = {
+        PackageState.ABORTED_DUPLICATE,
+        PackageState.FAILED,
+        PackageState.UPLOADED,
+    }
+    if state_data and state_data.state in _DEDUP_SKIP_STATES:
+        print(
+            f"[INFO] Dedup skip : etat terminal/decide "
+            f"({state_data.state.value}), pas de reanimation."
+        )
         return
 
     api_url = (os.getenv("TRACKER_API_URL") or "").strip()
