@@ -115,6 +115,8 @@ class PackageEntry:
     confidence_bucket: str = ""        # ready / review / blocked
     confidence_emoji: str = ""
     confidence_color: str = ""         # tailwind: green / amber / red / slate
+    # R5 : sous-type du bucket blocked ("action_required" / "refused" / None)
+    confidence_bucket_kind: str | None = None
     confidence_reasons: list[str] = field(default_factory=list)
     # Lot U.2 : penalties brutes (label, points) pour permettre a la queue
     # de coloriser chaque warning selon sa severite (rouge >=10pts, orange
@@ -364,6 +366,7 @@ def _list_packages() -> list[PackageEntry]:
             confidence_bucket=conf.bucket,
             confidence_emoji=conf.bucket_emoji,
             confidence_color=conf.bucket_color,
+            confidence_bucket_kind=conf.bucket_kind,
             confidence_reasons=conf.reasons,
             confidence_penalties=conf.penalties,
             confidence_short_labels=[
@@ -739,6 +742,7 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "confidence_bucket": conf.bucket,
         "confidence_emoji": conf.bucket_emoji,
         "confidence_color": conf.bucket_color,
+        "confidence_bucket_kind": conf.bucket_kind,
         "penalties": conf.penalties,
         # Signaux de fallback emis pendant la construction du release_name
         # (cf. naming_signals.py). Affichage : panneau dedie sur la page.

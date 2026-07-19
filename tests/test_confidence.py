@@ -68,11 +68,14 @@ def test_tmdb_missing_penalty(pkg: Path):
         "lang": ["VFF"],
     })
     s = compute_confidence_score(pkg)
-    # round 5 : TMDB -35 + IMDB -15 = 50
-    expected = 100 - PENALTY_TMDB_MISSING - PENALTY_IMDB_MISSING
+    # R5 (audit AUDIT_2026-07-19) : sans match TMDB, l'IMDb absent n'est PLUS
+    # re-penalise (consequence mecanique = double comptage). Seul -35 TMDB.
+    expected = 100 - PENALTY_TMDB_MISSING
     assert s.score == expected
     assert s.bucket in {"blocked", "review"}
     assert any("TMDB" in r for r in s.reasons)
+    # L'IMDb ne doit PAS apparaitre comme penalite separee quand TMDB manque.
+    assert not any("IMDb" in r for r in s.reasons)
 
 
 def test_imdb_missing_penalty_alone(pkg: Path):
@@ -150,14 +153,14 @@ def test_aborted_duplicate_blocks_score(pkg: Path):
 
 def test_multiple_penalties_stack(pkg: Path):
     _write_debug(pkg, {
-        "tmdb_context": {},  # TMDB missing -35, IMDB missing -15 (round 5)
+        "tmdb_context": {},  # TMDB missing -35 (IMDb non re-compte : R5)
         "lang": ["MULTi"],   # ambigu -20
     })
     s = compute_confidence_score(pkg)
+    # R5 : sans TMDB, plus de -15 IMDb (double comptage supprime).
     expected = (
         100
         - PENALTY_TMDB_MISSING
-        - PENALTY_IMDB_MISSING
         - PENALTY_LANG_AMBIGUOUS
     )
     assert s.score == expected
@@ -213,15 +216,15 @@ def test_bucket_thresholds():
         _write_debug(pkg, {"tmdb_context": {"movie_id": 1, "imdb_id": "tt1"}, "lang": ["VFF"]})
         invalidate_score_cache(pkg)
         assert compute_confidence_score(pkg).bucket == "parfait"
-        # Score 50 (TMDB -35 + IMDB -15) -> blocked (round 5)
+        # R5 : TMDB seul manquant (-35, plus de -15 IMDb) -> 65 -> review.
         _write_debug(pkg, {"tmdb_context": {}, "lang": ["VFF"]})
         invalidate_score_cache(pkg)
         s = compute_confidence_score(pkg)
-        assert s.score == 50
-        assert s.bucket == "blocked"
-        # Score 30 (gros cumul : -35 -15 -20) -> blocked
+        assert s.score == 65
+        assert s.bucket == "review"
+        # Gros cumul (-35 TMDB -20 MULTi) -> 45 -> blocked
         _write_debug(pkg, {"tmdb_context": {}, "lang": ["MULTi"]})
         invalidate_score_cache(pkg)
         s = compute_confidence_score(pkg)
-        assert s.score == 30
+        assert s.score == 45
         assert s.bucket == "blocked"

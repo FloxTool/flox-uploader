@@ -200,6 +200,14 @@ class ConfidenceScore:
     reasons: list[str] = field(default_factory=list)
     # Detail des penalites appliquees
     penalties: list[tuple[str, int]] = field(default_factory=list)
+    # R5 (audit AUDIT_2026-07-19) : sous-type du bucket "blocked", pour ne pas
+    # noyer sous un mur de rouge deux situations tres differentes :
+    #   - "action_required" : bloque mais REPARABLE en un geste (choisir la
+    #     variante FR). L'UI peut l'afficher en bleu « action requise ».
+    #   - "refused" : refus dur (team bannie, doublon certain, compliance
+    #     bloquante). Rouge.
+    # None pour les buckets non-bloques.
+    bucket_kind: str | None = None
 
 
 # ============================================================
@@ -382,12 +390,17 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
             bucket_color="red",
             reasons=[label],
             penalties=[(label, PENALTY_DUP_CERTAIN)],
+            bucket_kind="refused",   # doublon certain = refus dur
         )
         _score_cache[package_dir] = (sig, result)
         return result
 
     score = 100
     penalties: list[tuple[str, int]] = []
+    # R5 : True si un refus dur (compliance bloquante / doublon fort) plombe le
+    # package -> bucket_kind "refused". Sinon un blocked du a needs_choice est
+    # "action_required" (reparable en un geste).
+    has_hard_refusal = False
 
     # 2. TMDB
     tmdb_ctx = debug.get("tmdb_context") or {}
@@ -406,9 +419,14 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
             PENALTY_TMDB_MISSING,
         ))
 
-    # 3. IMDB
+    # 3. IMDB — R5 (audit AUDIT_2026-07-19) : on ne pénalise l'absence d'IMDb
+    # que si un match TMDB EXISTE (mais sans lien IMDb). Sans match TMDB, le
+    # -35 ci-dessus couvre déjà tout : re-pénaliser -15 pour l'IMDb absent
+    # (conséquence mécanique) était un double comptage qui plombait des
+    # packages au nom parfait (Die Hard 5, Totoro : 43-49 « blocked » alors
+    # que le seul problème est un match TMDB raté).
     imdb_id = tmdb_ctx.get("imdb_id") or ""
-    if not imdb_id:
+    if tmdb_id and not imdb_id:
         score -= PENALTY_IMDB_MISSING
         penalties.append((
             "Pas d'ID IMDb associé sur TMDB. La note IMDb / récompenses "
@@ -527,6 +545,7 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
             if len(label) > 220:
                 label = label[:220] + "..."
             if is_blocking:
+                has_hard_refusal = True   # R5 : refus dur (team bannie, etc.)
                 score -= PENALTY_COMPLIANCE_BLOCKING
                 penalties.append((
                     f"Règle G3MINI bloquante : {label}",
@@ -544,6 +563,7 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
     if state_data:
         dc = (state_data.dedup_confidence or "").strip().lower()
         if dc == "very_likely":
+            has_hard_refusal = True   # R5 : quasi-doublon = refus probable
             score -= PENALTY_DUP_VERY_LIKELY
             penalties.append((
                 "Très probablement un doublon. Vérifier avant l'upload "
@@ -598,6 +618,18 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
 
     reasons = [label for label, _ in penalties]
 
+    # R5 : sous-type du bucket "blocked". Si le seul obstacle est le choix de
+    # variante FR (needs_choice) et qu'il n'y a pas de refus dur, c'est une
+    # ACTION REQUISE (reparable en un geste), pas un refus.
+    bucket_kind = None
+    if bucket == "blocked":
+        if needs_choice and not has_hard_refusal:
+            bucket_kind = "action_required"
+        elif has_hard_refusal:
+            bucket_kind = "refused"
+        # sinon : blocked « bas score » ordinaire -> None (rouge normal, pas
+        # une action reparable ni un refus categorique).
+
     result = ConfidenceScore(
         score=score,
         bucket=bucket,
@@ -605,6 +637,7 @@ def compute_confidence_score(package_dir: Path) -> ConfidenceScore:
         bucket_color=color,
         reasons=reasons,
         penalties=penalties,
+        bucket_kind=bucket_kind,
     )
     _score_cache[package_dir] = (sig, result)
     return result
