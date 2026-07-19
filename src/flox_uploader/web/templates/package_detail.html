@@ -605,7 +605,7 @@
   {%- if lc == 'fr' and override_fr_flag -%}
     {{- override_fr_flag -}}
   {%- else -%}
-    {{- flags.get(lc, '🌐') -}}
+    {{- flags.get(lc, lc | upper) -}}
   {%- endif -%}
 {%- endmacro %}
 
