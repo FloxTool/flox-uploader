@@ -13,26 +13,30 @@
 ## 1. État du projet (contexte temporel)
 
 ### 🚧 GitHub Actions désactivé sur le compte `fremontlouis`
-**Statut au 2026-05-22.** Burst de ~73 workflow runs en 2 jours a déclenché
+**Statut au 2026-07-18 : toujours bloqué** (retesté via `workflow_dispatch`,
+même erreur). Burst de ~73 workflow runs en 2 jours (2026-05-20) a déclenché
 l'anti-abus de GitHub. L'erreur exacte :
 ```
 HTTP 422: Actions has been disabled for this user.
 ```
 **Conséquences** :
 - Le build CI Windows (`.github/workflows/build-windows.yml`) ne peut pas
-  tourner. **L'installeur officiel `FloxUploader-Setup-v0.4.0.exe` ne peut
-  pas être généré.**
+  tourner.
 - Les tests CI ne tournent pas sur les PRs (mais pytest local fonctionne).
 - **Le développement local reste 100% fonctionnel.** Coder, tester, créer
   des PRs, les merger via UI GitHub — tout marche.
 
-**Action en cours** : ticket de réintégration envoyé à GitHub Support
-(catégorie "Reinstatement request" sur compte personnel `fremontlouis`).
-Réponse Support : 7 jours ouvrables max.
+**Ticket support** : réponse de triage reçue 2026-07-18 (« reply to
+prioritize »), réponse envoyée le jour même. En attente de la review
+manuelle.
 
-**Workaround temporaire** : build local du `.exe` via PyInstaller possible
-(testé v0.3.17 OK), mais sans Inno Setup donc pas d'installeur officiel —
-juste un `.exe` portable.
+**Workaround adopté (v0.5.0)** : **build 100% local** qui réplique les
+étapes du workflow CI — PyInstaller (`packaging/flox_uploader.spec`) +
+Inno Setup local (`ISCC.exe packaging\flox_uploader.iss
+/DMyAppVersion=X.Y.Z`) + smoke tests. L'installeur et le ZIP portable
+sont ensuite **attachés manuellement à la GitHub Release** via
+`gh release create` — l'upload d'assets ne dépend pas d'Actions.
+Premier build livré ainsi : v0.5.0 (2026-07-18).
 
 ---
 
