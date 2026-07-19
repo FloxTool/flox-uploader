@@ -346,6 +346,27 @@ def cmd_serve(args: argparse.Namespace) -> int:
         print("           soit accessible a distance.")
         print("=" * 60)
 
+    # R4 (audit AUDIT_2026-07-19) : verrou single-instance par data dir. Sans
+    # lui, un double lancement de l'exe fait tourner deux schedulers sur le
+    # meme data/ (double-preparation + _reconcile_stuck_jobs qui tue les jobs
+    # de l'autre instance). On refuse de demarrer si une instance tient deja
+    # le verrou. Dev et prod ont des data dirs differents -> pas d'impact.
+    import atexit
+    from . import config
+    from .core.instance_lock import (
+        acquire_single_instance_lock,
+        release_single_instance_lock,
+    )
+    _data_dir = config.data_dir()
+    if not acquire_single_instance_lock(_data_dir):
+        die(
+            "Une autre instance de Flox Uploader tourne deja sur ce dossier de "
+            f"donnees ({_data_dir}). Ferme-la avant d'en lancer une nouvelle, "
+            "ou utilise un FLOX_UPLOADER_DATA_DIR different pour une 2e instance."
+        )
+        return 1
+    atexit.register(release_single_instance_lock)
+
     # Fallback de port si 8765 est occupe (cas frequent : uvicorn tourne deja
     # ailleurs, vieille session non terminee, etc.). On essaie jusqu'a +10.
     port = _find_free_port(host, args.port, max_tries=10)

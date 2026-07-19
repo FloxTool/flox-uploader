@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import die
-from .nfo import MEDIAINFO_BIN
+from .nfo import MEDIAINFO_BIN, MEDIAINFO_TIMEOUT_S
 
 
 # ============================================================
@@ -325,13 +325,23 @@ def parse_mediainfo_json(video_path: Path) -> dict:
     if not video_path.exists():
         die(f"Fichier vidéo introuvable pour MediaInfo : {video_path}")
 
-    result = subprocess.run(
-        [MEDIAINFO_BIN, "--Output=JSON", str(video_path)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    # R4 (audit AUDIT_2026-07-19) : timeout (cf. nfo.generate_nfo).
+    try:
+        result = subprocess.run(
+            [MEDIAINFO_BIN, "--Output=JSON", str(video_path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=MEDIAINFO_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        die(
+            f"MediaInfo (JSON) a depasse le timeout de {MEDIAINFO_TIMEOUT_S}s "
+            f"sur {video_path}. Fichier reseau injoignable, verrouille ou "
+            "corrompu ?"
+        )
+        return {}
     if result.returncode != 0:
         die(
             f"MediaInfo --Output=JSON a échoué (code {result.returncode}) : "

@@ -125,9 +125,18 @@ def _add_column_idempotent(conn: sqlite3.Connection, table: str, col: str, col_d
 
 @contextmanager
 def _connect() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(str(db_path()))
+    # R4 (audit AUDIT_2026-07-19) : timeout de connexion (defaut sqlite3 = 5 s)
+    # porte a 30 s pour encaisser la concurrence uvicorn (thread requete) +
+    # worker (thread scheduler) sur un batch de 200 jobs, au lieu de lever
+    # "database is locked" au bout de 5 s.
+    conn = sqlite3.connect(str(db_path()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
+        # WAL : lecteurs et ecrivain ne se bloquent plus mutuellement (le
+        # scheduler ecrit pendant que l'UI lit le snapshot). busy_timeout
+        # complete le timeout de connect() au niveau du moteur SQLite.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.executescript(_SCHEMA)
         # Migrations idempotentes : ajout de colonnes si absentes.
         # On lit d'abord les colonnes existantes pour eviter l'ALTER inutile.
@@ -545,7 +554,11 @@ def flush_pending_jobs() -> int:
 
 def get_next_pending_job() -> PendingJob | None:
     """Lot F.2 : retourne le prochain job a executer (status='pending' ET
-    non pause), trie par priority_order ASC puis id ASC. None si rien."""
+    non pause), trie par priority_order ASC puis id ASC. None si rien.
+
+    LECTURE SEULE (peek) : ne reserve PAS le job. Pour le scheduler, utiliser
+    `claim_next_pending_job()` qui fait une reservation atomique.
+    """
     with _connect() as conn:
         row = conn.execute(
             "SELECT * FROM pending_jobs "
@@ -553,6 +566,42 @@ def get_next_pending_job() -> PendingJob | None:
             "ORDER BY priority_order ASC, id ASC LIMIT 1"
         ).fetchone()
         return _row_to_job(row) if row else None
+
+
+def claim_next_pending_job() -> PendingJob | None:
+    """R4 (audit AUDIT_2026-07-19) : reserve ATOMIQUEMENT le prochain job.
+
+    SELECT + UPDATE status='preparing' dans une seule transaction write-locked
+    (`BEGIN IMMEDIATE`). Empeche deux process/threads (double lancement de
+    l'app, dev+prod sur le meme data/) de piocher le MEME job et de le
+    preparer deux fois. Retourne le job reserve, ou None si rien a faire.
+    """
+    with _connect() as conn:
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError:
+            # Deja dans une transaction implicite : on continue, le write-lock
+            # sera pris au premier UPDATE de toute facon.
+            pass
+        row = conn.execute(
+            "SELECT * FROM pending_jobs "
+            "WHERE status = 'pending' AND is_paused = 0 "
+            "ORDER BY priority_order ASC, id ASC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        cur = conn.execute(
+            "UPDATE pending_jobs SET status = 'preparing', updated_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (_now_iso(), row["id"]),
+        )
+        if cur.rowcount != 1:
+            # Un autre worker l'a reserve entre le SELECT et l'UPDATE.
+            return None
+        claimed = conn.execute(
+            "SELECT * FROM pending_jobs WHERE id = ?", (row["id"],)
+        ).fetchone()
+        return _row_to_job(claimed) if claimed else None
 
 
 def find_job_for_package(package_dir: str) -> PendingJob | None:

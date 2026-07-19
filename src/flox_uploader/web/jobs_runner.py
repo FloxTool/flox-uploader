@@ -22,6 +22,7 @@ pour permettre le suivi via SSE. Le contenu ecrit passe par un
 from __future__ import annotations
 
 import contextlib
+import os
 import threading
 import time
 import traceback
@@ -88,6 +89,15 @@ import sys
 
 _running_procs: dict[int, subprocess.Popen] = {}
 _running_procs_lock = threading.Lock()
+
+# R4 (audit AUDIT_2026-07-19) : garde-fou de duree max d'une preparation (le
+# hashing torf d'un tres gros fichier peut prendre plusieurs minutes ; 2h est
+# large). Au-dela, le watchdog tue le subprocess et marque le job failed pour
+# que le batch continue. Configurable via env pour du stockage tres lent.
+try:
+    JOB_PREPARE_TIMEOUT_S = int(os.getenv("FLOX_JOB_PREPARE_TIMEOUT_S", "7200"))
+except ValueError:
+    JOB_PREPARE_TIMEOUT_S = 7200
 # Snapshot des dirs upload_packages AVANT le launch d'un job, pour
 # pouvoir diff apres kill et trouver le partial dir a supprimer.
 _pre_launch_pkg_snapshot: dict[int, set[str]] = {}
@@ -143,10 +153,13 @@ def _scheduler_loop() -> None:
                 traceback.print_exc()
             continue  # repique immediatement (re-check upload puis prepare)
 
-        # 2. Prepare suivant (respect is_paused + priority_order)
+        # 2. Prepare suivant (respect is_paused + priority_order).
+        # R4 : reservation ATOMIQUE (claim) au lieu d'un simple peek, pour
+        # qu'un 2e process (double lancement / dev+prod) ne pioche pas le
+        # meme job. Le job revient deja en status='preparing'.
         next_job = None
         try:
-            next_job = jobs_db.get_next_pending_job()
+            next_job = jobs_db.claim_next_pending_job()
         except Exception:
             traceback.print_exc()
         if next_job is not None:
@@ -495,7 +508,29 @@ def _run_prepare_job(job_id: int) -> None:
             with _running_procs_lock:
                 _running_procs[job_id] = proc
             try:
-                return_code = proc.wait()
+                # R4 (audit AUDIT_2026-07-19) : watchdog. Sans timeout, un
+                # subprocess prepare bloque (fichier reseau injoignable, hang
+                # imprevu) fige a jamais le worker mono-thread et tout le batch.
+                # On tue le process apres JOB_PREPARE_TIMEOUT_S et on marque le
+                # job failed, puis le scheduler passe au suivant.
+                try:
+                    return_code = proc.wait(timeout=JOB_PREPARE_TIMEOUT_S)
+                except subprocess.TimeoutExpired:
+                    _append_log(
+                        log_file,
+                        f"\n[TIMEOUT] Preparation depassee "
+                        f"({JOB_PREPARE_TIMEOUT_S}s) — process tue.\n",
+                    )
+                    proc.kill()
+                    with contextlib.suppress(Exception):
+                        proc.wait(timeout=10)
+                    jobs_db.update_job(
+                        job_id, status="failed",
+                        error=f"Timeout preparation ({JOB_PREPARE_TIMEOUT_S}s)",
+                    )
+                    _pre_launch_pkg_snapshot.pop(job_id, None)
+                    _cancelled_job_ids.discard(job_id)
+                    return
             finally:
                 with _running_procs_lock:
                     _running_procs.pop(job_id, None)

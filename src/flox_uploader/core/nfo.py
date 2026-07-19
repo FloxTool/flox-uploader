@@ -60,6 +60,14 @@ def _resolve_mediainfo_bin() -> str:
 # si besoin (ex: tests).
 MEDIAINFO_BIN = _resolve_mediainfo_bin()
 
+# R4 (audit AUDIT_2026-07-19) : timeout des appels MediaInfo sur un fichier
+# (protege le worker mono-thread d'un fichier reseau/verrouille qui bloque).
+# Configurable via env pour les tres gros fichiers sur stockage lent.
+try:
+    MEDIAINFO_TIMEOUT_S = int(os.getenv("FLOX_MEDIAINFO_TIMEOUT_S", "300"))
+except ValueError:
+    MEDIAINFO_TIMEOUT_S = 300
+
 
 def check_mediainfo_available() -> tuple[bool, str]:
     """Health check : appelle `mediainfo --Version` et retourne (ok, info).
@@ -132,13 +140,26 @@ def generate_nfo(video_path: Path, output_nfo: Path) -> None:
     if not video_path.exists():
         die(f"Fichier vidéo introuvable pour MediaInfo : {video_path}")
 
-    result = subprocess.run(
-        [MEDIAINFO_BIN, "--Output=TEXT", str(video_path)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    # R4 (audit AUDIT_2026-07-19) : timeout obligatoire. Sans lui, un fichier
+    # sur un partage reseau devenu injoignable ou verrouille par l'antivirus
+    # fait bloquer MediaInfo indefiniment -> le job « preparing » ne rend
+    # jamais la main -> tout le batch (worker mono-thread) est gele.
+    try:
+        result = subprocess.run(
+            [MEDIAINFO_BIN, "--Output=TEXT", str(video_path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=MEDIAINFO_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        die(
+            f"MediaInfo a depasse le timeout de {MEDIAINFO_TIMEOUT_S}s sur "
+            f"{video_path}. Fichier sur un partage reseau injoignable, "
+            "verrouille (antivirus), ou corrompu ?"
+        )
+        return
     if result.returncode != 0:
         die(
             f"MediaInfo a échoué (code {result.returncode}) : "
