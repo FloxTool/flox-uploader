@@ -277,9 +277,17 @@
             }
         }
         .tu-cmdk-hint {
-            animation: tu-cmdk-pulse 2.2s ease-in-out infinite;
+            /* R6 (audit AUDIT_2026-07-19) : borne a 4 iterations au lieu de
+               `infinite`. En infinite, un user qui n'ouvre jamais la palette
+               avait un repaint perpetuel sur CHAQUE page (distraction +
+               compositor jamais au repos). 4 pulses attirent l'oeil au load
+               puis l'element se fige. */
+            animation: tu-cmdk-pulse 2.2s ease-in-out 4;
             border-color: rgba(var(--tu-primary), 0.5) !important;
             color: rgb(165, 180, 252) !important;  /* indigo-300 */
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tu-cmdk-hint { animation: none; }
         }
 
         /* Spinner inline (pour les boutons en loading state).

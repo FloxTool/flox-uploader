@@ -74,6 +74,28 @@
     {% endfor %}
 </form>
 
+{# R7 (audit AUDIT_2026-07-19) : carte « Mes données » — backup/export. #}
+<div class="max-w-2xl mb-24 mt-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
+    <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100 inline-flex items-center gap-2 mb-1">
+        {{ icon('shield-check', size='sm') }} Mes données
+    </h3>
+    <p class="text-xs text-slate-500 dark:text-slate-400 mb-3">
+        Ta config (clés, passkey) et ton historique de packages vivent dans un
+        seul dossier. Exporte-les en ZIP pour ne rien perdre en cas de
+        réinstallation ou de changement de PC. <strong>Le ZIP contient tes clés
+        — garde-le privé.</strong>
+    </p>
+    <dl class="text-xs text-slate-600 dark:text-slate-300 space-y-1 mb-4">
+        <div class="flex gap-2"><dt class="text-slate-400 w-28">Dossier</dt><dd id="data-dir" class="font-mono break-all">…</dd></div>
+        <div class="flex gap-2"><dt class="text-slate-400 w-28">Packages</dt><dd id="data-pkgs">…</dd></div>
+        <div class="flex gap-2"><dt class="text-slate-400 w-28">Taille backup</dt><dd id="data-size">…</dd></div>
+    </dl>
+    <a href="/api/data/export" download
+       class="interactive inline-flex items-center gap-2 h-8 px-3 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700">
+        {{ icon('download', size='sm') }} Exporter un backup (ZIP)
+    </a>
+</div>
+
 {# Sticky action bar (en bas) — extrait du formulaire pour rester visible #}
 <div class="fixed bottom-0 right-0 left-0 md:left-60 bg-white/95 dark:bg-slate-950/95 backdrop-blur-sm border-t border-slate-200 dark:border-slate-800 z-20 px-4 md:px-8 py-3">
     <div class="max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
@@ -85,6 +107,24 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// R7 : remplit la carte « Mes données » via /api/data/info.
+(function() {
+    function fmtBytes(n) {
+        if (!n) return '0 o';
+        const u = ['o', 'Ko', 'Mo', 'Go']; let i = 0; let v = n;
+        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+        return v.toFixed(v < 10 && i > 0 ? 1 : 0) + ' ' + u[i];
+    }
+    fetch('/api/data/info').then(r => r.ok ? r.json() : null).then(d => {
+        if (!d) return;
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        set('data-dir', d.data_dir);
+        set('data-pkgs', d.package_count + ' package' + (d.package_count > 1 ? 's' : ''));
+        set('data-size', fmtBytes(d.backup_bytes) + ' (total dossier : ' + fmtBytes(d.total_bytes) + ')');
+    }).catch(() => {});
+})();
+</script>
 <script>
 (function() {
     const SECRET_PLACEHOLDER = '***';

@@ -115,6 +115,8 @@ class PackageEntry:
     confidence_bucket: str = ""        # ready / review / blocked
     confidence_emoji: str = ""
     confidence_color: str = ""         # tailwind: green / amber / red / slate
+    # R5 : sous-type du bucket blocked ("action_required" / "refused" / None)
+    confidence_bucket_kind: str | None = None
     confidence_reasons: list[str] = field(default_factory=list)
     # Lot U.2 : penalties brutes (label, points) pour permettre a la queue
     # de coloriser chaque warning selon sa severite (rouge >=10pts, orange
@@ -364,6 +366,7 @@ def _list_packages() -> list[PackageEntry]:
             confidence_bucket=conf.bucket,
             confidence_emoji=conf.bucket_emoji,
             confidence_color=conf.bucket_color,
+            confidence_bucket_kind=conf.bucket_kind,
             confidence_reasons=conf.reasons,
             confidence_penalties=conf.penalties,
             confidence_short_labels=[
@@ -739,6 +742,7 @@ def _load_package_detail(name: str) -> dict[str, Any]:
         "confidence_bucket": conf.bucket,
         "confidence_emoji": conf.bucket_emoji,
         "confidence_color": conf.bucket_color,
+        "confidence_bucket_kind": conf.bucket_kind,
         "penalties": conf.penalties,
         # Signaux de fallback emis pendant la construction du release_name
         # (cf. naming_signals.py). Affichage : panneau dedie sur la page.
@@ -1804,6 +1808,89 @@ def create_app() -> FastAPI:
         """
         from ..core.diagnostic import collect_diagnostic
         return collect_diagnostic().to_dict()
+
+    # R7 (audit AUDIT_2026-07-19) : backup / export des donnees. Comble le trou
+    # « perte disque = perte passkey + historique » : aucun moyen de sauvegarder
+    # sa config et son historique. On expose la taille + un export ZIP.
+    # Dossiers/fichiers exclus du backup : volumineux ou regenerables.
+    _BACKUP_EXCLUDE_DIRS = {"temp", "jobs", "torrents_to_seed"}
+    _BACKUP_MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 Mo : on saute les gros previews
+
+    def _iter_backup_files():
+        """Genere (path_absolu, arcname_relatif) des fichiers a sauvegarder."""
+        root = config.data_dir()
+        if not root.is_dir():
+            return
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root)
+            # Skip les dossiers exclus (au 1er niveau du chemin relatif).
+            if rel.parts and rel.parts[0] in _BACKUP_EXCLUDE_DIRS:
+                continue
+            # Skip les .log et les fichiers trop gros (previews, covers lourdes).
+            if path.suffix.lower() == ".log":
+                continue
+            try:
+                if path.stat().st_size > _BACKUP_MAX_FILE_BYTES:
+                    continue
+            except OSError:
+                continue
+            yield path, str(rel).replace("\\", "/")
+
+    @app.get("/api/data/info")
+    def api_data_info():
+        """Taille et localisation du dossier de donnees (carte « Mes données »)."""
+        root = config.data_dir()
+        total = 0
+        backup_total = 0
+        pkg_count = 0
+        for path in root.rglob("*") if root.is_dir() else []:
+            if not path.is_file():
+                continue
+            try:
+                total += path.stat().st_size
+            except OSError:
+                pass
+        for path, _arc in _iter_backup_files():
+            try:
+                backup_total += path.stat().st_size
+            except OSError:
+                pass
+        pkgs = config.packages_dir()
+        if pkgs.is_dir():
+            pkg_count = sum(
+                1 for p in pkgs.iterdir() if (p / "package_state.json").is_file()
+            )
+        return {
+            "data_dir": str(root),
+            "total_bytes": total,
+            "backup_bytes": backup_total,
+            "package_count": pkg_count,
+        }
+
+    @app.get("/api/data/export")
+    def api_data_export():
+        """Export ZIP (config + historique) pour backup. Streaming, sans les
+        gros fichiers/logs (cf. _iter_backup_files). Contient le .env (passkey/
+        cles) : c'est un backup personnel, a garder prive."""
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path, arcname in _iter_backup_files():
+                try:
+                    zf.write(path, arcname)
+                except OSError:
+                    continue
+        buf.seek(0)
+        headers = {
+            "Content-Disposition": 'attachment; filename="flox-uploader-backup.zip"'
+        }
+        return StreamingResponse(
+            iter([buf.getvalue()]), media_type="application/zip", headers=headers,
+        )
 
     @app.post("/api/update-info/refresh")
     def api_update_info_refresh():

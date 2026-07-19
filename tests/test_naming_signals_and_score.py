@@ -168,12 +168,15 @@ def test_bucket_good_at_85(tmp_path):
     assert conf.bucket_color == "yellow"
 
 
-def test_bucket_blocked_when_no_tmdb_no_imdb(tmp_path):
-    """Round 5 : TMDB missing -35 + IMDB missing -15 = 50 -> blocked."""
+def test_bucket_review_when_no_tmdb_match(tmp_path):
+    """R5 (audit AUDIT_2026-07-19) : sans match TMDB, seul -35 s'applique
+    (l'IMDb absent n'est plus re-compte). 100-35 = 65 -> review (verifier),
+    plus « blocked » : un nom bien forme avec juste un TMDB rate est
+    reviewable, pas a overrider."""
     pkg = _make_pkg(tmp_path, {})  # pas de tmdb_context
     conf = compute_confidence_score(pkg)
-    assert conf.score == 50
-    assert conf.bucket == "blocked"
+    assert conf.score == 65
+    assert conf.bucket == "review"
 
 
 def test_bucket_blocked_dup_certain(tmp_path):
@@ -240,13 +243,13 @@ def test_real_case_seven_samurai_with_override(tmp_path):
     assert conf.bucket == "perfect"
 
 
-def test_real_case_no_tmdb_match_blocks_to_blocked(tmp_path):
-    """Sept Samourais sans override : TMDB rien (-35) + IMDB (-15) -> 50 = blocked."""
+def test_real_case_no_tmdb_match_reviews(tmp_path):
+    """Sept Samourais sans override : TMDB rien (-35). R5 : plus de -15 IMDb
+    (double comptage). 100-35 = 65 -> review (a verifier)."""
     pkg = _make_pkg(tmp_path, {})
     conf = compute_confidence_score(pkg)
-    # Round 5 : 100 - 35 - 15 = 50
-    assert conf.score == 50
-    assert conf.bucket == "blocked"
+    assert conf.score == 65
+    assert conf.bucket == "review"
 
 
 # ============================================================
@@ -256,7 +259,7 @@ def test_real_case_no_tmdb_match_blocks_to_blocked(tmp_path):
 def test_mixed_soft_and_hard_penalties_accumulate(tmp_path):
     """Verifie que les penalites soft s'ajoutent aux penalites hard."""
     debug_data = {
-        # Round 5 : pas de tmdb_context -> -35 (TMDB) -15 (IMDB)
+        # R5 : pas de tmdb_context -> -35 (TMDB seul, plus de -15 IMDb)
         "naming_signals": {
             ns.SIG_LANG_INFERRED_FROM_NFO: True,    # -3
             ns.SIG_RESOLUTION_INFERRED: True,       # -2
@@ -264,8 +267,8 @@ def test_mixed_soft_and_hard_penalties_accumulate(tmp_path):
     }
     pkg = _make_pkg(tmp_path, debug_data)
     conf = compute_confidence_score(pkg)
-    # 100 - 35 - 15 - 3 - 2 = 45
-    assert conf.score == 45
+    # 100 - 35 - 3 - 2 = 60
+    assert conf.score == 60
     # Le label soft est present dans les reasons. On cherche un mot stable
     # des nouveaux libellés user-friendly : "automatiquement" (cf. SIG_LANG_INFERRED_FROM_NFO)
     # et "MediaInfo" (cf. SIG_RESOLUTION_INFERRED).
