@@ -132,11 +132,21 @@ def _connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(str(db_path()), timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
-        # WAL : lecteurs et ecrivain ne se bloquent plus mutuellement (le
-        # scheduler ecrit pendant que l'UI lit le snapshot). busy_timeout
-        # complete le timeout de connect() au niveau du moteur SQLite.
-        conn.execute("PRAGMA journal_mode=WAL")
+        # busy_timeout D'ABORD : les requetes concurrentes attendent au lieu de
+        # lever "database is locked" immediatement.
         conn.execute("PRAGMA busy_timeout=30000")
+        # WAL : lecteurs et ecrivain ne se bloquent plus mutuellement (le
+        # scheduler ecrit pendant que l'UI lit le snapshot). Le mode WAL
+        # PERSISTE dans le fichier : il suffit qu'une connexion le pose une
+        # fois. Best-effort : la bascule journal_mode NE respecte PAS le
+        # busy_timeout (elle exige un acces exclusif) et peut lever
+        # OperationalError si une autre connexion est ouverte (cas du full
+        # test-suite / worker+UI). On avale : WAL sera actif via la connexion
+        # qui a reussi, et de toute facon busy_timeout couvre la concurrence.
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            pass
         conn.executescript(_SCHEMA)
         # Migrations idempotentes : ajout de colonnes si absentes.
         # On lit d'abord les colonnes existantes pour eviter l'ALTER inutile.

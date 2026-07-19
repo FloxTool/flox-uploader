@@ -43,14 +43,17 @@ d'un fichier vidéo en entrée, il génère :
 **Stack** : Python 3.10+, FastAPI + Jinja2 + Tailwind pour la web UI, SQLite pour la
 queue de jobs, `torf` pour les torrents, MediaInfo CLI pour les métadonnées vidéo.
 
-**Statut actuel (2026-05-22)** :
-- **Code v0.3.17** sur `main` (mergé), **772 tests verts** en local.
-- **Release v0.4.0** : prête côté code, build CI **bloqué** car GitHub Actions
-  est désactivé sur le compte `fremontlouis` (anti-abus déclenché par burst
-  de builds). Ticket de réintégration envoyé GitHub Support.
-- **v0.5.0 en planification** : extension multi-catégorie (livres, jeux,
-  sport, émission TV, logiciels, formations) via dégradation gracieuse.
-  **→ Plan canonique : [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md).**
+**Statut actuel → voir [`docs/STATUS.md`](docs/STATUS.md)** (source unique, chiffres
+régénérés par `scripts/status_snapshot.py` — ne plus mettre de chiffres périssables
+ici). En bref au 2026-07-19 :
+- **v0.5.0 publiée** (2026-07-18) : vidéo (films/séries + anim/docu) **et livres**
+  (BD/Manga/Audiobooks) livrés. ~1690 tests. Build **local** (GitHub Actions toujours
+  désactivé sur le compte — installeur produit à la main, cf. `docs/KNOWN_ISSUES.md §1`).
+- **À venir** : Jeux, Émission TV, Sport, Logiciels, Formations (multi-catégorie,
+  plan [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) — à amender, il liste ces catégories
+  comme non commencées).
+- **Remédiation audit en cours** : [`AUDIT_2026-07-19.md`](AUDIT_2026-07-19.md)
+  (vagues R1→R7 ; R1-R3 mergées).
 
 **Cible produit (court terme)** : application web UI packagée user-friendly
 (Windows .exe, Docker à venir) pour uploadeurs amateurs francophones. Tout
@@ -203,7 +206,7 @@ src/flox_uploader/
         ├── package_detail.html  # détail package (overrides, score, fallbacks)
         └── config.html          # édition .env
 
-tests/                           # 291 tests pytest
+tests/                           # suite pytest (compte -> docs/STATUS.md)
 ├── conftest.py
 ├── test_release_name_*.py       # 3 fichiers : phase2, real_cases (12), split_team
 ├── test_naming_signals_and_score.py  # Phase 3 : signaux + 5 buckets
@@ -512,7 +515,8 @@ forks Unit3D francophones.
 
 ## 10. Tests
 
-- **291 tests pytest, tous verts** (au 2026-05-06).
+- **Suite pytest** — nombre exact et à jour dans [`docs/STATUS.md`](docs/STATUS.md)
+  (généré). Ne pas remettre de compte figé ici.
 - Lancement : `python -m pytest tests/` (ou via venv : `.venv\Scripts\pytest`)
 - Coverage : non encore configurée (à faire dans la roadmap).
 
@@ -959,15 +963,11 @@ pas besoin de demander avant chaque commit. Le filet de sécurité = la PR
 
 ---
 
-*Dernière mise à jour : 2026-05-22 par Claude — bilan post-v0.3.17 + planification
-v0.5.0 multi-catégorie. Tests à cette date : 772/772 verts. Sprints v0.4.0 (PLAN-V1.md
-Sprints 1-8) livrés, release v0.4.0 bloquée par GitHub Actions désactivé (ticket
-réintégration envoyé). v0.5.0 planifiée dans [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) :
-extension multi-catégorie (livres BnF/Google Books, jeux IGDB/Steam, émissions TV
-TVmaze, sport TheSportsDB, logiciels/formations manuel+enrichissement opt-in) via
-dégradation gracieuse 4 barreaux. 7 PDFs Gemini officiels commités dans `gemini/`
-(sources de vérité). Découverte critique : TYPE_IDs 16-37 manquants dans
-`unit3d_mapping.py` (Jeux\*, Livres\*, Logiciels\*) — à compléter en Sprint A v0.5.0.*
+*Dernière mise à jour : 2026-07-19 par Claude — état courant déplacé vers
+[`docs/STATUS.md`](docs/STATUS.md) (source unique régénérée). v0.5.0 publiée
+(vidéo + livres). Remédiation audit [`AUDIT_2026-07-19.md`](AUDIT_2026-07-19.md)
+en cours (vagues R1→R7). Les chiffres de tests/version/routes ne sont plus figés
+ici : voir STATUS.md. Ne plus recopier de compteurs périssables dans ce fichier.*
 
 *Historique antérieur : 2026-05-07 (Lots K-S, web UI Phase 3c + bugs durs + auto-enrich
 + champs upload complets + UX/UI buckets 6 niveaux + BBCode parser).*

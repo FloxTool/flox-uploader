@@ -585,6 +585,13 @@
                             {{ icon('alert-triangle', size='sm') }}
                             <span class="tabular-nums">{{ p.confidence_score }}</span>
                         </span>
+                    {% elif p.confidence_bucket == 'blocked' and p.confidence_bucket_kind == 'action_required' %}
+                        {# R6 : blocked mais REPARABLE en un geste (choisir la variante FR).
+                           Bleu « action requise » plutot que rouge « refus ». #}
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800" data-tu-tooltip="Action requise : choisis la variante FR puis re-prépare. (score {{ p.confidence_score }})">
+                            {{ icon('wrench', size='sm') }}
+                            <span class="tabular-nums">{{ p.confidence_score }}</span>
+                        </span>
                     {% elif p.confidence_bucket == 'blocked' %}
                         <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-danger-50 dark:bg-danger-900/30 text-danger-700 dark:text-danger-300 ring-1 ring-inset ring-danger-200 dark:ring-danger-800" data-tu-tooltip="{{ tooltip }}">
                             {{ icon('x', size='sm') }}
