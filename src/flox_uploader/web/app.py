@@ -2802,6 +2802,10 @@ def create_app() -> FastAPI:
         status "queued" ; le client polle /api/packages/{name}/upload-status.
         """
         from .jobs_runner import submit_upload_job
+        from ..core.upload_orchestrator import (
+            get_blocking_compliance_messages,
+            resolve_torrent_path,
+        )
 
         target = _resolve_package_dir(name)
         state_data = read_state(target)
@@ -2822,13 +2826,36 @@ def create_app() -> FastAPI:
                 409,
                 "Package marque comme doublon. Active force_upload + fournis force_existing_id.",
             )
+        # R1 (audit AUDIT_2026-07-19) : garde-fou compliance a l'upload. On
+        # refuse en 409 tout package dont la conformite est BLOQUANTE (team
+        # bannie, encode EXTREME, MP3, etc.), meme si son state a ete reanime.
+        blocking_msgs = get_blocking_compliance_messages(target)
+        if blocking_msgs and not force_upload:
+            raise HTTPException(
+                409,
+                {
+                    "error": "compliance_blocking",
+                    "package": target.name,
+                    "messages": blocking_msgs,
+                    "message": (
+                        "Upload refuse : ce package viole une regle dure de la "
+                        "charte Gemini (" + " ; ".join(blocking_msgs) + "). "
+                        "Corrige le fichier/nom et re-prepare avant d'uploader."
+                    ),
+                },
+            )
         # Precondition critique : le .torrent doit exister sur disque. Le
         # pre-check anticipe peut avoir skip create_torrent quand un doublon
         # CERTAIN a ete detecte ; tant qu'on n'a pas re-prepare, l'upload
         # va planter. On retourne 409 explicite avec un message qui pointe
         # vers la solution (re-preparer).
-        torrent_file = target / f"{state_data.release_name}.torrent"
-        if not torrent_file.is_file():
+        #
+        # R1 : on utilise resolve_torrent_path (fallback D.46 pour les noms
+        # raccourcis Windows MAX_PATH) au lieu du nom exact — sinon 52 packages
+        # du corpus au .torrent raccourci se voyaient refuser l'upload avec un
+        # message accusant a tort un "doublon CERTAIN".
+        torrent_file = resolve_torrent_path(target, state_data.release_name)
+        if torrent_file is None:
             existing = (
                 f" (torrent existant ID {state_data.existing_torrent_id})"
                 if state_data.existing_torrent_id else ""
@@ -2841,11 +2868,12 @@ def create_app() -> FastAPI:
                     "state": state_data.state.value,
                     "existing_torrent_id": state_data.existing_torrent_id,
                     "message": (
-                        f"Le .torrent n'a pas ete genere lors de la "
-                        f"preparation parce qu'un doublon CERTAIN a ete "
-                        f"detecte sur le tracker{existing}. Re-prepare le "
-                        f"package (bouton 'Re-preparer' sur la page detail) "
-                        f"pour regenerer le .torrent, puis re-tente l'upload."
+                        f"Aucun .torrent exploitable dans le package{existing}. "
+                        f"Soit le pre-check a saute create_torrent (doublon "
+                        f"CERTAIN detecte), soit plusieurs .torrent coexistent. "
+                        f"Re-prepare le package (bouton 'Re-preparer' sur la "
+                        f"page detail) pour regenerer un .torrent unique, puis "
+                        f"re-tente l'upload."
                     ),
                 },
             )

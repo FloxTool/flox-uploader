@@ -160,3 +160,46 @@ Exemple de réponse (JSON)
 	"success": true,
 	"status": 200
 }
+
+---
+
+# 🔴 TRIAGE AUDIT 2026-07-19 (BLOQUANT + MAJEUR actionnables)
+
+> Bloc généré par l'audit `AUDIT_2026-07-19.md` (13 casquettes + vérif adversariale).
+> Voir le rapport pour les preuves complètes. À trier / arbitrer avant remédiation Phase 5.
+
+## BLOQUANT (13 — tous vérifiés à la main contre code+corpus+PDF)
+- [ ] **C9 EXTREME inversé** — bloque le brut autorisé, laisse passer l'encode interdit. `Jeune.Juliette.2019...x264-EXTREME` DÉJÀ uploadé (#26362) à score 100. `compliance.py:612-634`. (S)
+- [ ] **Blocage compliance annulé par dedup-check** — 29 packages team bannie (Slay3R) en `prepared` uploadables. `jobs_runner.py:558-621`. (S)
+- [ ] **Blade Runner 2049 → 1982** à 98 « quasi parfait » (2 agents). Regex année accepte 2049, jette 2017 ; aucun garde-fou nom↔TMDB vidéo. `release_name.py:679` + `confidence.py:295`. (M)
+- [ ] **split_team avale WEB-DL / E-AC3 / DTS-HD** — 7 noms fantaisistes ≥96, 1 uploadé. `naming/_helpers.py:243`. (M)
+- [ ] **season/épisode omis pour cats 6/14/15** (`if category_id==2` seul). Séries anim/docu/TV rejetées au POST. `gemini_api.py:355`. (S)
+- [ ] **Livres uploadés en type BDRip** (video type_id, book_type_id_for jamais au payload). `upload_orchestrator.py:456`. (M)
+- [ ] **Tag VFx écrasé par variante TMDB** (dict `vf_to_vo` mort) — film québécois VFQ→VOF à 100. `release_name.py:431`. (S)
+- [ ] **`_has_encode_library` tautologie** — 111 WEB corpus tous en x26x, PDF violé (WEB untouched = H.26x). `mediainfo_parser.py:88`. (M)
+- [ ] **Route web upload 409 sur 52 .torrent raccourcis** (fix D.46 non appliqué à la route). `app.py:2830`. (S)
+- [ ] **Aucun claim atomique de job + pas de single-instance** — double-claim + `database is locked` prouvés. `jobs_db.py:546`. (M)
+- [ ] **MediaInfo sans timeout + worker sans watchdog** — 1 fichier pourri gèle tout le batch. `nfo.py:135` + `jobs_runner.py:498`. (S)
+- [ ] **CLAUDE.md faux depuis 2 mois** (v0.5.0 « en planification », 772 tests) — injecté à chaque session. (M)
+- [ ] (rappel : le 13e = variante du Blade Runner côté score, même fix que ci-dessus)
+
+## MAJEUR (sélection — voir rapport §5 pour les 51)
+- [ ] **Clé API imgbb en clair dans NOTES.md** (ligne ~96), repo PUBLIC FloxTool → **rotation urgente** + retrait + scan secrets. (S)
+- [ ] **DNS-rebinding** : aucune validation Host → upload réel + DELETE drive-by-déclenchables. `app.py` (pas de TrustedHostMiddleware). (S)
+- [ ] **Upload ne re-vérifie jamais la compliance** — même un FAILED est uploadable via l'API. `app.py:2806` + `upload_orchestrator.py:702`. (S)
+- [ ] **Dry-run mute le state** (ABORTED_DUPLICATE/FAILED) malgré l'invariant documenté. `upload_orchestrator.py:763`. (S)
+- [ ] **Dedup TV non câblé** (`is_tv` déclaré `gemini_api.py:534`, jamais lu) — 2 épisodes différents = VERY_LIKELY. (S)
+- [ ] **Upload livre impossible** : `die()` sur `.mediainfo.nfo` manquant. `upload_orchestrator.py:215`. (M)
+- [ ] **74 packages sans SOURCE** (37 à ≥90, 13 uploadés) ; garde-fou D.48 ni rétroactif ni suffisant. (M)
+- [ ] **17 % des ≥95 ont un défaut charte** ; triple comptage TMDB (-51 à -71) plombe 42 packages corrects. `confidence.py:303`. (M)
+- [ ] **HDTV traité comme encode** (x26x) ; BRRip absent du mapping source. `release_name.py:578`. (S)
+- [ ] **/guide contredit la release** (« Ebooks : pas encore géré » alors que livrés). `guide.html:104`. (S)
+- [ ] **PLAN-MULTICAT jamais amendé** (48 sous-sprints livrés invisibles) + compteur tests faux 7 endroits. (S/M)
+- [ ] **Double instance destructrice** (pas de mutex + `_reconcile_stuck_jobs` marque « failed » les jobs de l'autre instance). `launcher.py`. (M)
+- [ ] **Money-path `upload_package` sans AUCUN test** + `create_app()` 2367 lignes + ~5000 l. JS inline non testé. (M/L)
+- [ ] **Faux co-auteur livre** (« Marc Levy, Sept Jours Pour ») toujours présent. `_scene_parser.py:755`. (S)
+- [ ] **File d'uploads 100 % en RAM** — restart pendant un batch = uploads oubliés. `jobs_runner.py:57`. (M)
+- [ ] **Perf queue O(n)** : 5,3 Mo HTML / 18 s à 590 packages ; snapshot 1,7 s toutes les 3 s. (M)
+
+## À NUANCER (faux positif détecté en vérif adversariale)
+- ⚠️ « Clé DOLBY.VISION morte » (B2) : SURÉVALUÉ — le mapping existe (`rules.json:74`), 101 packages DV du corpus gardent leur tag. Edge-case du stem `Dolby.Vision` non exercé → MINEUR.

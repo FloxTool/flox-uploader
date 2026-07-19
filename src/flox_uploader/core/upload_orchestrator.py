@@ -219,6 +219,41 @@ def _read_mediainfo(package_dir: Path, release_name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def resolve_torrent_path(package_dir: Path, release_name: str) -> Path | None:
+    """R1 (audit AUDIT_2026-07-19) : resout le .torrent physique SANS die().
+
+    Retourne le path exact `{release_name}.torrent` s'il existe, sinon — si le
+    package ne contient qu'UN seul .torrent — celui-ci (le nom a probablement
+    ete raccourci par le pipeline pour rester sous Windows MAX_PATH=260, fix
+    D.46). Retourne None si 0 ou si plusieurs .torrent (ambigu).
+
+    Utilise par la route web /upload (pour un 409 fiable qui n'accuse plus a
+    tort un "doublon CERTAIN" sur 52 packages au nom raccourci) et par
+    `_torrent_path_for` (qui, lui, die() avec un message contextuel).
+    """
+    exact = package_dir / f"{release_name}.torrent"
+    if exact.is_file():
+        return exact
+    try:
+        torrents = sorted([
+            t for t in package_dir.iterdir()
+            if t.is_file() and t.suffix.lower() == ".torrent"
+        ])
+    except (OSError, PermissionError):
+        return None
+    if len(torrents) == 1:
+        found = torrents[0]
+        if found.name != f"{release_name}.torrent":
+            print(
+                f"[INFO] .torrent trouve avec nom raccourci : '{found.name}' "
+                f"(attendu '{release_name}.torrent'). "
+                f"Le pipeline a raccourci pour rester sous Windows MAX_PATH=260. "
+                f"Le contenu interne (info.name) garde le release_name complet."
+            )
+        return found
+    return None
+
+
 def _torrent_path_for(package_dir: Path, release_name: str) -> Path:
     """Retourne le path du .torrent. Si absent, message d'erreur contextuel.
 
@@ -237,13 +272,11 @@ def _torrent_path_for(package_dir: Path, release_name: str) -> Path:
     sur disque. Avant : l'upload cherchait le nom EXACT et echouait. Apres :
     fallback sur "1 seul .torrent dans le package_dir" si le nom exact rate.
     """
-    p = package_dir / f"{release_name}.torrent"
-    if p.is_file():
-        return p
+    found = resolve_torrent_path(package_dir, release_name)
+    if found is not None:
+        return found
 
-    # Sprint D.46 : fallback dir scan. Si on a 1 SEUL .torrent dans le
-    # package_dir, on prend celui-la (le nom a probablement ete raccourci
-    # par _torrent_filename pour rentrer sous Windows MAX_PATH=260).
+    p = package_dir / f"{release_name}.torrent"
     try:
         torrents = sorted([
             t for t in package_dir.iterdir()
@@ -251,16 +284,6 @@ def _torrent_path_for(package_dir: Path, release_name: str) -> Path:
         ])
     except (OSError, PermissionError):
         torrents = []
-    if len(torrents) == 1:
-        found = torrents[0]
-        if found.name != f"{release_name}.torrent":
-            print(
-                f"[INFO] .torrent trouve avec nom raccourci : '{found.name}' "
-                f"(attendu '{release_name}.torrent'). "
-                f"Le pipeline a raccourci pour rester sous Windows MAX_PATH=260. "
-                f"Le contenu interne (info.name) garde le release_name complet."
-            )
-        return found
     if len(torrents) > 1:
         # Plusieurs .torrent : ambigu, on bail-out avec un message clair
         names = ", ".join(t.name for t in torrents)
@@ -330,6 +353,22 @@ def _read_debug_metadata(package_dir: Path) -> dict[str, Any]:
     except Exception as e:
         print(f"[WARN] debug.json illisible : {e}")
         return {}
+
+
+def get_blocking_compliance_messages(package_dir: Path) -> list[str]:
+    """R1 (audit AUDIT_2026-07-19) : relit les violations BLOCKING de conformite
+    persistees dans debug.json par process_one.
+
+    Sert de garde-fou a l'upload : meme si le state a ete manipule/reanime
+    (ex. bug dedup qui repassait un FAILED en PREPARED), un package dont le
+    debug.json contient des blocking_compliance_messages NE DOIT PAS partir
+    sur le tracker (ex. team bannie, encode EXTREME, MP3, etc.).
+    """
+    debug = _read_debug_metadata(package_dir)
+    raw = debug.get("blocking_compliance_messages") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(m) for m in raw if str(m).strip()]
 
 
 def _imdb_id_to_int(raw: Any) -> int:
@@ -699,6 +738,31 @@ def upload_package(
     Mode dry_run : ne POST rien, montre ce qu'il aurait fait.
     Mode reel : check duplicate, abort si doublon (sauf force avec ID), upload, download.
     """
+    # R1 (audit AUDIT_2026-07-19) : garde-fou compliance a l'upload, AVANT tout
+    # chargement (load_package_bundle peut die() sur un mediainfo manquant).
+    # Defense en profondeur — on refuse de POSTer un package dont la conformite
+    # a ete jugee BLOQUANTE lors de la preparation (team bannie, encode EXTREME,
+    # MP3, etc.), quel que soit son state courant. Meme en dry_run : simuler
+    # l'upload d'un package non conforme n'a pas de sens.
+    _current = read_state(package_dir)
+    if _current is not None and _current.state != PackageState.UPLOADED:
+        blocking_msgs = get_blocking_compliance_messages(package_dir)
+        if blocking_msgs and not cfg.force_upload:
+            joined = " ; ".join(blocking_msgs)
+            if _current.state != PackageState.FAILED:
+                transition(
+                    package_dir, PackageState.FAILED,
+                    note="upload refuse : conformite bloquante",
+                    last_error=f"Conformite Gemini bloquante : {joined}",
+                )
+            msg = (
+                "Upload refuse : le package viole une regle dure de la charte "
+                f"Gemini ({joined}). Corrige le fichier/nom et re-prepare, ou "
+                "force explicitement si tu sais ce que tu fais."
+            )
+            print(f"[BLOCKING] {msg}")
+            return UploadOutcome(final_state=PackageState.FAILED, message=msg)
+
     bundle = load_package_bundle(package_dir)
     client = GeminiClient(api_url=cfg.api_url, api_key=cfg.api_key)
 

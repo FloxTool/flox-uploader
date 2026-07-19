@@ -269,8 +269,17 @@ def split_team(name: str, default_team: str) -> tuple[str, str]:
         candidate = name[dash_pos + 1:].rstrip()
         if not candidate:
             continue
-        # Forme valide : alphanumerique + tirets/points/underscore, pas double-tiret
-        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.+\-]*$", candidate):
+        # R1 (audit AUDIT_2026-07-19) : une team Gemini est un token UNIQUE
+        # sans point (le point est le separateur de tokens de la charte).
+        # Si le candidat contient un ".", c'est qu'on a coupe au milieu de
+        # tokens techniques a tiret (ex. dash de "WEB-DL" -> candidat
+        # "DL.DDP5.1.H.265-FLUX", ou dash de "DTS-HD" -> "HD.MA.5.1-AZAZE",
+        # ou dash de "AC-3" -> "3.5.1-NoTag"). On rejette et on essaie le
+        # dash suivant, qui donnera la vraie team (FLUX / AZAZE / NoTag).
+        if "." in candidate:
+            continue
+        # Forme valide : alphanumerique + tirets/underscore/plus, pas double-tiret
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_+\-]*$", candidate):
             continue
         if "--" in candidate:
             continue
