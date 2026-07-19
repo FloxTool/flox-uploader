@@ -858,7 +858,10 @@ def _list_quick_roots() -> list[dict[str, str]]:
     roots: list[dict[str, str]] = []
     seen: set[str] = set()
 
-    def _add(label: str, path: Path) -> None:
+    # CHARTE §9 : pas d'emoji decoratif dans l'UI. On expose un `icon` (nom
+    # Lucide, rendu par la macro icon() cote template) au lieu d'un prefixe
+    # emoji dans le label.
+    def _add(label: str, path: Path, icon: str = "folder") -> None:
         try:
             resolved = str(path.resolve())
         except OSError:
@@ -866,24 +869,24 @@ def _list_quick_roots() -> list[dict[str, str]]:
         if resolved in seen or not path.exists():
             return
         seen.add(resolved)
-        roots.append({"label": label, "path": resolved})
+        roots.append({"label": label, "path": resolved, "icon": icon})
 
     # Home utilisateur en priorite
     home = Path.home()
-    _add("🏠 Home", home)
+    _add("Home", home, icon="home")
 
     # Drives Windows
     if os.name == "nt":
         for letter in string.ascii_uppercase:
             d = Path(f"{letter}:/")
             if d.exists():
-                _add(f"💾 {letter}:\\", d)
+                _add(f"{letter}:\\", d, icon="hard-drive")
     else:
         # Sur Linux/Mac : /, /mnt
-        _add("/", Path("/"))
+        _add("/", Path("/"), icon="hard-drive")
         for mnt in (Path("/mnt"), Path("/media")):
             if mnt.exists():
-                _add(f"📁 {mnt.name}/", mnt)
+                _add(f"{mnt.name}/", mnt, icon="folder")
 
     # Favoris custom via env (BROWSE_ROOTS=X:\;Y:\Films;...)
     custom = os.getenv("BROWSE_ROOTS", "").strip()
@@ -893,7 +896,7 @@ def _list_quick_roots() -> list[dict[str, str]]:
             if raw:
                 p = Path(raw)
                 if p.is_dir():
-                    _add(f"⭐ {p.name or str(p)}", p)
+                    _add(f"{p.name or str(p)}", p, icon="star")
 
     return roots
 

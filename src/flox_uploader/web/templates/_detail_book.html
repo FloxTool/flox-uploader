@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon %}
 {# ============================================================
    Page detail enrichie pour les packages Livre / BD / Manga (cat 12)
    Sprint D.6 v0.5.0 (PLAN-MULTICAT §7.4)
@@ -154,7 +155,7 @@
                         </span>
                         {% endif %}
                         {% if lang_label %}
-                        <span data-tu-tooltip="Langue">🌐 {{ lang_label }}</span>
+                        <span data-tu-tooltip="Langue" class="inline-flex items-center gap-1">{{ icon('globe', size='sm') }}{{ lang_label }}</span>
                         {% endif %}
                         {% if bm.page_count %}
                         <span data-tu-tooltip="Nombre de pages" class="inline-flex items-center gap-1">

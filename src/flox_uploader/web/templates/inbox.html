@@ -27,7 +27,7 @@
         <a href="/inbox?path={{ r.path | urlencode }}"
            class="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors duration-fast
                   {% if current_path == r.path %}bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 ring-1 ring-inset ring-primary-200 dark:ring-primary-800{% else %}bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700{% endif %}">
-            {{ r.label }}
+            {{ icon(r.icon | default('folder'), size='sm') }}{{ r.label }}
         </a>
     {% endfor %}
 </div>
@@ -1396,8 +1396,8 @@
             const disNext = current === totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 dark:hover:bg-slate-700';
             const btnBase = 'inline-flex items-center justify-center h-7 min-w-7 px-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors';
             navHTML = `
-                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="1" ${current === 1 ? 'disabled' : ''} title="Première page">«</button>
-                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="${current - 1}" ${current === 1 ? 'disabled' : ''} title="Page précédente">‹</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="1" ${current === 1 ? 'disabled' : ''} data-tu-tooltip="Première page">«</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disPrev}" data-page="${current - 1}" ${current === 1 ? 'disabled' : ''} data-tu-tooltip="Page précédente">‹</button>
             `;
             for (const p of _pageNumbersToShow(current, totalPages)) {
                 if (p === '...') {
@@ -1410,8 +1410,8 @@
                 }
             }
             navHTML += `
-                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${current + 1}" ${current === totalPages ? 'disabled' : ''} title="Page suivante">›</button>
-                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${totalPages}" ${current === totalPages ? 'disabled' : ''} title="Dernière page">»</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${current + 1}" ${current === totalPages ? 'disabled' : ''} data-tu-tooltip="Page suivante">›</button>
+                <button type="button" class="pagination-btn ${btnBase} ${disNext}" data-page="${totalPages}" ${current === totalPages ? 'disabled' : ''} data-tu-tooltip="Dernière page">»</button>
             `;
         }
         return `

@@ -166,7 +166,7 @@
     {% if is_first_run %}
     <div class="welcome-hero mb-10 text-center">
         <img src="/static/logo.svg" alt="Flox Uploader" class="w-20 h-20 mx-auto mb-5 drop-shadow-md">
-        <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Bienvenue sur Flox Uploader 👋</h1>
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Bienvenue sur Flox Uploader</h1>
         <p class="text-sm text-slate-600 dark:text-slate-400 mt-3 max-w-md mx-auto leading-relaxed">
             Quelques minutes pour configurer l'app. <strong>Tout reste local</strong> sur ta machine,
             aucune donnée n'est envoyée nulle part sans appel API explicite (TMDB, OMDb, ton tracker).
@@ -224,7 +224,7 @@
                             Clé API TMDB
                             <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
                         </label>
-                        <span id="tmdb-badge" class="test-badge" data-status="idle" title="Saisis ta clé puis clique Tester">
+                        <span id="tmdb-badge" class="test-badge" data-status="idle" data-tu-tooltip="Saisis ta clé puis clique Tester">
                             <span class="dot"></span><span class="label">Non testé</span>
                         </span>
                     </div>
@@ -257,7 +257,7 @@
                             Clé API OMDb
                             <span class="ml-1 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">optionnel</span>
                         </label>
-                        <span id="omdb-badge" class="test-badge" data-status="idle" title="Champ optionnel — laisse vide si tu n'as pas de clé">
+                        <span id="omdb-badge" class="test-badge" data-status="idle" data-tu-tooltip="Champ optionnel — laisse vide si tu n'as pas de clé">
                             <span class="dot"></span><span class="label">Non testé</span>
                         </span>
                     </div>
@@ -325,7 +325,7 @@
                             Clé API tracker
                             <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
                         </label>
-                        <span id="tracker-badge" class="test-badge" data-status="idle" title="Saisis URL API + clé, puis clique Tester">
+                        <span id="tracker-badge" class="test-badge" data-status="idle" data-tu-tooltip="Saisis URL API + clé, puis clique Tester">
                             <span class="dot"></span><span class="label">Non testé</span>
                         </span>
                     </div>
@@ -352,7 +352,7 @@
                             URL announce (avec passkey)
                             <span class="ml-1 text-[10px] uppercase tracking-wider text-danger-600 dark:text-danger-400 font-semibold">requis</span>
                         </label>
-                        <span id="announce-badge" class="test-badge" data-status="idle" title="Le test vérifie uniquement le format (un vrai ping nécessite un client BitTorrent)">
+                        <span id="announce-badge" class="test-badge" data-status="idle" data-tu-tooltip="Le test vérifie uniquement le format (un vrai ping nécessite un client BitTorrent)">
                             <span class="dot"></span><span class="label">Non testé</span>
                         </span>
                     </div>
@@ -426,7 +426,7 @@
                 <div class="flex gap-2 ml-auto">
                     <button type="button" id="skip-btn"
                             class="inline-flex items-center gap-1.5 px-3.5 h-10 text-sm font-medium rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                            title="Accéder à l'app sans configurer maintenant. Tu pourras revenir ici via Config.">
+                            data-tu-tooltip="Accéder à l'app sans configurer maintenant. Tu pourras revenir ici via Config.">
                         Configurer plus tard
                     </button>
                     <button type="button" id="save-btn"
