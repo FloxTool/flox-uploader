@@ -349,6 +349,37 @@ TYPE_SOFTWARE_OTHER = 37        # Logiciels\Autres
 
 
 # ============================================================
+# Groupes de type_id par famille (R3, audit 2026-07-19)
+# Servent a valider la coherence categorie <-> type dans validate_payload.
+# ============================================================
+VIDEO_TYPE_IDS = frozenset({
+    TYPE_FULL_DISC, TYPE_REMUX, TYPE_BDRIP, TYPE_WEB, TYPE_WEBRIP,
+    TYPE_HDTV, TYPE_ISO, TYPE_DVD, TYPE_TVRIP, TYPE_DVDRIP, TYPE_VHSRIP,
+})
+GAME_TYPE_IDS = frozenset(range(TYPE_GAME_WINDOWS, TYPE_GAME_TABLETTE + 1))  # 16-24
+BOOK_TYPE_IDS = frozenset(range(TYPE_BOOK_M4B, TYPE_BOOK_AUDIO + 1))         # 25-33
+SOFTWARE_TYPE_IDS = frozenset(range(TYPE_SOFTWARE_WINDOWS, TYPE_SOFTWARE_OTHER + 1))  # 34-37
+
+
+def expected_type_ids_for_category(category_id: int) -> frozenset[int]:
+    """Retourne l'ensemble des type_id valides pour une categorie donnee.
+
+    Vide (frozenset()) si la categorie n'a pas de contrainte connue (ex.
+    Sports/Formations : types libres). Utilise par validate_payload pour
+    detecter une combinaison categorie x type impossible (ex. livre + BDRip).
+    """
+    if category_id in (MEDIAINFO_REQUIRED_CATEGORIES - {CATEGORY_SPORTS}):
+        return VIDEO_TYPE_IDS
+    if category_id == CATEGORY_BOOKS:
+        return BOOK_TYPE_IDS
+    if category_id == CATEGORY_GAME:
+        return GAME_TYPE_IDS
+    if category_id == CATEGORY_SOFTWARE:
+        return SOFTWARE_TYPE_IDS
+    return frozenset()
+
+
+# ============================================================
 # Mappings plateforme/format -> type_id pour les strategies non-video
 # ============================================================
 # Consommes par les pipelines Sprint D (Livre), E (Jeu), H (Logiciel /

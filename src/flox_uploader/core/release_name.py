@@ -442,16 +442,34 @@ def merge_multi_language(
         if force_fr in ALLOWED_FORCE_FR:
             return [force_fr]
 
-        # TMDB = fr-original → piste FR est la VO, pas un doublage
+        # TMDB = fr-original → piste FR est la VO, pas un doublage. On convertit
+        # le tag doublage (VFx) en tag original (VOx) EN PRESERVANT LA REGION du
+        # tag explicite (VFF→VOF, VFQ→VOQ, VFB→VOB).
+        #
+        # R3 (audit AUDIT_2026-07-19) : bug corrige — l'ancien code appendait
+        # `tmdb_variant` (la region DOMINANTE selon TMDB, ex. France pour une
+        # coprod) au lieu de `vf_to_vo[t]`. Resultat : un film quebecois taggé
+        # VFQ ressortait VOF (score 100 « parfait », tag faux sur l'origine).
+        # La valeur du dict n'etait jamais lue. On preserve desormais la region
+        # du tag (signal le plus fiable) ; si elle diverge de l'inference TMDB,
+        # on emet un warning review au lieu de trancher silencieusement.
         tmdb_variant = infer_fr_variant_from_tmdb(tmdb_context)
         if tmdb_variant in {"VOF", "VOQ", "VOB"}:
             vf_to_vo = {"VFF": "VOF", "VFQ": "VOQ", "VFB": "VOB"}
             upgraded = []
             converted_any = False
             for t in cleaned:
-                if t.upper() in vf_to_vo:
-                    upgraded.append(tmdb_variant)
+                mapped = vf_to_vo.get(t.upper())
+                if mapped:
+                    upgraded.append(mapped)
                     converted_any = True
+                    if mapped != tmdb_variant and out_warnings is not None:
+                        out_warnings.append(
+                            f"Region ambigue : le nom indique {t.upper()} "
+                            f"({mapped}) mais TMDB suggere {tmdb_variant} "
+                            f"(pays de production). Verifie l'origine de la "
+                            f"piste FR avant upload."
+                        )
                 else:
                     upgraded.append(t)
             if converted_any:
@@ -540,16 +558,39 @@ def is_silent_film(mediainfo_data: dict | None) -> bool:
 
 
 def _has_encode_library(mediainfo_data: dict | None) -> bool:
-    """Vrai si MediaInfo indique un encode confirme (writing library x264/x265).
+    """Vrai si MediaInfo indique un encode LOGICIEL confirme (x264/x265/AV1...).
 
-    Format typique du parser : `mediainfo_data["video"]["codec"] = "HEVC / x265"`.
-    La presence de "x264" ou "x265" apres le slash signe un re-encode confirme
-    (par opposition a un codec natif comme HEVC pur d'un BluRay UHD ou WEB-DL).
+    R3 (audit AUDIT_2026-07-19) : on lit la VRAIE writing library
+    (`video["writing_library"]`, extraite de Encoded_Library[_Name]) — pas
+    `video["codec"]` qui vaut toujours "HEVC / x265" pour du HEVC (l'ancienne
+    version etait une tautologie : has_encode_library toujours True, donc la
+    regle « WEB untouched -> H.264/H.265 » ne s'appliquait jamais). Un flux
+    untouched (WEB-DL/BluRay natif) n'a pas de writing library logicielle.
+
+    Fallback : la presence de reglages d'encodage x264/x265 (crf/preset/ref
+    dans encoding_settings) est aussi un signe d'encode. Pour les donnees
+    legacy sans le champ writing_library, on retombe sur l'ancien heuristique
+    codec pour ne pas changer le comportement des packages deja prepares.
     """
     if not mediainfo_data:
         return False
     video = mediainfo_data.get("video") if isinstance(mediainfo_data, dict) else None
     if not isinstance(video, dict):
+        return False
+
+    lib = (video.get("writing_library") or "").lower()
+    settings = (video.get("encoding_settings") or "").lower()
+    _ENCODE_LIBS = ("x264", "x265", "x266", "av1", "aom", "svt", "vpx", "vp9", "xvid", "divx")
+    if lib:
+        return any(k in lib for k in _ENCODE_LIBS)
+    if settings:
+        # Reglages typiques d'un encode logiciel (x264/x265).
+        return any(k in settings for k in ("crf=", "preset", "cabac=", "ref=", "me="))
+
+    # Legacy : ni writing_library ni encoding_settings connus (packages
+    # prepares avant R3, ou MediaInfo minimal) -> ancien heuristique codec.
+    if "writing_library" in video or "encoding_settings" in video:
+        # Les champs existent mais sont vides -> flux untouched, pas d'encode.
         return False
     codec = (video.get("codec") or "").lower()
     return "x264" in codec or "x265" in codec

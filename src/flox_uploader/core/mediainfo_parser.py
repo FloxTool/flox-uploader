@@ -393,6 +393,17 @@ def parse_mediainfo_json(video_path: Path) -> dict:
     )
     crf_value = _extract_crf(encoding_settings)
 
+    # R3 (audit AUDIT_2026-07-19) : writing library REELLE (encodeur logiciel).
+    # Un re-encode x264/x265 renseigne Encoded_Library[_Name] ; un flux
+    # untouched (WEB-DL/BluRay natif) ne l'a pas (ou un autre encodeur). C'est
+    # le VRAI signal d'un encode — le champ `codec` ("HEVC / x265") ne l'est
+    # pas (il vaut toujours "x265" pour du HEVC, d'ou l'ancienne tautologie).
+    writing_library = (
+        video_track.get("Encoded_Library_Name")
+        or video_track.get("Encoded_Library")
+        or ""
+    ).strip()
+
     # HDR detection
     hdr_format = (video_track.get("HDR_Format") or "").upper()
     hdr_format_compat = (video_track.get("HDR_Format_Compatibility") or "").upper()
@@ -424,6 +435,7 @@ def parse_mediainfo_json(video_path: Path) -> dict:
             " FPS" if framerate else ""
         ) if framerate else "",
         "encoding_settings": encoding_settings,
+        "writing_library": writing_library,
         "crf": crf_value,
     }
     # Le ".rstrip" ci-dessus laisse parfois un trailing " FPS" mal placé.
