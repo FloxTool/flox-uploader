@@ -547,6 +547,28 @@ def build_upload_payload(
         if state_data.manual_keywords:
             keywords_eff = state_data.manual_keywords
 
+    # R3 (audit AUDIT_2026-07-19) : type_id LIVRE au payload. Avant,
+    # type_id_for (heuristique VIDEO, defaut BDRip=3) etait envoye meme pour
+    # un livre -> categorie 12 + type 3 = combinaison invalide cote tracker
+    # (les types Livres sont 25-33). On corrige quand la categorie effective
+    # est Livre ET que l'user n'a pas force de type manuel : on appelle
+    # book_type_id_for (comme la page detail le fait pour l'affichage) avec
+    # fallback TYPE_BOOK_EBOOK (27) si non-devinable.
+    _manual_type = (state_data.manual_type_id if state_data else 0)
+    if category_id == unit3d_mapping.CATEGORY_BOOKS and _manual_type <= 0:
+        _debug = _read_debug_metadata(bundle.package_dir)
+        _bm = _debug.get("book_metadata") or {}
+        _btype, _ = unit3d_mapping.book_type_id_for(
+            file_format=_bm.get("file_format", ""),
+            book_subtype=(state_data.manual_book_subtype if state_data else "") or "",
+            is_periodical=bool(_debug.get("is_periodical")),
+            publication_name=bundle.package_dir.name,
+            genres=_bm.get("genres", []),
+            language=_bm.get("language", ""),
+            isbn_13=_bm.get("isbn_13", ""),
+        )
+        type_id = _btype if _btype > 0 else unit3d_mapping.TYPE_BOOK_EBOOK
+
     # Construction du extra dict pour les champs Gemini specifiques
     # (distributor_id, region_id, keywords). Vide -> on n'envoie pas.
     extra: dict = {}
@@ -728,6 +750,65 @@ class UploadOutcome:
     message: str = ""
 
 
+def validate_payload(payload: "UploadPayload", mediainfo: str = "") -> list[str]:
+    """R3 (audit AUDIT_2026-07-19) : verifie les invariants du PDF TORRENT_API
+    AVANT le POST. Retourne la liste des problemes (vide = OK).
+
+    Invariants verifies (cf. gemini/ TORRENT_API.txt p.2-5) :
+    - type_id > 0 et coherent avec la categorie (ex. livre => type 25-33, pas
+      un type video) ;
+    - resolution_id > 0 pour les categories Film/Serie TMDB ;
+    - season_number/episode_number presents pour les categories serie ;
+    - mediainfo non vide pour les categories ou il est obligatoire ;
+    - tmdb > 0 pour les categories Film/Serie TMDB (recommande).
+
+    Non fatal par defaut : le tracker reste l'autorite finale. Le caller
+    loggue les problemes (surtout utile en dry-run) et bloque uniquement sur
+    un type manifestement incompatible avec la categorie.
+    """
+    problems: list[str] = []
+    cat = payload.category_id
+    typ = payload.type_id
+
+    if typ <= 0:
+        problems.append("type_id manquant (0) : le tracker exige un type.")
+    else:
+        expected = unit3d_mapping.expected_type_ids_for_category(cat)
+        if expected and typ not in expected:
+            problems.append(
+                f"type_id={typ} incoherent avec la categorie {cat} "
+                f"(types attendus : {sorted(expected)})."
+            )
+
+    if cat in unit3d_mapping.RESOLUTION_REQUIRED_CATEGORIES and payload.resolution_id <= 0:
+        problems.append(
+            f"resolution_id manquant : requis pour la categorie {cat} "
+            "(Film/Serie TMDB)."
+        )
+
+    if cat in unit3d_mapping.SERIES_META_CATEGORIES:
+        form = payload.to_form_data()
+        if "season_number" not in form or "episode_number" not in form:
+            problems.append(
+                f"season_number/episode_number manquants : requis pour la "
+                f"categorie serie {cat}."
+            )
+
+    if cat in unit3d_mapping.MEDIAINFO_REQUIRED_CATEGORIES and not (mediainfo or "").strip():
+        problems.append(
+            f"mediainfo vide : obligatoire pour la categorie {cat}."
+        )
+
+    if cat in (unit3d_mapping.TMDB_MOVIE_CATEGORIES | unit3d_mapping.TMDB_TV_CATEGORIES) \
+            and payload.tmdb_id <= 0:
+        problems.append(
+            f"tmdb manquant (0) : recommande pour la categorie {cat} "
+            "(fiche incomplete sans lui)."
+        )
+
+    return problems
+
+
 def upload_package(
     package_dir: Path,
     cfg: UploadConfig,
@@ -904,6 +985,31 @@ def upload_package(
     # 3. Upload (dry-run ou reel)
     # ------------------------------------------------------------
     payload = build_upload_payload(bundle, cfg)
+
+    # R3 (audit AUDIT_2026-07-19) : validation du payload contre les invariants
+    # du PDF AVANT le POST. On loggue toujours les problemes (surtout utile en
+    # dry-run) ; on BLOQUE seulement sur une combinaison categorie x type
+    # manifestement invalide (rejet API garanti, ex. livre + type video).
+    payload_problems = validate_payload(payload, mediainfo=bundle.mediainfo)
+    if payload_problems:
+        for p in payload_problems:
+            print(f"[VALIDATION] {p}")
+        hard = [p for p in payload_problems if "incoherent avec la categorie" in p]
+        if hard and not cfg.force_upload:
+            joined = " ; ".join(hard)
+            transition(
+                package_dir, PackageState.FAILED,
+                note="payload invalide (categorie/type)",
+                last_error=f"Payload invalide : {joined}",
+            )
+            msg = (
+                "Upload refuse : payload invalide pour le tracker "
+                f"({joined}). Corrige la categorie/le type dans les options "
+                "d'upload, ou force si tu sais ce que tu fais."
+            )
+            print(f"[BLOCKING] {msg}")
+            return UploadOutcome(final_state=PackageState.FAILED, message=msg)
+
     print(
         f"[INFO] Upload {'(DRY-RUN)' if cfg.dry_run else '(REEL)'} : "
         f"{bundle.release_name}"

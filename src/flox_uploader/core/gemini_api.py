@@ -320,11 +320,17 @@ class UploadPayload:
         Les bool sont convertis en 0/1 (convention Unit3D). Les Path ne sont
         PAS inclus ici (ils vont dans `files=`).
 
-        IMPORTANT : `season_number` et `episode_number` sont **OMIS** du
-        payload quand on a un film (category_id != CATEGORY_TV). Sinon Gemini
-        renvoie une erreur de validation Laravel "Le champ est interdit"
-        (regle `prohibited_if:category_id,1`).
+        IMPORTANT : `season_number` et `episode_number` ne sont inclus que pour
+        les categories « Serie (TMDB) : oui » (2 Series, 6 Series Animations,
+        14 Series Documentaires, 15 Emission TV — cf. TORRENT_API.txt p.4).
+        Pour un film, Laravel les rejette (regle `prohibited_if`).
+
+        R3 (audit AUDIT_2026-07-19) : avant, seule la cat 2 les envoyait, si
+        bien qu'une serie d'animation/docu/emission TV (auto-detectee ou
+        choisie) partait SANS meta saison/episode -> rejet API ou mauvaise
+        indexation. On couvre desormais les 4 categories serie.
         """
+        from ..trackers.gemini.unit3d_mapping import SERIES_META_CATEGORIES
         d: dict[str, Any] = {
             "name": self.name,
             "description": self.description,
@@ -347,12 +353,12 @@ class UploadPayload:
             "featured": int(self.featured),
             "sticky": int(self.sticky),
         }
-        # Champs TV : seulement pour les series (category_id == 2 chez Gemini).
-        # Sur un film, Laravel les rejette s'ils sont presents avec une valeur.
-        # Convention : on ne met les cles dans le dict que si on est en TV.
-        # On les met meme a 0 si on est en TV (laissera Laravel valider la
-        # presence/coherence selon le sous-type episode/saison/integrale).
-        if self.category_id == 2:  # TV
+        # Champs TV : pour toutes les categories serie (2/6/14/15). Sur un
+        # film, Laravel les rejette s'ils sont presents avec une valeur.
+        # Convention : on ne met les cles dans le dict que si on est en serie.
+        # On les met meme a 0 (laissera Laravel valider la presence/coherence
+        # selon le sous-type episode/saison/integrale).
+        if self.category_id in SERIES_META_CATEGORIES:
             d["season_number"] = self.season_number
             d["episode_number"] = self.episode_number
         d.update(self.extra)
