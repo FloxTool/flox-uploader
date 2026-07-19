@@ -174,7 +174,19 @@ Exemple de réponse (JSON)
 # 🔴 TRIAGE AUDIT 2026-07-19 (BLOQUANT + MAJEUR actionnables)
 
 > Bloc généré par l'audit `AUDIT_2026-07-19.md` (13 casquettes + vérif adversariale).
-> Voir le rapport pour les preuves complètes. À trier / arbitrer avant remédiation Phase 5.
+> Voir le rapport pour les preuves complètes.
+>
+> **STATUT REMÉDIATION (2026-07-19) : R1→R7 livrées** (PR #87/#88/#89 mergées, #90 en attente).
+> Corrigés : C9 EXTREME, dedup FAILED, gate upload, garde-fou TMDB+année, split_team,
+> route 409, clé imgbb retirée, scan secrets, DNS-rebinding, 404 stylée, season/épisode
+> cats série, type_id livres, encode-library réel, vf_to_vo, validate_payload, claim
+> atomique + verrou single-instance, timeouts MediaInfo/watchdog, WAL, triple-comptage
+> TMDB, sous-typage blocked, /guide, docs/STATUS.md + CLAUDE.md, animation permanente,
+> backup/export data.
+> **RESTE (différé, action Louis) :** rotation clé imgbb (l'ancienne est dans l'historique
+> git) · refonte visuelle complète · sous-scores conformité/richesse · screenshots vidéo
+> ffmpeg + injection qBittorrent · dette non-R (money-path upload sans test E2E, god-files
+> app.py/release_name.py, path traversal /inbox, file upload en RAM).
 
 ## BLOQUANT (13 — tous vérifiés à la main contre code+corpus+PDF)
 - [ ] **C9 EXTREME inversé** — bloque le brut autorisé, laisse passer l'encode interdit. `Jeune.Juliette.2019...x264-EXTREME` DÉJÀ uploadé (#26362) à score 100. `compliance.py:612-634`. (S)
