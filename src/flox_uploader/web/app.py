@@ -998,6 +998,20 @@ def create_app() -> FastAPI:
     config.load_env()
     _reconcile_stuck_jobs()
 
+    # Bugfix (2026-07-19, remonte par Louis) : reprise auto d'un batch apres
+    # un redemarrage. Le scheduler ne se lançait qu'a l'AJOUT d'un job
+    # (submit_job) ; apres un crash/restart, un batch de N fichiers deja en
+    # file restait bloque en 'pending' tant qu'on n'ajoutait pas un nouveau
+    # fichier. Ici on relance le scheduler au boot s'il reste des jobs a faire.
+    try:
+        from ..core import jobs_db as _jdb
+        if _jdb.get_next_pending_job() is not None:
+            from .jobs_runner import _ensure_scheduler_started
+            _ensure_scheduler_started()
+            print("[INFO] Jobs en attente detectes au boot -> reprise automatique.")
+    except Exception as _e:
+        print(f"[WARN] Reprise auto des jobs impossible : {_e}")
+
     # Health check MediaInfo au boot : log clair pour le user packagé.
     from ..core.nfo import check_mediainfo_available
     ok, mi_info = check_mediainfo_available()

@@ -127,4 +127,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.5.2"
+__version__ = "0.5.3"
