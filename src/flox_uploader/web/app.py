@@ -993,6 +993,49 @@ def _reconcile_stuck_jobs() -> None:
         print(f"  Job {job.id} -> failed (worker interrompu)")
 
 
+class _SystemExitGuardMiddleware:
+    """Middleware ASGI PUR : intercepte un SystemExit (leve par `die()`) dans
+    le traitement d'une requete et renvoie un 500 au lieu de laisser mourir
+    tout le serveur.
+
+    On n'utilise PAS BaseHTTPMiddleware (@app.middleware) : sa boucle
+    call_next via task-group HANG sur une BaseException comme SystemExit.
+    Ici on wrappe directement l'app ASGI, ce qui propage proprement.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        started = {"v": False}
+
+        async def _send(message):
+            if message.get("type") == "http.response.start":
+                started["v"] = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, _send)
+        except SystemExit as e:
+            import traceback
+            print(f"[ERREUR] die()/SystemExit intercepte sur "
+                  f"{scope.get('path', '?')} — le serveur reste debout : {e}")
+            traceback.print_exc()
+            if not started["v"]:
+                body = (b'{"ok":false,"detail":"Erreur interne pendant le '
+                        b'traitement. Le serveur est reste actif."}')
+                await send({
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [(b"content-type", b"application/json"),
+                                (b"content-length", str(len(body)).encode())],
+                })
+                await send({"type": "http.response.body", "body": body})
+
+
 def create_app() -> FastAPI:
     """Construit et retourne l'app FastAPI."""
     config.load_env()
@@ -1027,6 +1070,16 @@ def create_app() -> FastAPI:
         version="0.1.0",
         docs_url="/api/docs",
     )
+
+    # Bugfix (2026-07-19, remonte par Louis) : un `die()` (= sys.exit) appele
+    # depuis un handler de requete (upload, torrent-files, dedup-check...)
+    # remontait en SystemExit jusqu'a uvicorn et TUAIT TOUT LE SERVEUR (le web
+    # devenait injoignable — ERR_CONNECTION_REFUSED — sans crash ni trace AV).
+    # On intercepte SystemExit au niveau ASGI (middleware PUR, pas
+    # BaseHTTPMiddleware qui HANG sur une BaseException) et on renvoie un 500 :
+    # le process reste debout, seule la requete fautive echoue. Protege contre
+    # toute cette classe de bug (les nombreux die() du pipeline).
+    app.add_middleware(_SystemExitGuardMiddleware)
 
     # R2 (audit AUDIT_2026-07-19) : garde-fou anti DNS-rebinding. L'app est
     # local-only (bind 127.0.0.1) mais n'importe quel site web visite par
