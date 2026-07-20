@@ -1177,6 +1177,12 @@ def create_app() -> FastAPI:
     _SETUP_BYPASS_PREFIXES = (
         "/setup",
         "/api/setup",
+        # Bugfix first-run : les boutons « Tester » / « Vérifier » du wizard
+        # appellent /api/config/test-key. Sans ce bypass, le middleware
+        # first-run les bloquait en 503 « Aller sur /setup » — impossible de
+        # valider ses cles PENDANT la config initiale (paradoxe : on est sur
+        # /setup justement parce que la config est incomplete).
+        "/api/config/test-key",
         "/static",
         "/api/docs",
         "/openapi.json",
