@@ -45,15 +45,21 @@ queue de jobs, `torf` pour les torrents, MediaInfo CLI pour les métadonnées vi
 
 **Statut actuel → voir [`docs/STATUS.md`](docs/STATUS.md)** (source unique, chiffres
 régénérés par `scripts/status_snapshot.py` — ne plus mettre de chiffres périssables
-ici). En bref au 2026-07-19 :
+ici). En bref au 2026-11-15 :
 - **v0.5.0 publiée** (2026-07-18) : vidéo (films/séries + anim/docu) **et livres**
-  (BD/Manga/Audiobooks) livrés. ~1690 tests. Build **local** (GitHub Actions toujours
-  désactivé sur le compte — installeur produit à la main, cf. `docs/KNOWN_ISSUES.md §1`).
+  (BD/Manga/Audiobooks) livrés. C'est la dernière version taguée et publiée ; des
+  builds **locaux** de correctifs, non tagués, ont suivi (version courante →
+  `docs/STATUS.md`).
+- **CI de nouveau opérationnelle** (constaté le 2026-11-15) : GitHub Actions,
+  désactivé sur le compte à partir du 2026-05-20, tourne à nouveau — workflow
+  `Tests` sur les PRs et sur `main`. Le build sur tag (`build-windows.yml`) n'a
+  **pas été revérifié** depuis ; le build local reste la procédure de repli
+  (cf. `docs/KNOWN_ISSUES.md §1`).
 - **À venir** : Jeux, Émission TV, Sport, Logiciels, Formations (multi-catégorie,
   plan [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) — à amender, il liste ces catégories
   comme non commencées).
-- **Remédiation audit en cours** : [`AUDIT_2026-07-19.md`](AUDIT_2026-07-19.md)
-  (vagues R1→R7 ; R1-R3 mergées).
+- **Remédiation audit** : [`AUDIT_2026-07-19.md`](AUDIT_2026-07-19.md) — vagues
+  R1→R7 mergées (PR #87 à #90).
 
 **Cible produit (court terme)** : application web UI packagée user-friendly
 (Windows .exe, Docker à venir) pour uploadeurs amateurs francophones. Tout
@@ -624,8 +630,10 @@ flox-uploader upload <package_dir> --force-upload --i-know-this-is-a-duplicate=1
 
 > **Référence canonique pour la roadmap actuelle :**
 > - **v0.4.0 (release publique vidéo)** : [`PLAN-V1.md`](PLAN-V1.md) — Sprints 1
->   à 9. Sprints 1-8 livrés ; Sprint 9 (release v0.4.0 publique) bloqué sur
->   réintégration GitHub Actions.
+>   à 9. Sprints 1-8 livrés ; Sprint 9 (release v0.4.0 publique) n'a jamais eu
+>   lieu sous ce numéro : la v0.4.0 n'a pas été taguée et son contenu est sorti
+>   dans la v0.5.0 (cf. `CHANGELOG.md`). Le blocage GitHub Actions qui
+>   l'empêchait est levé (constaté le 2026-11-15).
 > - **v0.5.0+ (multi-catégorie : livres, jeux, sport, émission TV,
 >   logiciels, formations)** : [`PLAN-MULTICAT.md`](PLAN-MULTICAT.md) —
 >   Sprints A à I, ~6-8 semaines homme. Dégradation gracieuse 4 barreaux.
@@ -800,9 +808,12 @@ Puis Louis merge via GitHub UI (squash + delete branch). Le tag (`vX.Y.Z`)
 déclenche le build CI (Build Windows .exe → installeur Inno Setup) qui
 attache l'installeur à la release.
 
-**Important** : GitHub Actions est actuellement désactivé sur le compte
-`fremontlouis` (cf. statut TL;DR). En attendant la réintégration, les PRs
-peuvent être mergées mais les builds CI ne tournent pas.
+**État de la CI** : GitHub Actions a été désactivé sur le compte `fremontlouis`
+à partir du 2026-05-20, puis réactivé (constaté le 2026-11-15 : le workflow
+`Tests` tourne de nouveau sur les PRs et sur `main`). Le build sur tag
+(`build-windows.yml`) n'a **pas été revérifié** depuis la réactivation : au
+prochain tag, vérifier que le run part bien ; sinon, utiliser le build local
+(cf. `docs/KNOWN_ISSUES.md §1`).
 
 ### Format des commits préféré (calé avec Louis)
 
@@ -963,11 +974,15 @@ pas besoin de demander avant chaque commit. Le filet de sécurité = la PR
 
 ---
 
-*Dernière mise à jour : 2026-07-19 par Claude — état courant déplacé vers
-[`docs/STATUS.md`](docs/STATUS.md) (source unique régénérée). v0.5.0 publiée
-(vidéo + livres). Remédiation audit [`AUDIT_2026-07-19.md`](AUDIT_2026-07-19.md)
-en cours (vagues R1→R7). Les chiffres de tests/version/routes ne sont plus figés
-ici : voir STATUS.md. Ne plus recopier de compteurs périssables dans ce fichier.*
+*Dernière mise à jour : 2026-11-15 par Claude — GitHub Actions de nouveau
+opérationnel (TL;DR, §13, §16 corrigés ; build sur tag non revérifié).
+Remédiation audit [`AUDIT_2026-07-19.md`](AUDIT_2026-07-19.md) : vagues R1→R7
+mergées. L'état courant vit dans [`docs/STATUS.md`](docs/STATUS.md) (source
+unique régénérée) : les chiffres de tests/version/routes ne sont plus figés ici.
+Ne plus recopier de compteurs périssables dans ce fichier.*
+
+*Mise à jour précédente : 2026-07-19 — état courant déplacé vers `docs/STATUS.md`,
+v0.5.0 publiée (vidéo + livres).*
 
 *Historique antérieur : 2026-05-07 (Lots K-S, web UI Phase 3c + bugs durs + auto-enrich
 + champs upload complets + UX/UI buckets 6 niveaux + BBCode parser).*

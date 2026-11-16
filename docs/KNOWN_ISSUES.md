@@ -12,31 +12,41 @@
 
 ## 1. État du projet (contexte temporel)
 
-### 🚧 GitHub Actions désactivé sur le compte `fremontlouis`
-**Statut au 2026-07-18 : toujours bloqué** (retesté via `workflow_dispatch`,
-même erreur). Burst de ~73 workflow runs en 2 jours (2026-05-20) a déclenché
-l'anti-abus de GitHub. L'erreur exacte :
+### ✅ GitHub Actions réactivé sur le compte `fremontlouis` (résolu)
+**Statut au 2026-11-15 : résolu.** Le workflow `Tests` (pytest, Python
+3.10 / 3.11 / 3.12) tourne de nouveau : succès sur les PR #94 et #95, puis sur
+le push `main` qui a suivi. La date exacte de réactivation n'est pas connue :
+le dernier run d'avant le blocage date du 2026-05-20 et la PR #93 (créée le
+2026-07-20) n'a eu aucun check — donc quelque part entre le 2026-07-20 et le
+2026-11-15.
+
+**Non revérifié : le build Windows sur tag**
+(`.github/workflows/build-windows.yml`, déclenché par `push tags v*`). Le
+workflow est listé « active » par `gh workflow list`, mais aucun tag n'a été
+poussé depuis la réactivation. Au prochain tag, vérifier que le run part et
+produit la draft GitHub Release ; sinon, appliquer la procédure de repli
+ci-dessous.
+
+**Historique du blocage** (pour mémoire) : un burst de ~73 workflow runs en
+2 jours (2026-05-20) avait déclenché l'anti-abus de GitHub. L'erreur exacte :
 ```
 HTTP 422: Actions has been disabled for this user.
 ```
-**Conséquences** :
-- Le build CI Windows (`.github/workflows/build-windows.yml`) ne peut pas
-  tourner.
-- Les tests CI ne tournent pas sur les PRs (mais pytest local fonctionne).
-- **Le développement local reste 100% fonctionnel.** Coder, tester, créer
-  des PRs, les merger via UI GitHub — tout marche.
+Le blocage était toujours en place au 2026-07-18 (retesté via
+`workflow_dispatch`, même erreur). Un ticket Support était ouvert (réponse de
+triage reçue le 2026-07-18, réponse envoyée le jour même) ; son issue n'est
+pas consignée ici. Pendant cette période : ni tests CI sur les PRs, ni build
+CI. La v0.4.0 n'a jamais été taguée ; son contenu est sorti dans la v0.5.0.
 
-**Ticket support** : réponse de triage reçue 2026-07-18 (« reply to
-prioritize »), réponse envoyée le jour même. En attente de la review
-manuelle.
-
-**Workaround adopté (v0.5.0)** : **build 100% local** qui réplique les
-étapes du workflow CI — PyInstaller (`packaging/flox_uploader.spec`) +
-Inno Setup local (`ISCC.exe packaging\flox_uploader.iss
-/DMyAppVersion=X.Y.Z`) + smoke tests. L'installeur et le ZIP portable
-sont ensuite **attachés manuellement à la GitHub Release** via
-`gh release create` — l'upload d'assets ne dépend pas d'Actions.
-Premier build livré ainsi : v0.5.0 (2026-07-18).
+**Procédure de repli : build 100% local** (utilisée pour 0.5.0 → 0.5.4). Elle
+réplique les étapes du workflow CI — PyInstaller
+(`packaging/flox_uploader.spec`) + Inno Setup local (`ISCC.exe
+packaging\flox_uploader.iss /DMyAppVersion=X.Y.Z`) + smoke tests. Pour une
+release publique, l'installeur et le ZIP portable sont ensuite **attachés
+manuellement à la GitHub Release** via `gh release create` — l'upload
+d'assets ne dépend pas d'Actions. Premier build livré ainsi : v0.5.0
+(2026-07-18). Les builds 0.5.1 → 0.5.4 sont des builds locaux de correctifs,
+non tagués et sans GitHub Release.
 
 ---
 

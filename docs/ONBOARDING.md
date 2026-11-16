@@ -19,10 +19,13 @@ locale (FastAPI + Jinja + Tailwind) en français.
 produit** : web UI packagée user-friendly (Windows .exe livré, Docker
 à venir).
 
-**Statut** : v0.3.17 mergée, v0.4.0 prête côté code (release bloquée
-par GitHub Actions désactivé — ticket Support envoyé), v0.5.0 en
-planification (extension multi-catégorie : livres, jeux, sport,
-émission TV, logiciels, formations).
+**Statut** : voir [`STATUS.md`](STATUS.md) (source unique, bloc chiffré
+régénéré). En bref au 2026-11-15 : v0.5.0 publiée (vidéo + livres), suivie
+de builds locaux de correctifs non tagués. La v0.4.0 n'a jamais été taguée
+(son contenu est dans la v0.5.0). GitHub Actions, désactivé à partir du
+2026-05-20, est de nouveau opérationnel (cf.
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §1). Restent à venir : jeux, sport,
+émission TV, logiciels, formations.
 
 ---
 
