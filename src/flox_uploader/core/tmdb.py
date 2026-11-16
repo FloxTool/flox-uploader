@@ -201,22 +201,58 @@ def _year_match_score(year_query: str | None, release_date: str | None) -> int:
     return 0
 
 
+def _normalize_title_for_match(title: str) -> str:
+    """Normalise un titre pour la comparaison exact/prefixe : fold accents,
+    minuscules, ponctuation -> espace, espaces compactes.
+
+    "Dans une galaxie près de chez vous" -> "dans une galaxie pres de chez vous"
+    "Le Fabuleux Destin d'Amélie Poulain" -> "le fabuleux destin d amelie poulain"
+
+    Le nom de release est sans accent ni ponctuation PAR CONSTRUCTION
+    (convention scene) : comparer en egalite stricte avec le titre TMDB
+    ratait tout titre accentue ou avec apostrophe.
+
+    Retourne "" pour un titre non latin (ascii_fold le vide) : l'appelant
+    doit traiter ce cas (pas de match sur chaine vide).
+    """
+    folded = ascii_fold(title or "").lower()
+    return " ".join(tok for tok in re.split(r"[^a-z0-9]+", folded) if tok)
+
+
 def _title_exact_score(query: str, candidate: dict, *, is_tv: bool = False) -> int:
-    """Variante module-level du _title_score. NOTES round 6 : 0/500/3000."""
-    title_norm = (query or "").strip().lower()
-    if not title_norm:
+    """Score de concordance titre : 3000 (exact), 500 (prefixe), 0 sinon.
+    NOTES round 6 : exact a 3000 pour dominer la popularite (max ~2200).
+
+    Source unique utilisee par le ranking film, le ranking TV et la
+    validation des hits cache.
+
+    Insensible aux accents et a la ponctuation (cf.
+    `_normalize_title_for_match`). Cas reel 2026-11-15 : la saison "Dans Une
+    Galaxie Pres De Chez Vous S02" (pas d'annee -> year_score=0) etait
+    rejetee par le garde-fou "year_score=0 et title_score=0" parce que
+    "pres" != "près".
+
+    La comparaison brute (minuscules seules) est conservee en plus : un
+    titre non latin se vide a la normalisation ASCII et ne matcherait plus.
+    """
+    raw_query = (query or "").strip().lower()
+    if not raw_query:
         return 0
-    if is_tv:
-        t = (candidate.get("name") or "").strip().lower()
-        ot = (candidate.get("original_name") or "").strip().lower()
-    else:
-        t = (candidate.get("title") or "").strip().lower()
-        ot = (candidate.get("original_title") or "").strip().lower()
-    if t == title_norm or ot == title_norm:
-        return 3000
-    if (t and t.startswith(title_norm)) or (ot and ot.startswith(title_norm)):
-        return 500
-    return 0
+    norm_query = _normalize_title_for_match(raw_query)
+    fields = ("name", "original_name") if is_tv else ("title", "original_title")
+    best = 0
+    for fld in fields:
+        raw = (candidate.get(fld) or "").strip().lower()
+        if not raw:
+            continue
+        norm = _normalize_title_for_match(raw)
+        if raw == raw_query or (norm_query and norm == norm_query):
+            return 3000
+        if raw.startswith(raw_query) or (
+            norm_query and norm.startswith(norm_query)
+        ):
+            best = 500
+    return best
 
 
 def _cache_entry_passes_relevance(
@@ -762,7 +798,6 @@ def make_tmdb_resolver(api_key: str, cache_file: Path):
         # ajoute des doublons au pool). Cf. apres `chosen = max(...)`.
 
         # === Ranking : year tolerance + popularity + match exact ===
-        title_norm = source_title.strip().lower()
         year_int = int(year) if year and year.isdigit() else None
 
         def _year_score(r) -> int:
@@ -790,13 +825,9 @@ def make_tmdb_resolver(api_key: str, cache_file: Path):
             # match) doit gagner contre "The Last of Us" (vote_count=12000+,
             # title_score=0). Avant : 1000 (Last Man) vs 2200 (Last of Us) -> Us
             # gagnait. Maintenant : 3000 vs 2200 -> Last Man gagne.
-            t = (r.get("title") or "").strip().lower()
-            ot = (r.get("original_title") or "").strip().lower()
-            if t == title_norm or ot == title_norm:
-                return 3000
-            if t.startswith(title_norm) or ot.startswith(title_norm):
-                return 500
-            return 0
+            # Calcul delegue a _title_exact_score (insensible accents /
+            # ponctuation, source unique avec la validation cache).
+            return _title_exact_score(source_title, r, is_tv=False)
 
         def _origin_score(r) -> int:
             """Lot O.6 : bonus si release tagué FR-only et candidat de
@@ -1328,7 +1359,6 @@ def make_tv_resolver(api_key: str, cache_file: Path):
         # Note : signaux SIG_TMDB_LANG_FALLBACK / SIG_TMDB_QUERY_SHORTENED
         # emis APRES le ranking (cf. apres `chosen = max(...)`).
 
-        title_norm = source_title.strip().lower()
         year_int = int(year) if year and year.isdigit() else None
 
         def _year_score_tv(r) -> int:
@@ -1349,13 +1379,10 @@ def make_tv_resolver(api_key: str, cache_file: Path):
 
         def _title_score_tv(r) -> int:
             # NOTES round 6 : boost exact 1000 -> 3000 (cf. movie variant).
-            t = (r.get("name") or "").strip().lower()
-            ot = (r.get("original_name") or "").strip().lower()
-            if t == title_norm or ot == title_norm:
-                return 3000
-            if t.startswith(title_norm) or ot.startswith(title_norm):
-                return 500
-            return 0
+            # Calcul delegue a _title_exact_score (insensible accents /
+            # ponctuation) : une saison n'a pas d'annee dans son nom, le
+            # titre est donc son SEUL signal de pertinence.
+            return _title_exact_score(source_title, r, is_tv=True)
 
         def _origin_score_tv(r) -> int:
             """Lot O.6 : bonus si release tagué FR-only et serie de

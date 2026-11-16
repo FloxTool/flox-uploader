@@ -9,7 +9,18 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-_Aucun changement non publié pour le moment._
+### Corrigé
+
+- **TMDB : « Pas de correspondance » à tort sur les titres accentués sans
+  année.** Le résolveur trouvait la bonne fiche puis la rejetait
+  (`year_score=0 et title_score=0`) : la comparaison de titre était une
+  égalité stricte, donc `Pres` (nom de release, sans accent par convention
+  scene) ≠ `près` (TMDB). Touchait surtout les **saisons de séries**, qui
+  n'ont pas d'année dans leur nom et dont le titre est le seul signal de
+  pertinence. La comparaison est maintenant insensible aux accents et à la
+  ponctuation (apostrophes, tirets, deux-points). Le garde-fou
+  anti-faux-positif est inchangé. Cas réel : `Dans.Une.Galaxie.Pres.De.Chez.
+  Vous.S02` → série TMDB 13706.
 
 ---
 
