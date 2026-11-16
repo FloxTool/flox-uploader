@@ -9,6 +9,14 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+_Aucun changement non publié pour le moment._
+
+---
+
+## [0.5.5] — 2026-11-15
+
+Build **local** de correctif, non tagué.
+
 ### Corrigé
 
 - **Page détail : « .torrent introuvable » dans le panneau « Contenu du
