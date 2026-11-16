@@ -9,7 +9,17 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
-_Aucun changement non publié pour le moment._
+### Corrigé
+
+- **Page détail : « .torrent introuvable » dans le panneau « Contenu du
+  torrent » alors que le fichier existe.** Quand le chemin complet du
+  `.torrent` approche la limite Windows `MAX_PATH`, le pipeline raccourcit
+  son nom de fichier ; le panneau cherchait le nom exact et invitait à
+  re-préparer le package, ce qui ne changeait rien. Il résout maintenant le
+  fichier comme le fait l'upload (nom exact, sinon l'unique `.torrent` du
+  package). S'il y a plusieurs `.torrent` sans nom exact, le message le dit
+  au lieu de proposer une re-préparation. Cas réel : `Dans.Une.Galaxie.Pres.
+  De.Chez.Vous.1999.S02.COMPLETE.VOQ…` (chemin de 267 caractères).
 
 ---
 
