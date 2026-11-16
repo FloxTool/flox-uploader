@@ -47,6 +47,15 @@
 #           taguee ni releasee (GitHub Actions bloque) ; le tag v0.3.17
 #           existe sans release. On saute directement 0.3.17 -> 0.5.0,
 #           premier build livre en local (hors CI).
+#   0.5.4 : Fix TMDB — un titre accentue sans annee etait trouve puis
+#           rejete a tort ("pres" != "près"), surtout sur les saisons de
+#           series (cas reel : Dans une galaxie pres de chez vous S02).
+#           Comparaison de titre insensible aux accents / ponctuation.
+#           Regroupe aussi les builds locaux 0.5.1 a 0.5.3 jamais tagues :
+#           remediation audit R1-R7 (0.5.1), boutons Tester du wizard
+#           /setup debloques au first-run (0.5.2), reprise auto d'un batch
+#           apres redemarrage + un die() dans une requete ne tue plus le
+#           serveur (0.5.3).
 #   0.3.17 : Sprint 8 hotfix v17 — 4e faux positif compliance audio
 #           (Emilia Perez : E-AC3.5.1). Le findall non-overlappant matchait
 #           `3.5` (le 3 de AC3 + .5) et ratait le vrai `5.1`. Fix : capture
@@ -127,4 +136,4 @@
 #           (7) click row inbox toggle la checkbox.
 # Les bumps suivants suivent semver classique (PATCH pour bug-fix isole,
 # MINOR pour batch de features coherent).
-__version__ = "0.5.3"
+__version__ = "0.5.4"

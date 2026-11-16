@@ -9,8 +9,31 @@ versionning [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Unreleased]
 
+_Aucun changement non publié pour le moment._
+
+---
+
+## [0.5.4] — 2026-11-15
+
+Build **local** de correctifs (hors CI, non tagué). Première entrée depuis la
+v0.5.0 : elle regroupe aussi les builds locaux **0.5.1 → 0.5.3**, jamais
+tagués ni consignés ici, ainsi que les vagues de remédiation d'audit R1 → R7
+et la conformité charte visuelle mergées après la v0.5.0 (PR #87 à #91).
+
 ### Corrigé
 
+- **First-run : boutons Tester / Vérifier du wizard `/setup` bloqués**
+  (build 0.5.2). Ils appellent `/api/config/test-key`, que le middleware
+  renvoyait en 503 tant que la config était incomplète — donc précisément
+  pendant le first-run. L'endpoint est ajouté au bypass ; les endpoints
+  d'action restent bloqués.
+- **Batch bloqué après un redémarrage** (build 0.5.3). Les jobs `pending`
+  restaient en attente parce que le scheduler ne démarrait qu'à l'ajout d'un
+  job. Il est maintenant relancé au boot s'il reste des jobs en attente.
+- **Crash serveur sans trace pendant un gros batch** (build 0.5.3). Un
+  `die()` (= `sys.exit`) appelé depuis un handler de requête remontait en
+  `SystemExit` jusqu'à uvicorn et tuait le process. Un middleware ASGI
+  l'intercepte au niveau requête : réponse 500, le serveur reste debout.
 - **TMDB : « Pas de correspondance » à tort sur les titres accentués sans
   année.** Le résolveur trouvait la bonne fiche puis la rejetait
   (`year_score=0 et title_score=0`) : la comparaison de titre était une
