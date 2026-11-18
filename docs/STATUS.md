@@ -11,9 +11,9 @@
 ## Chiffres (auto — `scripts/status_snapshot.py`)
 
 <!-- AUTO:START -->
-- **Version** : 0.5.4
+- **Version** : 0.5.5
 - **Dernier tag git** : v0.5.0
-- **Tests collectés** : 1713
+- **Tests collectés** : 1715
 - **Routes API (`web/app.py`)** : 61
 - **Packages corpus dev** : 589
 <!-- AUTO:END -->

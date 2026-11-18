@@ -2452,14 +2452,29 @@ def create_app() -> FastAPI:
         """
         from torf import Torrent
         from ..core.package_state import read_state
+        from ..core.upload_orchestrator import resolve_torrent_path
         target = _resolve_package_dir(name)
         state_data = read_state(target)
         release_name = state_data.release_name if state_data else target.name
-        torrent_path = target / f"{release_name}.torrent"
-        if not torrent_path.is_file():
+        # Meme resolution que l'upload : nom exact, sinon l'unique .torrent
+        # du package. Le pipeline raccourcit le nom du fichier quand le
+        # chemin complet approche Windows MAX_PATH
+        # (pipeline._short_torrent_filename) ; exiger le nom exact affichait
+        # ".torrent introuvable" sur un package pourtant uploadable (cas
+        # reel 2026-11-15, chemin de 267 caracteres).
+        torrent_path = resolve_torrent_path(target, release_name)
+        if torrent_path is None:
+            others = sorted(p.name for p in target.glob("*.torrent"))
+            if len(others) > 1:
+                raise HTTPException(
+                    404,
+                    "Plusieurs .torrent dans le package et aucun ne porte le "
+                    f"nom attendu ({release_name}.torrent) : "
+                    f"{', '.join(others)}. Garde uniquement le bon.",
+                )
             raise HTTPException(
                 404,
-                f".torrent introuvable : {torrent_path.name}. "
+                f".torrent introuvable : {release_name}.torrent. "
                 "Re-prepare le package pour le regenerer.",
             )
         try:
