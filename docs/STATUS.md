@@ -21,18 +21,26 @@
 ## Contexte (rédigé)
 
 - **Version publiée** : v0.5.0 (2026-07-18), multi-catégorie (livres) + tout le
-  contenu v0.4.0 vidéo. Build **local** (GitHub Actions désactivé sur le compte —
-  installeur PyInstaller + Inno Setup, attaché manuellement à la release).
+  contenu v0.4.0 vidéo — dernière version taguée et dernière GitHub Release
+  (installeur PyInstaller + Inno Setup buildé en local, attaché manuellement).
+  Depuis : builds **locaux** de correctifs 0.5.1 → 0.5.4, non tagués et sans
+  release (cf. `CHANGELOG.md`, section 0.5.4).
+- **CI** : GitHub Actions, désactivé sur le compte à partir du 2026-05-20, est de
+  nouveau opérationnel (constaté le 2026-11-15 : workflow `Tests` vert sur les
+  PR #94 et #95 et sur `main`). Le build sur tag (`build-windows.yml`) n'a
+  **pas été revérifié** depuis la réactivation. Détails et procédure de repli
+  (build local) : `docs/KNOWN_ISSUES.md` §1.
 - **Périmètre livré** : Films, Séries (+ anim/docu), **Livres/BD/Manga/Audiobooks**.
   À venir : Jeux, Émission TV, Sport, Logiciels, Formations.
-- **Remédiation audit 2026-07-19 en cours** (voir `AUDIT_2026-07-19.md` §11) :
-  - R1 — sécurité conformité (C9 EXTREME, gate compliance, garde-fou TMDB…) ✅ mergé
-  - R2 — secrets & accès (imgbb, scan secrets, DNS-rebinding, 404 stylée) ✅ mergé
-  - R3 — multi-catégorie débloqué (season/épisode, type livres, encode-library…) ✅ mergé
-  - R4 — robustesse (claim atomique, verrou single-instance, timeouts, WAL) — en cours
-  - R5 — score honnête (triple comptage TMDB, sous-typage blocked) — en cours
-  - R6 — structure doc + UX ciblé — en cours
-  - R7 — ambition (backup/export ; screenshots vidéo & qBittorrent différés) — en cours
+- **Remédiation audit 2026-07-19** (voir `AUDIT_2026-07-19.md` §11) — vagues
+  R1 → R7 mergées :
+  - R1 — sécurité conformité (C9 EXTREME, gate compliance, garde-fou TMDB…) ✅ mergé (PR #87)
+  - R2 — secrets & accès (imgbb, scan secrets, DNS-rebinding, 404 stylée) ✅ mergé (PR #88)
+  - R3 — multi-catégorie débloqué (season/épisode, type livres, encode-library…) ✅ mergé (PR #89)
+  - R4 — robustesse (claim atomique, verrou single-instance, timeouts, WAL) ✅ mergé (PR #90)
+  - R5 — score honnête (triple comptage TMDB, sous-typage blocked) ✅ mergé (PR #90)
+  - R6 — structure doc + UX ciblé ✅ mergé (PR #90)
+  - R7 — ambition (backup/export ; screenshots vidéo & qBittorrent différés) ✅ mergé (PR #90)
 
 ## Comment mettre à jour
 

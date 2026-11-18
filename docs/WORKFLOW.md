@@ -141,10 +141,13 @@ REM  - Draft GitHub Release créée avec ZIP + setup.exe attachés
 REM Puis : aller sur GitHub Releases, vérifier, publier la draft.
 ```
 
-⚠ **GitHub Actions actuellement désactivé** (cf.
-[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §1) → les builds CI ne tournent pas.
-Workaround temporaire : build local du `.exe` portable, pas d'installeur
-officiel jusqu'à réactivation.
+ℹ **GitHub Actions est réactivé** (constaté le 2026-11-15, cf.
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §1) : le workflow `Tests` tourne sur les
+PRs et sur `main`. Le build sur tag (`build-windows.yml`) n'a **pas été
+revérifié** depuis : après `git push origin vX.Y.Z`, vérifier que le run part
+(`gh run list --workflow "Build Windows .exe"`). S'il ne part pas, procédure de
+repli : build local (PyInstaller + Inno Setup), décrite dans `KNOWN_ISSUES.md`
+§1.
 
 ---
 
@@ -293,7 +296,7 @@ note ou la marquer "✓ fait dans PR #N".
 ### Checklist
 1. Tous les sprints prévus livrés (cf. `PLAN-V1.md` ou `PLAN-MULTICAT.md`
    selon la version)
-2. Tests verts en local + CI (quand Actions réactivé)
+2. Tests verts en local + CI (workflow `Tests` sur la PR)
 3. `CHANGELOG.md` à jour avec section `[X.Y.Z] — YYYY-MM-DD`
 4. `pyproject.toml` version bumpée
 5. `src/flox_uploader/__init__.py::__version__` bumpée
@@ -329,7 +332,7 @@ Sur push main (pas tag) : `tests.yml` tourne juste (matrix Python 3.10-3.12).
 | `gh pr create` 404 / auth | `gh auth login` |
 | Serveur dev plante au boot | Lire le traceback (`pytest tests/test_web_app.py` pour iso le problème) |
 | `MediaInfo` introuvable | Installer depuis https://mediaarea.net/MediaInfo/Download (Windows : ajouter au PATH ou utiliser l'installeur Flox bundlé) |
-| GitHub Actions échoue avec 422 | Cf. [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §1 — Actions désactivé, attendre réintégration Support |
+| GitHub Actions échoue avec 422 | Blocage anti-abus déjà rencontré (à partir du 2026-05-20, levé depuis — cf. [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §1). S'il revient : tests et build en local en attendant |
 | Quelque chose de non couvert ici | Voir [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) |
 
 ---
